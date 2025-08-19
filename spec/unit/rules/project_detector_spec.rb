@@ -163,7 +163,7 @@ RSpec.describe Sxn::Rules::ProjectDetector do
         # The actual result depends on the confidence scoring, but we test the logic works
         result = detector.detect_project_type
         # Could be either nodejs or typescript depending on confidence scores
-        expect([:nodejs, :typescript]).to include(result)
+        expect(%i[nodejs typescript]).to include(result)
       end
     end
 
@@ -181,7 +181,7 @@ RSpec.describe Sxn::Rules::ProjectDetector do
         # But the current logic may still detect as Node.js if it has main entry points
         # Let's test what actually happens
         result = detector.detect_project_type
-        expect([:javascript, :nodejs]).to include(result)
+        expect(%i[javascript nodejs]).to include(result)
       end
     end
 
@@ -848,11 +848,11 @@ RSpec.describe Sxn::Rules::ProjectDetector do
         restricted_dir = File.join(project_path, "restricted")
         FileUtils.mkdir_p(restricted_dir)
         File.chmod(0o000, restricted_dir)
-        
+
         empty_detector.instance_variable_set(:@project_path, restricted_dir)
         result = empty_detector.send(:file_exists_in_project?, "test.txt")
         expect(result).to be false
-        
+
         # Clean up
         File.chmod(0o755, restricted_dir)
       end
@@ -908,14 +908,12 @@ RSpec.describe Sxn::Rules::ProjectDetector do
       it "handles permission errors during file globbing" do
         FileUtils.mkdir_p(File.join(project_path, "src"))
         File.write(File.join(project_path, "src", "test.rb"), "puts 'test'")
-        
+
         # Mock Dir.glob to raise an error for one pattern
         allow(Dir).to receive(:glob) do |pattern|
-          if pattern.include?("*.rb")
-            raise Errno::EACCES
-          else
-            []
-          end
+          raise Errno::EACCES if pattern.include?("*.rb")
+
+          []
         end
 
         info = detector.detect_project_info
@@ -983,22 +981,22 @@ RSpec.describe Sxn::Rules::ProjectDetector do
     context "with pattern matching errors" do
       it "handles file read errors in gemfile_contains?" do
         File.write(File.join(project_path, "Gemfile"), 'gem "rails"')
-        
+
         # Mock File.read to raise an error for any path
         allow(File).to receive(:read).and_call_original
         allow(File).to receive(:read).with(anything).and_raise(Errno::EACCES)
-        
+
         result = detector.send(:gemfile_contains?, "rails")
         expect(result).to be false
       end
 
       it "handles file read errors in requirements_contains?" do
         File.write(File.join(project_path, "requirements.txt"), "django==4.0")
-        
+
         # Mock File.read to raise an error for any path
         allow(File).to receive(:read).and_call_original
         allow(File).to receive(:read).with(anything).and_raise(Errno::EACCES)
-        
+
         result = detector.send(:requirements_contains?, "django")
         expect(result).to be false
       end
@@ -1015,7 +1013,7 @@ RSpec.describe Sxn::Rules::ProjectDetector do
           }
         }
         File.write(File.join(project_path, "package.json"), JSON.pretty_generate(package_json))
-        
+
         result = detector.send(:has_nodejs_characteristics?)
         expect(result).to be true
       end
@@ -1028,7 +1026,7 @@ RSpec.describe Sxn::Rules::ProjectDetector do
           }
         }
         File.write(File.join(project_path, "package.json"), JSON.pretty_generate(package_json))
-        
+
         result = detector.send(:has_nodejs_characteristics?)
         expect(result).to be true
       end
@@ -1039,7 +1037,7 @@ RSpec.describe Sxn::Rules::ProjectDetector do
           "main" => "index.js"
         }
         File.write(File.join(project_path, "package.json"), JSON.pretty_generate(package_json))
-        
+
         result = detector.send(:has_nodejs_characteristics?)
         expect(result).to be true
       end
@@ -1062,7 +1060,7 @@ RSpec.describe Sxn::Rules::ProjectDetector do
           }
         }
         File.write(File.join(project_path, "package.json"), JSON.pretty_generate(package_json))
-        
+
         expect(detector.send(:package_json_has_script?, "build")).to be true
         expect(detector.send(:package_json_has_script?, "nonexistent")).to be false
       end
@@ -1086,7 +1084,7 @@ RSpec.describe Sxn::Rules::ProjectDetector do
           "main" => "index.js"
         }
         File.write(File.join(project_path, "package.json"), JSON.pretty_generate(package_json))
-        
+
         result = detector.send(:package_json_has_main_entry?)
         expect(result).to be true
       end
@@ -1097,7 +1095,7 @@ RSpec.describe Sxn::Rules::ProjectDetector do
           "module" => "dist/index.esm.js"
         }
         File.write(File.join(project_path, "package.json"), JSON.pretty_generate(package_json))
-        
+
         result = detector.send(:package_json_has_main_entry?)
         expect(result).to be true
       end
@@ -1110,7 +1108,7 @@ RSpec.describe Sxn::Rules::ProjectDetector do
           }
         }
         File.write(File.join(project_path, "package.json"), JSON.pretty_generate(package_json))
-        
+
         result = detector.send(:package_json_has_main_entry?)
         expect(result).to be true
       end
@@ -1132,19 +1130,19 @@ RSpec.describe Sxn::Rules::ProjectDetector do
     context "with environment variable detection" do
       it "detects PostgreSQL from environment variable" do
         ENV["DATABASE_URL"] = "postgres://localhost/test"
-        
+
         info = detector.detect_project_info
         expect(info[:database]).to eq(:postgresql)
-        
+
         ENV.delete("DATABASE_URL")
       end
 
       it "detects MySQL from environment variable" do
         ENV["DATABASE_URL"] = "mysql://localhost/test"
-        
+
         info = detector.detect_project_info
         expect(info[:database]).to eq(:mysql)
-        
+
         ENV.delete("DATABASE_URL")
       end
 
@@ -1157,14 +1155,14 @@ RSpec.describe Sxn::Rules::ProjectDetector do
     context "with .env file detection" do
       it "detects PostgreSQL from .env file" do
         File.write(File.join(project_path, ".env"), "DATABASE_URL=postgresql://localhost/test")
-        
+
         info = detector.detect_project_info
         expect(info[:database]).to eq(:postgresql)
       end
 
       it "detects MySQL from .env file" do
         File.write(File.join(project_path, ".env"), "DATABASE_URL=mysql://localhost/test")
-        
+
         info = detector.detect_project_info
         expect(info[:database]).to eq(:mysql)
       end
@@ -1173,7 +1171,7 @@ RSpec.describe Sxn::Rules::ProjectDetector do
     context "with SQLite file detection" do
       it "detects SQLite from database files" do
         File.write(File.join(project_path, "database.sqlite3"), "")
-        
+
         info = detector.detect_project_info
         expect(info[:database]).to eq(:sqlite)
       end
@@ -1182,7 +1180,7 @@ RSpec.describe Sxn::Rules::ProjectDetector do
     context "with Python MongoDB detection" do
       it "detects MongoDB from pymongo in requirements.txt" do
         File.write(File.join(project_path, "requirements.txt"), "pymongo==4.0.0")
-        
+
         info = detector.detect_project_info
         expect(info[:database]).to eq(:mongodb)
       end
@@ -1197,14 +1195,14 @@ RSpec.describe Sxn::Rules::ProjectDetector do
           }
         }
         File.write(File.join(project_path, "package.json"), JSON.pretty_generate(package_json))
-        
+
         info = detector.detect_project_info
         expect(info[:database]).to eq(:redis)
       end
 
       it "detects Redis from Python requirements" do
         File.write(File.join(project_path, "requirements.txt"), "redis==4.5.0")
-        
+
         info = detector.detect_project_info
         expect(info[:database]).to eq(:redis)
       end
@@ -1214,7 +1212,7 @@ RSpec.describe Sxn::Rules::ProjectDetector do
       it "handles StandardError in file_contains?" do
         File.write(File.join(project_path, "config.yml"), "test: value")
         allow(File).to receive(:read).and_raise(StandardError)
-        
+
         result = detector.send(:file_contains?, "config.yml", "test")
         expect(result).to be false
       end
@@ -1227,28 +1225,26 @@ RSpec.describe Sxn::Rules::ProjectDetector do
       FileUtils.mkdir_p(restricted_dir)
       File.write(File.join(restricted_dir, "secret.key"), "secret")
       File.chmod(0o000, restricted_dir)
-      
+
       info = detector.detect_project_info
       expect(info[:sensitive_files]).to be_an(Array)
-      
+
       File.chmod(0o755, restricted_dir)
     end
   end
 
   describe "template rules with empty configs" do
     it "filters out empty copy_files rules" do
-      project_info = { type: :unknown, package_manager: :unknown, sensitive_files: [] }
       rules = detector.suggest_default_rules
-      
+
       # Should not include copy_files if files array is empty
       expect(rules.key?("copy_files")).to be false
     end
 
     it "filters out empty setup_commands rules" do
-      project_info = { type: :unknown, package_manager: :unknown }
       rules = detector.suggest_default_rules
-      
-      # Should not include setup_commands if commands array is empty  
+
+      # Should not include setup_commands if commands array is empty
       expect(rules.key?("setup_commands")).to be false
     end
 
@@ -1257,7 +1253,7 @@ RSpec.describe Sxn::Rules::ProjectDetector do
       # But we test the conditional logic
       empty_templates = { "config" => { "templates" => [] } }
       allow(detector).to receive(:suggest_template_rules).and_return(empty_templates)
-      
+
       rules = detector.suggest_default_rules
       expect(rules.key?("templates")).to be false
     end
@@ -1269,30 +1265,30 @@ RSpec.describe Sxn::Rules::ProjectDetector do
       File.write(File.join(project_path, "cert.pem"), "-----BEGIN CERTIFICATE-----")
       File.write(File.join(project_path, "keystore.p12"), "binary keystore")
       File.write(File.join(project_path, "app.jks"), "java keystore")
-      
+
       project_info = { type: :unknown, sensitive_files: ["server.key", "cert.pem", "keystore.p12", "app.jks"] }
       rules = detector.send(:suggest_copy_files_rules, project_info)
-      
+
       key_files = rules["config"]["files"].select { |f| f["strategy"] == "copy" }
       expect(key_files.length).to be >= 4
     end
 
     it "uses symlink strategy for other sensitive files" do
       File.write(File.join(project_path, ".env.secret"), "API_KEY=secret")
-      
+
       project_info = { type: :unknown, sensitive_files: [".env.secret"] }
       rules = detector.send(:suggest_copy_files_rules, project_info)
-      
+
       env_file = rules["config"]["files"].find { |f| f["source"] == ".env.secret" }
       expect(env_file["strategy"]).to eq("symlink")
     end
 
     it "doesn't duplicate existing files in suggestions" do
       File.write(File.join(project_path, ".env"), "API_KEY=secret")
-      
+
       project_info = { type: :rails, sensitive_files: [".env"] }
       rules = detector.send(:suggest_copy_files_rules, project_info)
-      
+
       env_files = rules["config"]["files"].select { |f| f["source"] == ".env" }
       expect(env_files.length).to eq(1)
     end
@@ -1303,10 +1299,10 @@ RSpec.describe Sxn::Rules::ProjectDetector do
       it "suggests Yarn-specific commands" do
         project_info = { type: :nodejs, package_manager: :yarn }
         rules = detector.send(:suggest_setup_commands_rules, project_info)
-        
+
         commands = rules["config"]["commands"]
         expect(commands.first["command"]).to include("yarn", "install")
-        
+
         build_command = commands.find { |c| c["command"].include?("build") }
         expect(build_command["command"]).to include("yarn", "build")
       end
@@ -1316,7 +1312,7 @@ RSpec.describe Sxn::Rules::ProjectDetector do
       it "suggests pnpm-specific commands" do
         project_info = { type: :nodejs, package_manager: :pnpm }
         rules = detector.send(:suggest_setup_commands_rules, project_info)
-        
+
         commands = rules["config"]["commands"]
         expect(commands.first["command"]).to include("pnpm", "install")
       end
@@ -1326,7 +1322,7 @@ RSpec.describe Sxn::Rules::ProjectDetector do
       it "suggests pipenv-specific commands" do
         project_info = { type: :python, package_manager: :pipenv }
         rules = detector.send(:suggest_setup_commands_rules, project_info)
-        
+
         commands = rules["config"]["commands"]
         expect(commands.first["command"]).to include("pipenv", "install")
       end
@@ -1336,7 +1332,7 @@ RSpec.describe Sxn::Rules::ProjectDetector do
       it "suggests poetry-specific commands" do
         project_info = { type: :python, package_manager: :poetry }
         rules = detector.send(:suggest_setup_commands_rules, project_info)
-        
+
         commands = rules["config"]["commands"]
         expect(commands.first["command"]).to include("poetry", "install")
       end
@@ -1346,10 +1342,10 @@ RSpec.describe Sxn::Rules::ProjectDetector do
       it "includes database creation and migration commands" do
         project_info = { type: :rails, package_manager: :bundler }
         rules = detector.send(:suggest_setup_commands_rules, project_info)
-        
+
         commands = rules["config"]["commands"]
         command_strings = commands.map { |c| c["command"].join(" ") }
-        
+
         expect(command_strings).to include("bin/rails db:create")
         expect(command_strings).to include("bin/rails db:migrate")
       end
@@ -1360,14 +1356,14 @@ RSpec.describe Sxn::Rules::ProjectDetector do
     context "#parse_dependencies" do
       it "parses Ruby dependencies from Gemfile.lock" do
         File.write(File.join(project_path, "Gemfile.lock"), "GEM\n  remote: https://rubygems.org/\n  specs:\n    rails (7.0.0)")
-        
+
         deps = detector.send(:parse_dependencies, :bundler)
         expect(deps).not_to be_empty
       end
 
       it "parses Ruby dependencies from Gemfile when no lock file" do
         File.write(File.join(project_path, "Gemfile"), 'gem "rails", "~> 7.0"\ngem "rspec"')
-        
+
         deps = detector.send(:parse_dependencies, :ruby)
         expect(deps).to include("rails", "rspec")
       end
@@ -1379,14 +1375,14 @@ RSpec.describe Sxn::Rules::ProjectDetector do
           "peerDependencies" => { "typescript" => "^4.0.0" }
         }
         File.write(File.join(project_path, "package.json"), JSON.pretty_generate(package_json))
-        
+
         deps = detector.send(:parse_dependencies, :npm)
         expect(deps).to include("react", "jest", "typescript")
       end
 
       it "parses Python dependencies" do
         File.write(File.join(project_path, "requirements.txt"), "django==4.0\nflask>=2.0")
-        
+
         deps = detector.send(:parse_dependencies, :python)
         expect(deps).to include("packages from requirements.txt")
       end
@@ -1411,14 +1407,14 @@ RSpec.describe Sxn::Rules::ProjectDetector do
       it "handles StandardError during file read" do
         File.write(File.join(project_path, "Gemfile.lock"), "GEM\n  specs:")
         allow(File).to receive(:read).and_raise(StandardError)
-        
+
         deps = detector.send(:parse_gemfile_lock)
         expect(deps).to eq([])
       end
 
       it "returns empty for invalid Gemfile.lock content" do
         File.write(File.join(project_path, "Gemfile.lock"), "invalid content")
-        
+
         deps = detector.send(:parse_gemfile_lock)
         expect(deps).to eq([])
       end
@@ -1433,7 +1429,7 @@ RSpec.describe Sxn::Rules::ProjectDetector do
       it "handles StandardError during parsing" do
         File.write(File.join(project_path, "Gemfile"), 'gem "rails"')
         allow(File).to receive(:read).and_raise(StandardError)
-        
+
         deps = detector.send(:parse_gemfile)
         expect(deps).to eq([])
       end
@@ -1447,7 +1443,7 @@ RSpec.describe Sxn::Rules::ProjectDetector do
 
       it "handles JSON parsing errors" do
         File.write(File.join(project_path, "package.json"), "invalid json")
-        
+
         deps = detector.send(:parse_package_json)
         expect(deps).to eq([])
       end
@@ -1455,7 +1451,7 @@ RSpec.describe Sxn::Rules::ProjectDetector do
       it "handles StandardError during parsing" do
         File.write(File.join(project_path, "package.json"), '{"name": "test"}')
         allow(File).to receive(:read).and_raise(StandardError)
-        
+
         deps = detector.send(:parse_package_json)
         expect(deps).to eq([])
       end
@@ -1465,7 +1461,7 @@ RSpec.describe Sxn::Rules::ProjectDetector do
   describe "script analysis edge cases" do
     it "handles JSON parsing errors in analyze_scripts" do
       File.write(File.join(project_path, "package.json"), "invalid json")
-      
+
       analysis = detector.analyze_project_structure
       expect(analysis[:scripts]).to have_key(:executables)
       expect(analysis[:scripts][:npm]).to be_nil
@@ -1473,7 +1469,7 @@ RSpec.describe Sxn::Rules::ProjectDetector do
 
     it "handles missing scripts section" do
       File.write(File.join(project_path, "package.json"), '{"name": "test"}')
-      
+
       analysis = detector.analyze_project_structure
       expect(analysis[:scripts][:npm]).to eq([])
     end

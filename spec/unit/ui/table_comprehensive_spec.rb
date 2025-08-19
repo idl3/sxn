@@ -114,12 +114,12 @@ RSpec.describe Sxn::UI::Table, "comprehensive coverage for missing areas" do
         # Mock current time to have consistent test behavior
         current_time = Time.parse("2023-06-15T12:00:00Z")
         allow(Time).to receive(:now).and_return(current_time)
-        
+
         # Test with different input formats that might be encountered
         dates_and_expected = [
-          ["2023-06-15T10:30:00Z", "10:30"],  # Today - just time
-          ["2023-06-14T14:30:00+00:00", /14:30/],  # Yesterday - might include day
-          ["2023-05-15T14:30:00Z", "05/15"]  # Older date - shows date
+          ["2023-06-15T10:30:00Z", "10:30"], # Today - just time
+          ["2023-06-14T14:30:00+00:00", /14:30/], # Yesterday - might include day
+          ["2023-05-15T14:30:00Z", "05/15"] # Older date - shows date
         ]
 
         dates_and_expected.each do |date_string, expected|

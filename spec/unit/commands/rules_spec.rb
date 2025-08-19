@@ -43,7 +43,7 @@ RSpec.describe Sxn::Commands::Rules do
     allow(mock_prompt).to receive(:ask).and_return("test-input")
     allow(mock_prompt).to receive(:ask_yes_no).and_return(true)
     allow(rules_command).to receive(:options).and_return({})
-    
+
     # Add default stubs for manager methods
     allow(mock_rules_manager).to receive(:add_rule)
     allow(mock_rules_manager).to receive(:remove_rule)
@@ -753,11 +753,11 @@ RSpec.describe Sxn::Commands::Rules do
 
           result = rules_command.send(:prompt_rule_config, "copy_files")
 
-          expect(result).to eq({ 
-            "source" => "config/file.txt", 
-            "strategy" => "copy", 
-            "permissions" => 384  # 0600 in decimal
-          })
+          expect(result).to eq({
+                                 "source" => "config/file.txt",
+                                 "strategy" => "copy",
+                                 "permissions" => 384 # 0600 in decimal
+                               })
         end
       end
 
@@ -780,10 +780,10 @@ RSpec.describe Sxn::Commands::Rules do
 
           result = rules_command.send(:prompt_rule_config, "setup_commands")
 
-          expect(result).to eq({ 
-            "command" => %w[npm install],
-            "environment" => { "NODE_ENV" => "development", "PORT" => "3000" }
-          })
+          expect(result).to eq({
+                                 "command" => %w[npm install],
+                                 "environment" => { "NODE_ENV" => "development", "PORT" => "3000" }
+                               })
         end
 
         it "skips environment variables when none are provided" do
@@ -805,10 +805,10 @@ RSpec.describe Sxn::Commands::Rules do
           result = rules_command.send(:prompt_rule_config, "template")
 
           expect(result).to eq({
-            "source" => "templates/config.erb",
-            "destination" => "config/app.conf",
-            "process" => true
-          })
+                                 "source" => "templates/config.erb",
+                                 "destination" => "config/app.conf",
+                                 "process" => true
+                               })
         end
       end
 

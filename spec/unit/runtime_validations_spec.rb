@@ -15,7 +15,7 @@ RSpec.describe Sxn::RuntimeValidations do
       it "raises error for incorrect argument count" do
         validations = { args: { count: 1..2 } }
         expect do
-          described_class.validate_thor_arguments("test_command", ["arg1", "arg2", "arg3"], {}, validations)
+          described_class.validate_thor_arguments("test_command", %w[arg1 arg2 arg3], {}, validations)
         end.to raise_error(ArgumentError, /expects 1..2 arguments, got 3/)
       end
 
@@ -29,7 +29,7 @@ RSpec.describe Sxn::RuntimeValidations do
       it "handles no count validation" do
         validations = { args: {} }
         expect do
-          described_class.validate_thor_arguments("test_command", ["arg1", "arg2", "arg3"], {}, validations)
+          described_class.validate_thor_arguments("test_command", %w[arg1 arg2 arg3], {}, validations)
         end.not_to raise_error
       end
     end
@@ -110,7 +110,7 @@ RSpec.describe Sxn::RuntimeValidations do
       it "validates array options" do
         validations = { options: { items: :array } }
         expect do
-          described_class.validate_thor_arguments("test_command", [], { items: ["a", "b"] }, validations)
+          described_class.validate_thor_arguments("test_command", [], { items: %w[a b] }, validations)
         end.not_to raise_error
       end
 
@@ -138,7 +138,7 @@ RSpec.describe Sxn::RuntimeValidations do
 
     context "with no validations" do
       it "returns true for any input" do
-        result = described_class.validate_thor_arguments("test_command", ["any", "args"], { any: "options" }, {})
+        result = described_class.validate_thor_arguments("test_command", %w[any args], { any: "options" }, {})
         expect(result).to be true
       end
     end
@@ -259,7 +259,7 @@ RSpec.describe Sxn::RuntimeValidations do
       it "returns all required categories" do
         variables = { session: { name: "test" }, project: { name: "proj" } }
         result = described_class.validate_template_variables(variables)
-        
+
         expect(result).to have_key(:session)
         expect(result).to have_key(:project)
         expect(result).to have_key(:git)
@@ -270,12 +270,12 @@ RSpec.describe Sxn::RuntimeValidations do
       end
 
       it "preserves existing values" do
-        variables = { 
+        variables = {
           session: { name: "test" },
           custom: { key: "value" }
         }
         result = described_class.validate_template_variables(variables)
-        
+
         expect(result[:session]).to eq({ name: "test" })
         expect(result[:custom]).to eq({ key: "value" })
       end
@@ -283,7 +283,7 @@ RSpec.describe Sxn::RuntimeValidations do
       it "adds missing categories as empty hashes" do
         variables = { session: { name: "test" } }
         result = described_class.validate_template_variables(variables)
-        
+
         expect(result[:project]).to eq({})
         expect(result[:git]).to eq({})
       end
@@ -292,26 +292,26 @@ RSpec.describe Sxn::RuntimeValidations do
     context "with invalid input" do
       it "returns empty hash for non-hash input" do
         result = described_class.validate_template_variables("not a hash")
-        
+
         # When input is not a hash, the method returns {} early
         expect(result).to eq({})
       end
 
       it "returns empty hash for nil input" do
         result = described_class.validate_template_variables(nil)
-        
+
         # When input is nil, the method returns {} early
         expect(result).to eq({})
       end
 
       it "converts non-hash values to empty hashes" do
-        variables = { 
+        variables = {
           session: "not a hash",
           project: nil,
           git: 123
         }
         result = described_class.validate_template_variables(variables)
-        
+
         expect(result[:session]).to eq({})
         expect(result[:project]).to eq({})
         expect(result[:git]).to eq({})

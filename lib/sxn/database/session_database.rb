@@ -663,7 +663,7 @@ module Sxn
 
       # Get database file size in MB
       def database_size_mb
-        return 0 unless @db_path.exist?
+        return 0.0 unless @db_path.exist?
 
         (@db_path.size.to_f / (1024 * 1024)).round(2)
       end

@@ -633,7 +633,7 @@ RSpec.describe Sxn::Database::SessionDatabase do
         }
 
         result = db.send(:deserialize_session_row, row)
-        
+
         # Check all fields except path which varies by system
         expect(result[:id]).to eq("test-id")
         expect(result[:name]).to eq("test-name")
@@ -646,7 +646,7 @@ RSpec.describe Sxn::Database::SessionDatabase do
         expect(result[:metadata]).to eq({ "key" => "value" })
         expect(result[:projects]).to eq([])
         expect(result[:worktrees]).to eq({})
-        
+
         # Path should end with the session name
         expect(result[:path]).to end_with(".sxn/sessions/test-name")
       end

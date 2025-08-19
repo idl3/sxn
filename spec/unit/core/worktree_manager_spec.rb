@@ -77,10 +77,10 @@ RSpec.describe Sxn::Core::WorktreeManager do
     it "creates default managers when none provided" do
       # Create temp dir for config
       temp_dir = Dir.mktmpdir("sxn_test")
-      
+
       expect(Sxn::Core::ConfigManager).to receive(:new).and_call_original
       expect(Sxn::Core::SessionManager).to receive(:new).and_call_original
-      
+
       # Initialize config properly
       allow_any_instance_of(Sxn::Core::ConfigManager).to receive(:sessions_folder_path).and_return(temp_dir)
       allow_any_instance_of(Sxn::Core::ConfigManager).to receive(:initialized?).and_return(true)
@@ -88,7 +88,7 @@ RSpec.describe Sxn::Core::WorktreeManager do
       allow_any_instance_of(Sxn::Core::ConfigManager).to receive(:config_path).and_return(File.join(temp_dir, "config.yml"))
 
       described_class.new
-      
+
       FileUtils.rm_rf(temp_dir)
     end
 
