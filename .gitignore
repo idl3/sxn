@@ -1,0 +1,84 @@
+/.bundle/
+/.yardoc
+/_yardoc/
+/coverage/
+/doc/
+/pkg/
+/spec/reports/
+/tmp/
+
+# SQLite temporary files
+*.db-shm
+*.db-wal
+
+# Gem files
+*.gem
+Gemfile.lock
+
+# RBS and type checking
+/.steep/
+/sig-private/
+/.rbs_collection/
+
+# Development and testing
+/vendor/bundle/
+/.rspec_status
+/spec/examples.txt
+
+# Build artifacts
+/lib/bundler/man/
+
+# IDE and editor files
+.idea/
+*.swp
+*.swo
+*~
+.vscode/
+.DS_Store
+
+# Session data (for development)
+.sxn/
+.sxn-workspace/
+
+# Test artifacts
+/spec/fixtures/.sxn/
+/spec/tmp/
+
+# Documentation build
+/rdoc/
+/yard/
+/.yardoc/
+
+# Benchmarking
+/benchmark/results/
+
+# Logs
+*.log
+/log/
+
+# Cache
+.cache/
+
+# Claude-flow 
+/.claude-flow/
+
+# Test artifacts and demos
+*.json
+!package.json
+!package-lock.json
+!tsconfig.json
+analyze_*.rb
+*_demo.rb
+simple_*.rb
+test_*.rb
+/progress/
+/my-sessions/
+/sxn-sessions/
+/test_projects/
+/coverage/
+
+# Temporary test files
+*_results.json
+*_failures.json
+*_verification.json
+audit_results.json

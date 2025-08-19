@@ -1,0 +1,24 @@
+{
+  "version": "3.13.5",
+  "seed": 1581,
+  "examples": [
+    {
+      "id": "./spec/unit/commands/init_spec.rb[1:1:4:1]",
+      "description": "shows warning and exits",
+      "full_description": "Sxn::Commands::Init#init already initialized without force shows warning and exits",
+      "status": "",
+      "file_path": "./spec/unit/commands/init_spec.rb",
+      "line_number": 145,
+      "run_time": 0.046214,
+      "pending_message": null
+    }
+  ],
+  "summary": {
+    "duration": 0.0477,
+    "example_count": 1,
+    "failure_count": 0,
+    "pending_count": 0,
+    "errors_outside_of_examples_count": 0
+  },
+  "summary_line": "1 example, 0 failures"
+}

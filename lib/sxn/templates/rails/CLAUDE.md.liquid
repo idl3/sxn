@@ -1,0 +1,215 @@
+# Session: {{ session.name }}
+
+## Session Context
+- **Created**: {{ session.created_at }}
+- **Path**: `{{ session.path }}`
+- **Status**: {{ session.status }}
+{% if session.linear_task %}
+- **Linear Task**: [{{ session.linear_task }}](https://linear.app/team/issue/{{ session.linear_task }})
+{% endif %}
+{% if session.description %}
+- **Description**: {{ session.description }}
+{% endif %}
+
+## Git Information
+{% if git.branch %}
+- **Current Branch**: `{{ git.branch }}`
+{% endif %}
+{% if git.upstream %}
+- **Upstream**: `{{ git.upstream }}`
+{% endif %}
+{% if git.last_commit %}
+- **Last Commit**: {{ git.last_commit.sha | truncate: 8 }} - {{ git.last_commit.message }}
+- **Author**: {{ git.last_commit.author_name }} <{{ git.last_commit.author_email }}>
+{% endif %}
+{% if git.has_changes %}
+- **Working Directory**: Has uncommitted changes
+{% else %}
+- **Working Directory**: Clean
+{% endif %}
+
+## Rails Project Information
+- **Ruby Version**: {{ environment.ruby.version }}
+{% if environment.rails %}
+- **Rails Version**: {{ environment.rails.version }}
+{% endif %}
+{% if project.database %}
+- **Database**: {{ project.database.adapter | default: "unknown" }} ({{ project.database.name | default: "unknown" }})
+{% endif %}
+
+## Session Projects
+{% if session.projects %}
+{% for project_name in session.projects %}
+- {{ project_name | capitalize }}
+{% endfor %}
+{% endif %}
+
+## Development Commands
+
+### Database Operations
+```bash
+# Navigate to session
+cd {{ session.path }}
+
+# Database setup (if needed)
+bin/rails db:create
+bin/rails db:migrate
+bin/rails db:seed
+
+# Reset database
+bin/rails db:reset
+
+# Generate migration
+bin/rails generate migration YourMigrationName
+```
+
+### Testing
+```bash
+# Run all tests
+bundle exec rspec
+
+# Run specific test file
+bundle exec rspec spec/path/to/test_spec.rb
+
+# Run tests with coverage
+COVERAGE=true bundle exec rspec
+```
+
+### Development Server
+```bash
+# Start Rails server
+bin/rails server
+
+# Start Rails console
+bin/rails console
+
+# Start Rails console in test environment
+RAILS_ENV=test bin/rails console
+```
+
+### Code Quality
+```bash
+# Run RuboCop
+bundle exec rubocop
+
+# Fix auto-correctable RuboCop violations
+bundle exec rubocop -a
+
+# Run security audit
+bundle exec bundler-audit check --update
+```
+
+## Cursor Rules Integration
+
+**IMPORTANT: Always use the Cursor Rules MCP server to load contextual rules before making code changes or git commands.**
+
+### Required Actions
+
+1. **Before any Rails changes**, load Rails development rules:
+   ```
+   mcp__cursor_rules__get_contextual_rules(context: "rails_development")
+   ```
+
+2. **Before writing commit messages**, ALWAYS load:
+   ```
+   mcp__cursor_rules__get_contextual_rules(context: "git_commit")
+   ```
+
+3. **Before creating PRs**, ALWAYS load:
+   ```
+   mcp__cursor_rules__get_contextual_rules(context: "pr_creation")
+   ```
+
+4. **For Ruby development**, ALWAYS load:
+   ```
+   mcp__cursor_rules__get_contextual_rules(context: "ruby_development")
+   ```
+
+### Key Rails Development Rules
+- **ALWAYS use Panko serializers**, not manual hashes
+- **Follow conventional commit format**
+- **Update documentation after changes**
+- **Run tests before committing**
+
+## Session-Based Development Workflow
+
+**CRITICAL**: This is a session-based development environment:
+
+1. **NEVER work directly on top-level projects** (`atlas-core/`, `atlas-pay/`)
+2. **ALWAYS operate within session folders** (like this one)
+3. **Use git worktrees** for project isolation
+4. **Follow the session-based workflow**
+
+## Environment Setup Commands
+
+{% if environment.ruby %}
+```bash
+# Ensure correct Ruby version
+rbenv use {{ environment.ruby.version }}
+# or
+rvm use {{ environment.ruby.version }}
+
+# Verify Ruby version
+ruby --version
+```
+{% endif %}
+
+```bash
+# Install dependencies
+bundle install
+
+# Setup environment
+eval "$(mise activate bash)"
+export GEM_HOME=$(ruby -e 'puts Gem.user_dir')
+export PATH="$GEM_HOME/bin:$PATH"
+
+# Environment-specific Rails commands
+DISABLE_SPRING=1 RAILS_ENV=development bundle exec rails server
+DISABLE_SPRING=1 RAILS_ENV=test bundle exec rspec
+```
+
+## File Structure
+```
+{{ session.path }}/
+{% if session.worktrees %}
+{% for worktree in session.worktrees %}
+├── {{ worktree.name }}/           # {{ worktree.branch }}
+{% endfor %}
+{% endif %}
+├── README.md                      # This file
+└── session-info.md               # Session metadata
+```
+
+## Notes and Reminders
+
+{% if session.tags %}
+### Tags
+{% for tag in session.tags %}
+- {{ tag | capitalize }}
+{% endfor %}
+{% endif %}
+
+### Important Considerations
+- This is a session-based development environment
+- Follow the multi-repo workflow defined in cursor rules
+- Always run tests before pushing changes
+- Use proper environment setup for Rails commands
+- Check project status with `atlas-cli status` if available
+
+### Database Management
+- **Before running rspec**: Go to atlas-one root and restart PostgreSQL
+- Use `docker-compose down postgres` then `docker-compose up postgres -d`
+- **NEVER use Docker for Rails commands** - only for infrastructure services
+
+### Git Workflow
+- Create feature branches from the main branch
+- Follow conventional commit messages
+- Run tests before pushing
+- **For atlas-core commits**: Use `git commit --no-verify -m "message"` and `git push --no-verify`
+- **For atlas-pay commits**: Use normal git commands without `--no-verify`
+
+## Session Metadata
+- **Generated**: {{ timestamp.now }}
+- **Template**: Rails Project Template v1.0
+- **Session ID**: {{ session.name }}
+- **User**: {{ user.git_name | default: user.username }}

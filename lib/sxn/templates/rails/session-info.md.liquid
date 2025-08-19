@@ -1,0 +1,144 @@
+# Session Information: {{ session.name }}
+
+## Overview
+This session was created for Rails development work{% if session.linear_task %} related to Linear task {{ session.linear_task }}{% endif %}.
+
+### Session Details
+- **Session Name**: {{ session.name }}
+- **Created**: {{ session.created_at }}
+- **Last Updated**: {{ session.updated_at }}
+- **Status**: {{ session.status }}
+- **Path**: `{{ session.path }}`
+
+{% if session.description %}
+### Description
+{{ session.description }}
+{% endif %}
+
+## Projects in This Session
+{% if session.worktrees %}
+{% for worktree in session.worktrees %}
+### {{ worktree.name | capitalize }}
+- **Path**: `{{ worktree.path }}`
+- **Branch**: `{{ worktree.branch }}`
+- **Created**: {{ worktree.created_at }}
+{% endfor %}
+{% else %}
+No worktrees have been created yet. Use `sxn worktree add <project>` to add projects to this session.
+{% endif %}
+
+## Development Environment
+### Ruby Environment
+- **Version**: {{ environment.ruby.version }}
+- **Platform**: {{ environment.ruby.platform }}
+{% if environment.rails %}
+- **Rails Version**: {{ environment.rails.version }}
+{% endif %}
+
+### System Information
+- **OS**: {{ environment.os.name }} ({{ environment.os.arch }})
+- **User**: {{ user.git_name | default: user.username }}
+
+{% if environment.database %}
+### Available Databases
+{% for database in environment.database %}
+- **{{ database[0] | capitalize }}**: {{ database[1] }}
+{% endfor %}
+{% endif %}
+
+## Git Context
+{% if git.branch %}
+- **Current Branch**: `{{ git.branch }}`
+{% endif %}
+{% if git.author_name %}
+- **Git User**: {{ git.author_name }} <{{ git.author_email }}>
+{% endif %}
+{% if git.remote_url %}
+- **Remote URL**: {{ git.remote_url }}
+{% endif %}
+
+{% if git.has_changes %}
+### Working Directory Status
+- **Modified Files**: {{ git.modified_files | default: 0 }}
+- **Added Files**: {{ git.added_files | default: 0 }}
+- **Deleted Files**: {{ git.deleted_files | default: 0 }}
+- **Untracked Files**: {{ git.untracked_files | default: 0 }}
+- **Total Changes**: {{ git.total_changes | default: 0 }}
+{% endif %}
+
+## Session Commands
+
+### Quick Navigation
+```bash
+# Navigate to session root
+cd {{ session.path }}
+
+{% if session.worktrees %}
+{% for worktree in session.worktrees %}
+# Navigate to {{ worktree.name }}
+cd {{ worktree.path }}
+
+{% endfor %}
+{% endif %}
+```
+
+### Session Management
+```bash
+# List all sessions
+sxn list
+
+# Switch to this session
+sxn use {{ session.name }}
+
+# Show current session
+sxn current
+
+# Add a new project to this session
+sxn worktree add <project-name> <branch-name>
+
+# List worktrees in this session
+sxn worktree list
+```
+
+### Rails Development Workflow
+```bash
+# Standard Rails development commands
+bundle install
+bin/rails db:create db:migrate
+bin/rails server
+bin/rails console
+
+# Testing
+bundle exec rspec
+RAILS_ENV=test bin/rails console
+
+# Code quality
+bundle exec rubocop
+bundle exec rubocop -a
+```
+
+## Session Rules Applied
+{% if session.rules_applied %}
+The following rules were applied when creating this session:
+{% for rule in session.rules_applied %}
+- {{ rule.type | capitalize }}: {{ rule.description }}
+{% endfor %}
+{% endif %}
+
+## Notes
+{% if session.tags %}
+### Tags
+{% for tag in session.tags %}
+- {{ tag }}
+{% endfor %}
+{% endif %}
+
+### Development Reminders
+- This session follows the session-based development workflow
+- Always load cursor rules before making changes
+- Run tests before committing changes
+- Use proper environment setup for Rails commands
+- Follow conventional commit message format
+
+---
+*Session created on {{ timestamp.now }} using sxn v{{ sxn.version | default: "unknown" }}*

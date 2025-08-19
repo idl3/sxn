@@ -1,0 +1,206 @@
+# JavaScript Session: {{ session.name }}
+
+## Session Details
+- **Name**: {{ session.name }}
+- **Type**: JavaScript/Node.js Development
+- **Created**: {{ session.created_at }}
+- **Last Updated**: {{ session.updated_at }}
+- **Path**: `{{ session.path }}`
+
+{% if session.description %}
+## Description
+{{ session.description }}
+{% endif %}
+
+## Environment Information
+{% if environment.node %}
+### Node.js Environment
+- **Version**: {{ environment.node.version }}
+- **Package Manager**: {{ project.package_manager | default: "npm" }}
+{% endif %}
+
+### System
+- **OS**: {{ environment.os.name }} ({{ environment.os.arch }})
+- **User**: {{ user.git_name | default: user.username }}
+
+## Projects
+{% if session.worktrees %}
+{% for worktree in session.worktrees %}
+### {{ worktree.name }}
+- **Path**: `{{ worktree.path }}`
+- **Branch**: `{{ worktree.branch }}`
+- **Type**: {{ project.type | capitalize }}
+- **Created**: {{ worktree.created_at }}
+
+{% if project.scripts %}
+#### Available Scripts
+{% for script in project.scripts limit: 5 %}
+- `{{ script[0] }}`: {{ script[1] | truncate: 50 }}
+{% endfor %}
+{% if project.scripts.size > 5 %}
+- ... and {{ project.scripts.size | minus: 5 }} more
+{% endif %}
+{% endif %}
+{% endfor %}
+{% else %}
+No projects have been added to this session yet.
+{% endif %}
+
+## Git Context
+{% if git.branch %}
+- **Current Branch**: `{{ git.branch }}`
+{% endif %}
+{% if git.author_name %}
+- **Git User**: {{ git.author_name }} <{{ git.author_email }}>
+{% endif %}
+{% if git.remote_url %}
+- **Remote**: {{ git.remote_url }}
+{% endif %}
+
+{% if git.has_changes %}
+### Working Directory Status
+- **Modified**: {{ git.modified_files | default: 0 }} files
+- **Added**: {{ git.added_files | default: 0 }} files
+- **Deleted**: {{ git.deleted_files | default: 0 }} files
+- **Untracked**: {{ git.untracked_files | default: 0 }} files
+{% endif %}
+
+## Quick Commands
+
+### Session Management
+```bash
+# Navigate to session
+cd {{ session.path }}
+
+# List sessions
+sxn list
+
+# Switch to this session
+sxn use {{ session.name }}
+
+# Add project to session
+sxn worktree add <project> <branch>
+```
+
+### Development Workflow
+```bash
+{% if session.worktrees %}
+{% for worktree in session.worktrees limit: 1 %}
+# Navigate to {{ worktree.name }}
+cd {{ worktree.path }}
+
+# Install dependencies
+{% if project.package_manager == "yarn" %}
+yarn install
+{% elsif project.package_manager == "pnpm" %}
+pnpm install
+{% else %}
+npm install
+{% endif %}
+
+# Start development
+{% if project.package_manager == "yarn" %}
+yarn dev
+{% elsif project.package_manager == "pnpm" %}
+pnpm dev
+{% else %}
+npm run dev
+{% endif %}
+
+# Run tests
+{% if project.package_manager == "yarn" %}
+yarn test
+{% elsif project.package_manager == "pnpm" %}
+pnpm test
+{% else %}
+npm test
+{% endif %}
+{% endfor %}
+{% endif %}
+```
+
+### Code Quality
+```bash
+# Lint code
+{% if project.package_manager == "yarn" %}
+yarn lint
+{% elsif project.package_manager == "pnpm" %}
+pnpm lint
+{% else %}
+npm run lint
+{% endif %}
+
+# Format code
+{% if project.package_manager == "yarn" %}
+yarn format
+{% elsif project.package_manager == "pnpm" %}
+pnpm format
+{% else %}
+npm run format
+{% endif %}
+
+# Type checking (if TypeScript)
+{% if project.type == "typescript" %}
+{% if project.package_manager == "yarn" %}
+yarn type-check
+{% elsif project.package_manager == "pnpm" %}
+pnpm type-check
+{% else %}
+npm run type-check
+{% endif %}
+{% endif %}
+```
+
+## Dependencies Overview
+{% if project.dependencies %}
+### Production Dependencies ({{ project.dependencies.size }})
+{% for dep in project.dependencies limit: 10 %}
+- {{ dep }}
+{% endfor %}
+{% if project.dependencies.size > 10 %}
+- ... and {{ project.dependencies.size | minus: 10 }} more
+{% endif %}
+{% endif %}
+
+{% if project.dev_dependencies %}
+### Development Dependencies ({{ project.dev_dependencies.size }})
+{% for dep in project.dev_dependencies limit: 5 %}
+- {{ dep }}
+{% endfor %}
+{% if project.dev_dependencies.size > 5 %}
+- ... and {{ project.dev_dependencies.size | minus: 5 }} more
+{% endif %}
+{% endif %}
+
+## Development Notes
+{% if session.tags %}
+### Tags
+{% for tag in session.tags %}
+- {{ tag }}
+{% endfor %}
+{% endif %}
+
+### Session-Based Development
+- This session uses git worktrees for project isolation
+- Each project maintains its own dependencies and configuration
+- Follow the session-based workflow for all development activities
+
+### Best Practices
+- Use the correct Node.js version (check `.nvmrc` if present)
+- Run linting and tests before committing
+- Follow conventional commit message format
+- Use environment variables for configuration
+- Keep dependencies up to date
+
+## Environment Variables
+Create `.env.local` files for each project with local configuration:
+
+```bash
+# Example environment variables
+NODE_ENV=development
+API_URL=http://localhost:3001
+DATABASE_URL=postgresql://localhost/{{ session.name | replace: "-", "_" }}_development
+```
+
+---
+*Generated on {{ timestamp.now }} using sxn template engine*

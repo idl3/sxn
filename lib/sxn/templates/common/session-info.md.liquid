@@ -1,0 +1,156 @@
+# Session: {{ session.name }}
+
+## Session Information
+- **Name**: {{ session.name }}
+- **Created**: {{ session.created_at }}
+- **Last Updated**: {{ session.updated_at }}
+- **Status**: {{ session.status }}
+- **Path**: `{{ session.path }}`
+{% if session.linear_task %}
+- **Linear Task**: [{{ session.linear_task }}](https://linear.app/team/issue/{{ session.linear_task }})
+{% endif %}
+
+{% if session.description %}
+## Description
+{{ session.description }}
+{% endif %}
+
+## Worktrees
+{% if session.worktrees %}
+{% for worktree in session.worktrees %}
+### {{ worktree.name }}
+- **Path**: `{{ worktree.path }}`
+- **Branch**: `{{ worktree.branch }}`
+- **Created**: {{ worktree.created_at }}
+{% endfor %}
+{% else %}
+No worktrees have been created for this session yet.
+
+To add a worktree, run:
+```bash
+sxn worktree add <project-name> <branch-name>
+```
+{% endif %}
+
+## Environment
+- **User**: {{ user.git_name | default: user.username }}
+- **System**: {{ environment.os.name }} ({{ environment.os.arch }})
+- **Ruby**: {{ environment.ruby.version }}
+{% if environment.node %}
+- **Node.js**: {{ environment.node.version }}
+{% endif %}
+
+## Git Context
+{% if git.branch %}
+- **Current Branch**: `{{ git.branch }}`
+{% endif %}
+{% if git.author_name %}
+- **Git User**: {{ git.author_name }} <{{ git.author_email }}>
+{% endif %}
+{% if git.remote_url %}
+- **Remote**: {{ git.remote_url }}
+{% endif %}
+
+{% if git.has_changes %}
+### Working Directory Status
+The working directory has uncommitted changes:
+- **Modified**: {{ git.modified_files | default: 0 }} files
+- **Added**: {{ git.added_files | default: 0 }} files
+- **Deleted**: {{ git.deleted_files | default: 0 }} files
+- **Untracked**: {{ git.untracked_files | default: 0 }} files
+{% else %}
+Working directory is clean.
+{% endif %}
+
+## Session Commands
+
+### Navigation
+```bash
+# Navigate to session root
+cd {{ session.path }}
+
+{% if session.worktrees %}
+{% for worktree in session.worktrees %}
+# Navigate to {{ worktree.name }}
+cd {{ worktree.path }}
+
+{% endfor %}
+{% endif %}
+```
+
+### Session Management
+```bash
+# List all sessions
+sxn list
+
+# Switch to this session
+sxn use {{ session.name }}
+
+# Show current session
+sxn current
+
+# Add a worktree to this session
+sxn worktree add <project> <branch>
+
+# List worktrees in this session
+sxn worktree list
+
+# Remove a worktree from this session
+sxn worktree remove <project>
+```
+
+### Project Management
+```bash
+# List registered projects
+sxn projects list
+
+# Add a new project
+sxn projects add <name> <path>
+
+# Remove a project
+sxn projects remove <name>
+```
+
+## Session Rules
+{% if session.rules_applied %}
+The following rules were applied when creating/updating this session:
+{% for rule in session.rules_applied %}
+- **{{ rule.type | capitalize }}**: {{ rule.description }}
+{% endfor %}
+{% else %}
+No specific rules have been applied to this session.
+{% endif %}
+
+{% if session.tags %}
+## Tags
+{% for tag in session.tags %}
+- {{ tag }}
+{% endfor %}
+{% endif %}
+
+## Notes and Reminders
+
+### Session-Based Development Workflow
+This session follows the session-based development approach:
+1. **Work within sessions** for better organization
+2. **Use git worktrees** for project isolation  
+3. **Apply project rules** for consistent setup
+4. **Track session metadata** for better context
+
+### Best Practices
+- Always work within session directories
+- Use `sxn use <session-name>` to switch context
+- Keep session information up to date
+- Follow project-specific development guidelines
+- Run tests before committing changes
+
+### Troubleshooting
+If you encounter issues with this session:
+1. Check that all worktrees exist and are accessible
+2. Verify git repository status with `git status`
+3. Ensure project dependencies are installed
+4. Check session configuration with `sxn current`
+
+---
+*Session information generated on {{ timestamp.now }}*  
+*Template: Common Session Info v1.0*

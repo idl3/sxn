@@ -1,0 +1,99 @@
+# Session-specific .gitignore for {{ session.name }}
+# This file contains patterns specific to this development session
+
+# Session metadata
+.sxn/
+session-info.md
+*.session.log
+
+# Temporary files created during development
+*.tmp
+*.temp
+.temp/
+temp/
+
+# IDE and editor files
+.vscode/settings.json
+.idea/workspace.xml
+*.swp
+*.swo
+*~
+.DS_Store
+
+# OS-specific files
+Thumbs.db
+.Spotlight-V100
+.Trashes
+
+# Development logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment files (session-specific)
+.env.{{ session.name }}
+.env.local.{{ session.name }}
+
+{% if project.type == "rails" %}
+# Rails session-specific ignores
+/log/*.log
+/tmp/cache/
+/tmp/pids/
+/tmp/sockets/
+/vendor/bundle
+.bundle/
+{% endif %}
+
+{% if project.type == "javascript" or project.type == "typescript" or project.type == "nodejs" %}
+# Node.js session-specific ignores
+node_modules/
+.npm/
+.pnpm-store/
+.yarn/cache/
+.yarn/unplugged/
+.yarn/build-state.yml
+.yarn/install-state.gz
+.next/
+.nuxt/
+dist/
+build/
+{% endif %}
+
+# Database files (session-specific)
+{% if project.type == "rails" %}
+/db/*.sqlite3
+/db/*.sqlite3-*
+{% endif %}
+*.db
+*.sqlite
+*.sqlite3
+
+# Coverage reports
+coverage/
+.nyc_output/
+.coverage/
+
+# Dependency directories
+vendor/
+bower_components/
+
+# Optional npm cache directory
+.npm
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# parcel-bundler cache (https://parceljs.org/)
+.cache
+.parcel-cache
+
+# Session-specific backup files
+*.{{ session.name }}.backup
+backup.{{ session.name }}/
