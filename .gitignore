@@ -60,7 +60,8 @@ Gemfile.lock
 .cache/
 
 # Claude-flow 
-/.claude-flow/
+.claude-flow/
+.swarm/
 
 # Test artifacts and demos
 *.json
@@ -72,13 +73,5 @@ analyze_*.rb
 simple_*.rb
 test_*.rb
 /progress/
-/my-sessions/
 /sxn-sessions/
-/test_projects/
 /coverage/
-
-# Temporary test files
-*_results.json
-*_failures.json
-*_verification.json
-audit_results.json
