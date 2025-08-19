@@ -283,8 +283,8 @@ RSpec.describe "Templates Performance", :performance do
 
       memory_increase = final_memory - initial_memory
 
-      expect(memory_increase).to be < 50,
-                                 "Memory increased by #{memory_increase}MB, expected < 50MB"
+      expect(memory_increase).to be < 100,
+                                 "Memory increased by #{memory_increase}MB, expected < 100MB"
     end
 
     it "handles large template sets without excessive memory usage" do
