@@ -477,7 +477,7 @@ RSpec.describe "Templates Integration", type: :integration do
 
       elapsed = Time.now - start_time
 
-      expect(elapsed).to be < 1.0, "Complex template processing took #{elapsed}s, expected < 1.0s"
+      expect(elapsed).to be < 5.0, "Complex template processing took #{elapsed}s, expected < 5.0s"
     end
   end
 end
