@@ -1,0 +1,33 @@
+# Download sources
+sources:
+  - type: git
+    name: ruby/gem_rbs_collection
+    remote: https://github.com/ruby/gem_rbs_collection.git
+    revision: main
+    repo_dir: gems
+
+# Search path for RBS files
+path: .gem_rbs_collection
+
+# Gem dependencies
+gems:
+  - name: thor
+    ignore: false
+  - name: tty-prompt
+    ignore: false
+  - name: tty-table
+    ignore: false
+  - name: tty-progressbar
+    ignore: false
+  - name: pastel
+    ignore: false
+  - name: liquid
+    ignore: false
+  - name: rspec
+    ignore: true # Only for tests
+  - name: faker
+    ignore: true # Only for tests
+  - name: climate_control
+    ignore: true # Only for tests
+  - name: webmock
+    ignore: true # Only for tests
