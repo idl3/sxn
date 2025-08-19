@@ -12,7 +12,7 @@ Gem::Specification.new do |spec|
   spec.description   = "Sxn simplifies git worktree management with intelligent project rules and secure automation"
   spec.homepage      = "https://github.com/idl3/sxn"
   spec.license       = "MIT"
-  spec.required_ruby_version = ">= 3.0.0"
+  spec.required_ruby_version = ">= 3.2.0"
 
   spec.metadata["allowed_push_host"] = "https://rubygems.org"
   spec.metadata["homepage_uri"] = spec.homepage

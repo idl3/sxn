@@ -314,7 +314,9 @@ module Sxn
         # Only apply when using actual PROJECT_TYPES criteria for nodejs
         # Don't boost Node.js confidence if this looks like a TypeScript project
         if type == :nodejs && file_exists_in_project?("package.json") &&
-           criteria == PROJECT_TYPES[:nodejs] && !(file_exists_in_project?("tsconfig.json") && file_exists_in_project?("*.ts")) && has_nodejs_characteristics?
+           criteria == PROJECT_TYPES[:nodejs] &&
+           !(file_exists_in_project?("tsconfig.json") && file_exists_in_project?("*.ts")) &&
+           has_nodejs_characteristics?
           # Only boost Node.js if it has typical Node.js characteristics
           # Otherwise treat it as plain JavaScript
           confidence += 50
