@@ -226,9 +226,18 @@ RSpec.describe Sxn do
 
   describe "integration with other modules" do
     it "can access core managers" do
+      # Create a temp config for managers that need it
+      temp_dir = Dir.mktmpdir("sxn_test")
+      config_manager = Sxn::Core::ConfigManager.new(temp_dir)
+      
+      # Initialize the config first
+      config_manager.initialize_project(temp_dir)
+      
       expect { Sxn::Core::ConfigManager.new }.not_to raise_error
-      expect { Sxn::Core::SessionManager.new }.not_to raise_error
-      expect { Sxn::Core::ProjectManager.new }.not_to raise_error
+      expect { Sxn::Core::SessionManager.new(config_manager) }.not_to raise_error
+      expect { Sxn::Core::ProjectManager.new(config_manager) }.not_to raise_error
+      
+      FileUtils.rm_rf(temp_dir)
     end
 
     it "can access UI components" do
@@ -237,8 +246,15 @@ RSpec.describe Sxn do
     end
 
     it "can access command classes" do
+      # Create a temp config for commands that need it
+      temp_dir = Dir.mktmpdir("sxn_test")
+      config_manager = Sxn::Core::ConfigManager.new(temp_dir)
+      config_manager.initialize_project(temp_dir)
+      
       expect { Sxn::Commands::Init.new }.not_to raise_error
       expect { Sxn::Commands::Sessions.new }.not_to raise_error
+      
+      FileUtils.rm_rf(temp_dir)
     end
   end
 end

@@ -176,7 +176,7 @@ RSpec.describe "Templates Integration", type: :integration do
 
       # Verify environment information
       expect(content).to include("- **Version**: #{RUBY_VERSION}")
-      expect(content).to include("- **User**: ernestsim")
+      expect(content).to match(/- \*\*User\*\*: \w+/)
 
       # Verify git context
       expect(content).to include("- **Git User**: John Doe <john.doe@example.com>")
@@ -325,7 +325,7 @@ RSpec.describe "Templates Integration", type: :integration do
 
       # Verify environment section
       expect(content).to include("## Environment")
-      expect(content).to include("- **User**: ernestsim")
+      expect(content).to match(/- \*\*User\*\*: \w+/)
       expect(content).to include("- **Ruby**: #{RUBY_VERSION}")
       expect(content).to include("- **Node.js**: 18.0.0")
 

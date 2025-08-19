@@ -633,20 +633,22 @@ RSpec.describe Sxn::Database::SessionDatabase do
         }
 
         result = db.send(:deserialize_session_row, row)
-        expect(result).to eq({
-                               id: "test-id",
-                               name: "test-name",
-                               created_at: "2023-01-01T00:00:00.000000Z",
-                               updated_at: "2023-01-01T00:00:00.000000Z",
-                               status: "active",
-                               linear_task: "ATL-123",
-                               description: "test description",
-                               tags: %w[tag1 tag2],
-                               metadata: { "key" => "value" },
-                               path: "/Users/ernestsim/.sxn/sessions/test-name",
-                               projects: [],
-                               worktrees: {}
-                             })
+        
+        # Check all fields except path which varies by system
+        expect(result[:id]).to eq("test-id")
+        expect(result[:name]).to eq("test-name")
+        expect(result[:created_at]).to eq("2023-01-01T00:00:00.000000Z")
+        expect(result[:updated_at]).to eq("2023-01-01T00:00:00.000000Z")
+        expect(result[:status]).to eq("active")
+        expect(result[:linear_task]).to eq("ATL-123")
+        expect(result[:description]).to eq("test description")
+        expect(result[:tags]).to eq(%w[tag1 tag2])
+        expect(result[:metadata]).to eq({ "key" => "value" })
+        expect(result[:projects]).to eq([])
+        expect(result[:worktrees]).to eq({})
+        
+        # Path should end with the session name
+        expect(result[:path]).to end_with(".sxn/sessions/test-name")
       end
 
       it "handles nil tags and metadata" do

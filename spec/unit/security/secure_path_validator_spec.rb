@@ -306,9 +306,27 @@ RSpec.describe Sxn::Security::SecurePathValidator do
       end
 
       it "rejects symlinks with relative targets outside project" do
-        File.symlink("../../etc/passwd", dangerous_link)
+        # Create a parent temp directory that we control
+        parent_temp = Dir.mktmpdir("sxn_parent_test")
+        
+        # Create our project dir inside parent
+        project_dir = File.join(parent_temp, "project")
+        FileUtils.mkdir_p(project_dir)
+        
+        # Create target file outside project but within parent
+        outside_file = File.join(parent_temp, "outside_file.txt")
+        File.write(outside_file, "outside content")
+        
+        # Create validator for project dir
+        local_validator = described_class.new(project_dir)
+        
+        # Create symlink in project that points outside via relative path
+        local_dangerous_link = File.join(project_dir, "dangerous_link")
+        File.symlink("../outside_file.txt", local_dangerous_link)
 
-        expect { validator.validate_path("dangerous_link") }.to raise_error(Errno::ENOENT)
+        expect { local_validator.validate_path("dangerous_link") }.to raise_error(Sxn::PathValidationError, /outside project boundaries/)
+        
+        FileUtils.rm_rf(parent_temp)
       end
 
       it "handles nested symlink validation" do
@@ -451,13 +469,34 @@ RSpec.describe Sxn::Security::SecurePathValidator do
     end
 
     it "rejects relative symlinks that resolve outside project" do
+      # Create a parent temp directory that we control
+      parent_temp = Dir.mktmpdir("sxn_parent_test")
+      
+      # Create our project dir inside parent
+      project_dir = File.join(parent_temp, "project")
+      FileUtils.mkdir_p(project_dir)
+      
+      # Create target file outside project but within parent
+      outside_file = File.join(parent_temp, "outside_target.txt")
+      File.write(outside_file, "outside content")
+      
+      # Create validator for project dir
+      local_validator = described_class.new(project_dir)
+      
+      # Create symlink subdir in project
+      symlink_dir = File.join(project_dir, "subdir")
+      FileUtils.mkdir_p(symlink_dir)
+      symlink_file = File.join(symlink_dir, "test_link")
+      
       # Create symlink that points outside project via relative path
-      File.symlink("../../../etc/passwd", symlink_path)
+      File.symlink("../../outside_target.txt", symlink_file)
 
-      # This should raise Errno::ENOENT since the target doesn't exist
+      # This should raise PathValidationError for security
       expect do
-        validator.validate_path("subdir/test_link")
-      end.to raise_error(Errno::ENOENT)
+        local_validator.validate_path("subdir/test_link")
+      end.to raise_error(Sxn::PathValidationError, /outside project boundaries/)
+      
+      FileUtils.rm_rf(parent_temp)
     end
   end
 
