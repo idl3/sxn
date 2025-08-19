@@ -248,11 +248,15 @@ RSpec.describe Sxn do
     it "can access command classes" do
       # Create a temp config for commands that need it
       temp_dir = Dir.mktmpdir("sxn_test")
-      config_manager = Sxn::Core::ConfigManager.new(temp_dir)
-      config_manager.initialize_project(temp_dir)
       
-      expect { Sxn::Commands::Init.new }.not_to raise_error
-      expect { Sxn::Commands::Sessions.new }.not_to raise_error
+      # Change to temp dir so Commands::Sessions finds the config
+      Dir.chdir(temp_dir) do
+        config_manager = Sxn::Core::ConfigManager.new
+        config_manager.initialize_project(temp_dir)
+        
+        expect { Sxn::Commands::Init.new }.not_to raise_error
+        expect { Sxn::Commands::Sessions.new }.not_to raise_error
+      end
       
       FileUtils.rm_rf(temp_dir)
     end
