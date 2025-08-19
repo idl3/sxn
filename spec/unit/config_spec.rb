@@ -36,7 +36,7 @@ RSpec.describe Sxn::Config do
     let(:manager) { described_class.new(start_directory: temp_dir) }
 
     after do
-      FileUtils.rm_rf(temp_dir) if Dir.exist?(temp_dir)
+      FileUtils.rm_rf(temp_dir)
     end
 
     describe "#initialize" do
@@ -127,7 +127,7 @@ RSpec.describe Sxn::Config do
       it "clears cached configuration" do
         # Load config first
         manager.config
-        
+
         # Reload should work
         expect { manager.reload }.not_to raise_error
       end
@@ -165,13 +165,13 @@ RSpec.describe Sxn::Config do
         # Create a basic config file
         config_dir = File.join(temp_dir, ".sxn")
         FileUtils.mkdir_p(config_dir)
-        
+
         config_content = {
           "version" => 1,
           "sessions_folder" => "sessions",
           "projects" => {}
         }
-        
+
         File.write(File.join(config_dir, "config.yml"), YAML.dump(config_content))
       end
 
@@ -182,7 +182,7 @@ RSpec.describe Sxn::Config do
       end
 
       it "validates loaded configuration" do
-        config = manager.config
+        manager.config
         validation_result = manager.valid?
         expect(validation_result).to be true
       end
@@ -190,10 +190,10 @@ RSpec.describe Sxn::Config do
       it "caches configuration after loading" do
         # First call should load from file
         config1 = manager.config
-        
+
         # Second call should use cache
         config2 = manager.config
-        
+
         expect(config1).to eq(config2)
       end
     end
@@ -202,16 +202,16 @@ RSpec.describe Sxn::Config do
       it "handles concurrent access" do
         threads = []
         results = []
-        
+
         # Create multiple threads accessing configuration
         5.times do
           threads << Thread.new do
             results << manager.config
           end
         end
-        
+
         threads.each(&:join)
-        
+
         # All results should be consistent
         expect(results.uniq.size).to eq(1)
       end
@@ -228,7 +228,7 @@ RSpec.describe Sxn::Config do
         config_dir = File.join(temp_dir, ".sxn")
         FileUtils.mkdir_p(config_dir)
         File.write(File.join(config_dir, "config.yml"), "invalid: yaml: [")
-        
+
         expect { manager.config }.not_to raise_error
       end
     end
@@ -238,7 +238,7 @@ RSpec.describe Sxn::Config do
     it "provides hierarchical configuration loading" do
       # Test that the manager integrates discovery, caching, and validation
       manager = Sxn::Config::Manager.new
-      
+
       expect(manager.discovery).to be_a(Sxn::Config::ConfigDiscovery)
       expect(manager.cache).to be_a(Sxn::Config::ConfigCache)
       expect(manager.validator).to be_a(Sxn::Config::ConfigValidator)
@@ -247,7 +247,7 @@ RSpec.describe Sxn::Config do
     it "supports environment variable overrides" do
       # The manager should integrate with discovery which handles environment variables
       manager = Sxn::Config::Manager.new
-      
+
       # Test that CLI options can be passed (these include env var overrides)
       expect { manager.config(cli_options: { "env_override" => "test" }) }.not_to raise_error
     end
@@ -255,7 +255,7 @@ RSpec.describe Sxn::Config do
     it "provides thread-safe configuration access" do
       # The manager uses a mutex for thread safety
       manager = Sxn::Config::Manager.new
-      
+
       # Test that the manager can handle configuration access
       expect { manager.config }.not_to raise_error
     end

@@ -1,9 +1,8 @@
 # frozen_string_literal: true
 
-require "set"
 require_relative "base_rule"
 require_relative "copy_files_rule"
-require_relative "setup_commands_rule" 
+require_relative "setup_commands_rule"
 require_relative "template_rule"
 
 module Sxn
@@ -14,7 +13,7 @@ module Sxn
     #
     # @example Basic usage
     #   engine = RulesEngine.new("/path/to/project", "/path/to/session")
-    #   
+    #
     #   rules_config = {
     #     "copy_secrets" => {
     #       "type" => "copy_files",
@@ -26,14 +25,18 @@ module Sxn
     #       "dependencies" => ["copy_secrets"]
     #     }
     #   }
-    #   
+    #
     #   result = engine.apply_rules(rules_config)
     #   puts "Applied #{result.applied_rules.size} rules successfully"
     #
     class RulesEngine
       # Execution result for rule application
       class ExecutionResult
-        attr_reader :applied_rules, :failed_rules, :skipped_rules, :total_duration, :errors
+        attr_reader :applied_rules, :failed_rules, :total_duration, :errors
+        
+        def skipped_rules
+          @skipped_rules.map { |s| s[:rule] }
+        end
 
         def initialize
           @applied_rules = []
@@ -85,7 +88,7 @@ module Sxn
             total_rules: total_rules,
             applied_rules: @applied_rules.map(&:name),
             failed_rules: @failed_rules.map(&:name),
-            skipped_rules: @skipped_rules.map { |s| s[:rule].name },
+            skipped_rules: @skipped_rules.map { |sr| sr[:rule].name },
             total_duration: @total_duration,
             errors: @errors.map { |e| { rule: e[:rule], message: e[:error].message } }
           }
@@ -133,30 +136,33 @@ module Sxn
 
         begin
           # Load and validate all rules
-          rules = load_rules(rules_config)
-          validate_rules(rules)
+          all_rules = load_rules(rules_config)
+          valid_rules = validate_rules(all_rules)
           
+          # Track skipped rules (those that failed validation)
+          skipped_rules = all_rules - valid_rules
+          skipped_rules.each do |rule|
+            result.add_skipped_rule(rule, "Failed validation")
+          end
+
           return result.tap(&:finish!) if options[:validate_only]
 
           # Resolve execution order based on dependencies
-          execution_order = resolve_execution_order(rules)
-          
-          @logger&.info("Executing #{rules.size} rules in #{execution_order.size} phases")
+          execution_order = resolve_execution_order(valid_rules)
+
+          @logger&.info("Executing #{valid_rules.size} rules in #{execution_order.size} phases")
 
           # Execute rules in phases (each phase can run in parallel)
           execution_order.each_with_index do |phase_rules, phase_index|
             execute_phase(phase_rules, phase_index, result, options)
-            
-            # Stop if we have failures and not continuing on failure
-            if !options[:continue_on_failure] && !result.failed_rules.empty?
-              break
-            end
-          end
 
+            # Stop if we have failures and not continuing on failure
+            break if !options[:continue_on_failure] && !result.failed_rules.empty?
+          end
         rescue ValidationError => e
           @logger&.error("Rules validation error: #{e.message}")
           raise
-        rescue => e
+        rescue StandardError => e
           @logger&.error("Rules engine error: #{e.message}")
           result.add_engine_error(e)
         ensure
@@ -173,18 +179,16 @@ module Sxn
         return true if @applied_rules.empty?
 
         @logger&.info("Rolling back #{@applied_rules.size} applied rules")
-        
+
         @applied_rules.reverse_each do |rule|
-          begin
-            if rule.rollbackable?
-              rule.rollback
-              @logger&.debug("Rolled back rule: #{rule.name}")
-            else
-              @logger&.debug("Rule not rollbackable: #{rule.name}")
-            end
-          rescue => e
-            @logger&.error("Failed to rollback rule #{rule.name}: #{e.message}")
+          if rule.rollbackable?
+            rule.rollback
+            @logger&.debug("Rolled back rule: #{rule.name}")
+          else
+            @logger&.debug("Rule not rollbackable: #{rule.name}")
           end
+        rescue StandardError => e
+          @logger&.error("Failed to rollback rule #{rule.name}: #{e.message}")
         end
 
         @applied_rules.clear
@@ -196,9 +200,24 @@ module Sxn
       # @param rules_config [Hash] Rules configuration hash
       # @return [Array<BaseRule>] Validated rules
       def validate_rules_config(rules_config)
-        rules = load_rules(rules_config)
-        validate_rules(rules)
-        rules
+        all_rules = load_rules(rules_config)
+        validate_rules_strict(all_rules)
+        all_rules
+      end
+
+      # Strict validation that raises errors on any validation failure
+      def validate_rules_strict(rules)
+        rules.each do |rule|
+          rule.validate
+        rescue StandardError => e
+          raise ValidationError, "Rule '#{rule.name}' validation failed: #{e.message}"
+        end
+
+        # Validate dependencies exist
+        validate_dependencies(rules)
+
+        # Check for circular dependencies
+        check_circular_dependencies(rules)
       end
 
       # Get available rule types
@@ -222,30 +241,32 @@ module Sxn
 
       # Validate that paths exist and are accessible
       def validate_paths!
-        unless File.directory?(@project_path)
-          raise ArgumentError, "Project path is not a directory: #{@project_path}"
-        end
+        raise ArgumentError, "Project path is not a directory: #{@project_path}" unless File.directory?(@project_path)
 
-        unless File.directory?(@session_path)
-          raise ArgumentError, "Session path is not a directory: #{@session_path}"
-        end
+        raise ArgumentError, "Session path is not a directory: #{@session_path}" unless File.directory?(@session_path)
 
-        unless File.writable?(@session_path)
-          raise ArgumentError, "Session path is not writable: #{@session_path}"
-        end
+        return if File.writable?(@session_path)
+
+        raise ArgumentError, "Session path is not writable: #{@session_path}"
       end
 
       # Load rules from configuration
       def load_rules(rules_config)
-        unless rules_config.is_a?(Hash)
-          raise ArgumentError, "Rules config must be a hash"
-        end
+        raise ArgumentError, "Rules config must be a hash" unless rules_config.is_a?(Hash)
 
         rules = []
-        
+
         rules_config.each do |rule_name, rule_spec|
-          rule = load_single_rule(rule_name, rule_spec)
-          rules << rule
+          begin
+            rule = load_single_rule(rule_name, rule_spec)
+            rules << rule
+          rescue ArgumentError, ValidationError => e
+            # ArgumentError and ValidationError for invalid rule types should bubble up
+            raise e
+          rescue StandardError => e
+            # Other errors during rule creation are logged but don't stop loading
+            @logger&.warn("Failed to load rule '#{rule_name}': #{e.message}")
+          end
         end
 
         rules
@@ -253,34 +274,56 @@ module Sxn
 
       # Load a single rule from specification
       def load_single_rule(rule_name, rule_spec)
-        unless rule_spec.is_a?(Hash)
-          raise ArgumentError, "Rule spec for '#{rule_name}' must be a hash"
-        end
+        raise ArgumentError, "Rule spec for '#{rule_name}' must be a hash" unless rule_spec.is_a?(Hash)
 
         rule_type = rule_spec["type"]
-        unless rule_type && RULE_TYPES.key?(rule_type)
-          available_types = RULE_TYPES.keys.join(", ")
-          raise ArgumentError, "Invalid rule type '#{rule_type}' for rule '#{rule_name}'. Available: #{available_types}"
-        end
-
         config = rule_spec.fetch("config", {})
         dependencies = rule_spec.fetch("dependencies", [])
 
-        rule_class = RULE_TYPES[rule_type]
-        rule_class.new(rule_name, config, @project_path, @session_path, dependencies: dependencies)
+        create_rule(rule_name, rule_type, config, dependencies, @session_path, @project_path)
+      end
+
+      # Create a rule instance
+      def create_rule(rule_name, rule_type, config, dependencies, session_path, project_path)
+        rule_class = get_rule_class(rule_type)
+        if rule_class.nil?
+          available_types = RULE_TYPES.keys.join(", ")
+          raise ValidationError, "Unknown rule type '#{rule_type}' for rule '#{rule_name}'. Available: #{available_types}"
+        end
+
+        rule_class.new(rule_name, config, project_path, session_path, dependencies: dependencies)
+      end
+
+      # Get rule class for a given type
+      def get_rule_class(rule_type)
+        RULE_TYPES[rule_type]
       end
 
       # Validate all rules
       def validate_rules(rules)
+        valid_rules = []
+        
         rules.each do |rule|
           begin
             rule.validate
-          rescue => e
-            raise ValidationError, "Rule '#{rule.name}' validation failed: #{e.message}"
+            valid_rules << rule
+          rescue StandardError => e
+            @logger&.warn("Rule '#{rule.name}' validation failed: #{e.message}")
+            # Skip invalid rules but continue processing
           end
         end
 
-        # Validate dependencies exist
+        # Validate dependencies exist for valid rules only
+        validate_dependencies(valid_rules)
+
+        # Check for circular dependencies for valid rules only
+        check_circular_dependencies(valid_rules)
+        
+        valid_rules
+      end
+
+      # Validate that all dependencies exist
+      def validate_dependencies(rules)
         rule_names = rules.map(&:name)
         rules.each do |rule|
           rule.dependencies.each do |dep|
@@ -289,20 +332,22 @@ module Sxn
             end
           end
         end
+      end
 
-        # Check for circular dependencies
+      # Check for circular dependencies
+      def check_circular_dependencies(rules)
         detect_circular_dependencies(rules)
       end
 
       # Detect circular dependencies using DFS
       def detect_circular_dependencies(rules)
-        rule_map = rules.map { |r| [r.name, r] }.to_h
+        rule_map = rules.to_h { |r| [r.name, r] }
         visited = Set.new
         rec_stack = Set.new
 
         rules.each do |rule|
           next if visited.include?(rule.name)
-          
+
           if has_circular_dependency?(rule, rule_map, visited, rec_stack)
             raise ValidationError, "Circular dependency detected involving rule '#{rule.name}'"
           end
@@ -331,12 +376,12 @@ module Sxn
 
       # Resolve execution order based on dependencies (topological sort)
       def resolve_execution_order(rules)
-        rule_map = rules.map { |r| [r.name, r] }.to_h
+        rules.to_h { |r| [r.name, r] }
         phases = []
         remaining_rules = rules.dup
         completed_rules = Set.new
 
-        while !remaining_rules.empty?
+        until remaining_rules.empty?
           # Find rules that can be executed (all dependencies satisfied)
           executable_rules = remaining_rules.select do |rule|
             rule.can_execute?(completed_rules.to_a)
@@ -345,10 +390,10 @@ module Sxn
           if executable_rules.empty?
             missing_deps = remaining_rules.map do |rule|
               unsatisfied = rule.dependencies.reject { |dep| completed_rules.include?(dep) }
-              "#{rule.name} needs: #{unsatisfied.join(', ')}" if unsatisfied.any?
+              "#{rule.name} needs: #{unsatisfied.join(", ")}" if unsatisfied.any?
             end.compact
 
-            raise ValidationError, "Cannot resolve dependencies. Missing: #{missing_deps.join('; ')}"
+            raise ValidationError, "Cannot resolve dependencies. Missing: #{missing_deps.join("; ")}"
           end
 
           # Add this phase and mark rules as completed
@@ -389,20 +434,16 @@ module Sxn
 
         phase_rules.each do |rule|
           thread = Thread.new do
-            begin
-              execute_single_rule(rule, result, options, mutex)
-            rescue => e
-              mutex.synchronize do
-                result.add_failed_rule(rule, e)
-              end
+            execute_single_rule(rule, result, options, mutex)
+          rescue StandardError => e
+            mutex.synchronize do
+              result.add_failed_rule(rule, e)
             end
           end
           threads << thread
 
           # Limit number of concurrent threads
-          if threads.size >= max_threads
-            threads.shift.join
-          end
+          threads.shift.join if threads.size >= max_threads
         end
 
         # Wait for all remaining threads
@@ -415,7 +456,7 @@ module Sxn
 
         begin
           rule.apply
-          
+
           # Thread-safe result updates
           if mutex
             mutex.synchronize { result.add_applied_rule(rule) }
@@ -425,10 +466,9 @@ module Sxn
 
           @applied_rules << rule
           @logger&.info("Successfully applied rule: #{rule.name}")
-
-        rescue => e
+        rescue StandardError => e
           @logger&.error("Failed to apply rule #{rule.name}: #{e.message}")
-          
+
           if mutex
             mutex.synchronize { result.add_failed_rule(rule, e) }
           else
@@ -438,7 +478,7 @@ module Sxn
           # Attempt rollback if the rule supports it
           begin
             rule.rollback if rule.rollbackable?
-          rescue => rollback_error
+          rescue StandardError => rollback_error
             @logger&.error("Failed to rollback rule #{rule.name}: #{rollback_error.message}")
           end
 

@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
-require 'yaml'
-require 'pathname'
+require "yaml"
+require "pathname"
 
 module Sxn
   module Config
@@ -15,11 +15,11 @@ module Sxn
     # 5. Global user config (~/.sxn/config.yml)
     # 6. System defaults
     class ConfigDiscovery
-      CONFIG_FILE_NAME = 'config.yml'
-      LOCAL_CONFIG_DIR = '.sxn'
-      WORKSPACE_CONFIG_DIR = '.sxn-workspace'
-      GLOBAL_CONFIG_DIR = File.expand_path('~/.sxn')
-      ENV_PREFIX = 'SXN_'
+      CONFIG_FILE_NAME = "config.yml"
+      LOCAL_CONFIG_DIR = ".sxn"
+      WORKSPACE_CONFIG_DIR = ".sxn-workspace"
+      GLOBAL_CONFIG_DIR = File.expand_path("~/.sxn")
+      ENV_PREFIX = "SXN_"
 
       attr_reader :start_directory
 
@@ -39,7 +39,7 @@ module Sxn
       # @return [Array<String>] Paths to configuration files
       def find_config_files
         config_files = []
-        
+
         # Local project config (.sxn/config.yml)
         local_config = find_local_config
         config_files << local_config if local_config
@@ -73,16 +73,17 @@ module Sxn
       # @return [String, nil] Path to local config file
       def find_local_config
         current_dir = start_directory
-        
+
         loop do
           config_path = current_dir.join(LOCAL_CONFIG_DIR, CONFIG_FILE_NAME)
           return config_path.to_s if config_path.exist?
-          
+
           parent = current_dir.parent
           break if parent == current_dir # Reached filesystem root
+
           current_dir = parent
         end
-        
+
         nil
       end
 
@@ -90,16 +91,17 @@ module Sxn
       # @return [String, nil] Path to workspace config file
       def find_workspace_config
         current_dir = start_directory
-        
+
         loop do
           config_path = current_dir.join(WORKSPACE_CONFIG_DIR, CONFIG_FILE_NAME)
           return config_path.to_s if config_path.exist?
-          
+
           parent = current_dir.parent
           break if parent == current_dir # Reached filesystem root
+
           current_dir = parent
         end
-        
+
         nil
       end
 
@@ -114,16 +116,16 @@ module Sxn
       # @return [Hash] Default configuration
       def load_system_defaults
         {
-          'version' => 1,
-          'sessions_folder' => '.sessions',
-          'current_session' => nil,
-          'projects' => {},
-          'settings' => {
-            'auto_cleanup' => true,
-            'max_sessions' => 10,
-            'worktree_cleanup_days' => 30,
-            'default_rules' => {
-              'templates' => []
+          "version" => 1,
+          "sessions_folder" => ".sessions",
+          "current_session" => nil,
+          "projects" => {},
+          "settings" => {
+            "auto_cleanup" => true,
+            "max_sessions" => 10,
+            "worktree_cleanup_days" => 30,
+            "default_rules" => {
+              "templates" => []
             }
           }
         }
@@ -136,7 +138,7 @@ module Sxn
         return {} unless config_path
 
         load_yaml_file(config_path)
-      rescue => e
+      rescue StandardError => e
         warn "Warning: Failed to load global config #{config_path}: #{e.message}"
         {}
       end
@@ -148,7 +150,7 @@ module Sxn
         return {} unless config_path
 
         load_yaml_file(config_path)
-      rescue => e
+      rescue StandardError => e
         warn "Warning: Failed to load workspace config #{config_path}: #{e.message}"
         {}
       end
@@ -160,7 +162,7 @@ module Sxn
         return {} unless config_path
 
         load_yaml_file(config_path)
-      rescue => e
+      rescue StandardError => e
         warn "Warning: Failed to load local config #{config_path}: #{e.message}"
         {}
       end
@@ -169,23 +171,23 @@ module Sxn
       # @return [Hash] Environment configuration
       def load_env_config
         env_config = {}
-        
+
         ENV.each do |key, value|
           next unless key.start_with?(ENV_PREFIX)
-          
+
           # Convert SXN_SESSIONS_FOLDER to sessions_folder
-          config_key = key[ENV_PREFIX.length..-1].downcase
-          
+          config_key = key[ENV_PREFIX.length..].downcase
+
           # Parse boolean values
           parsed_value = case value.downcase
-                        when 'true' then true
-                        when 'false' then false
-                        else value
-                        end
-          
+                         when "true" then true
+                         when "false" then false
+                         else value
+                         end
+
           env_config[config_key] = parsed_value
         end
-        
+
         env_config
       end
 
@@ -197,7 +199,7 @@ module Sxn
         YAML.safe_load(content, permitted_classes: [], permitted_symbols: [], aliases: false) || {}
       rescue Psych::SyntaxError => e
         raise ConfigurationError, "Invalid YAML in #{file_path}: #{e.message}"
-      rescue => e
+      rescue StandardError => e
         raise ConfigurationError, "Failed to load config file #{file_path}: #{e.message}"
       end
 
@@ -207,15 +209,15 @@ module Sxn
       # @return [Hash] Merged configuration
       def merge_configs(configs, cli_options)
         # Start with system defaults and merge up the precedence chain
-        result = configs[:system_defaults].dup
-        
-        # Deep merge each config level
-        deep_merge!(result, configs[:global_config])
-        deep_merge!(result, configs[:workspace_config]) 
-        deep_merge!(result, configs[:local_config])
-        deep_merge!(result, configs[:env_config])
+        result = (configs[:system_defaults] || {}).dup
+
+        # Deep merge each config level, skipping nil values
+        deep_merge!(result, configs[:global_config]) if configs[:global_config]
+        deep_merge!(result, configs[:workspace_config]) if configs[:workspace_config]
+        deep_merge!(result, configs[:local_config]) if configs[:local_config]
+        deep_merge!(result, configs[:env_config]) if configs[:env_config]
         deep_merge!(result, cli_options)
-        
+
         result
       end
 
@@ -224,7 +226,7 @@ module Sxn
       # @param source [Hash] Source hash to merge from
       def deep_merge!(target, source)
         return target unless source.is_a?(Hash)
-        
+
         source.each do |key, value|
           if target[key].is_a?(Hash) && value.is_a?(Hash)
             deep_merge!(target[key], value)
@@ -232,7 +234,7 @@ module Sxn
             target[key] = value
           end
         end
-        
+
         target
       end
     end

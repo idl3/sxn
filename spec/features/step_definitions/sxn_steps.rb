@@ -6,12 +6,12 @@
 Given("I have a Rails project") do
   create_directory("rails_project")
   cd("rails_project")
-  
+
   write_file("Gemfile", <<~GEMFILE)
     source "https://rubygems.org"
     gem "rails", "~> 7.0"
   GEMFILE
-  
+
   create_directory("config")
   write_file("config/application.rb", "# Rails application")
   write_file("config/master.key", "secret_key_here")
@@ -20,7 +20,7 @@ end
 Given("I have a JavaScript project") do
   create_directory("js_project")
   cd("js_project")
-  
+
   write_file("package.json", <<~JSON)
     {
       "name": "test-project",
@@ -30,7 +30,7 @@ Given("I have a JavaScript project") do
       }
     }
   JSON
-  
+
   write_file(".env", "NODE_ENV=development")
 end
 

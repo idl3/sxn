@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require 'benchmark'
+require "benchmark"
 
 # Performance matcher for RSpec
 RSpec::Matchers.define :perform_under do |expected_time|
@@ -39,14 +39,14 @@ RSpec::Matchers.define :perform_under do |expected_time|
     end
   end
 
-  failure_message do |block|
+  failure_message do |_block|
     expected_str = case time_unit
                    when :ms
                      "#{@expected_ms}ms"
                    else
                      "#{expected_time}s"
                    end
-    
+
     "expected block to perform under #{expected_str}, but took #{format_time(@actual_time)}"
   end
 
@@ -57,7 +57,7 @@ RSpec::Matchers.define :perform_under do |expected_time|
                    else
                      "#{expected_time}s"
                    end
-    
+
     "perform under #{expected_str}"
   end
 end

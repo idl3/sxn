@@ -16,8 +16,8 @@ RSpec.describe Sxn::Core do
   describe "autoloaded constants" do
     it "defines all expected autoloads" do
       # These constants should be available for autoloading or already loaded
-      expected_constants = [:ConfigManager, :SessionManager, :ProjectManager, :WorktreeManager, :RulesManager]
-      
+      expected_constants = %i[ConfigManager SessionManager ProjectManager WorktreeManager RulesManager]
+
       expected_constants.each do |const|
         expect(Sxn::Core.const_defined?(const)).to be true
       end
@@ -54,10 +54,6 @@ RSpec.describe Sxn::Core do
   describe "manager class availability" do
     before do
       # Force autoload to trigger
-      Sxn::Core::ConfigManager
-      Sxn::Core::SessionManager
-      Sxn::Core::ProjectManager
-      Sxn::Core::WorktreeManager
       Sxn::Core::RulesManager
     end
 
@@ -78,8 +74,8 @@ RSpec.describe Sxn::Core do
 
     it "all manager classes are properly namespaced" do
       constants = Sxn::Core.constants
-      expected_constants = [:ConfigManager, :SessionManager, :ProjectManager, :WorktreeManager, :RulesManager]
-      
+      expected_constants = %i[ConfigManager SessionManager ProjectManager WorktreeManager RulesManager]
+
       expected_constants.each do |const|
         expect(constants).to include(const)
       end

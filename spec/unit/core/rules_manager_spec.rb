@@ -57,7 +57,7 @@ RSpec.describe Sxn::Core::RulesManager do
       expect(Sxn::Core::ConfigManager).to receive(:new).and_call_original
       expect(Sxn::Core::ProjectManager).to receive(:new).and_call_original
       allow_any_instance_of(Sxn::Core::ConfigManager).to receive(:get_config).and_return(mock_config)
-      
+
       described_class.new
     end
 
@@ -70,19 +70,19 @@ RSpec.describe Sxn::Core::RulesManager do
   describe "#add_rule" do
     it "adds a valid copy_files rule" do
       rule_config = { "source" => "config/master.key", "strategy" => "copy" }
-      
+
       result = rules_manager.add_rule("test-project", "copy_files", rule_config)
-      
+
       expect(result[:project]).to eq("test-project")
       expect(result[:type]).to eq("copy_files")
       expect(result[:config]).to eq(rule_config)
     end
 
     it "adds a valid setup_commands rule" do
-      rule_config = { "command" => ["bundle", "install"] }
-      
+      rule_config = { "command" => %w[bundle install] }
+
       result = rules_manager.add_rule("test-project", "setup_commands", rule_config)
-      
+
       expect(result[:project]).to eq("test-project")
       expect(result[:type]).to eq("setup_commands")
       expect(result[:config]).to eq(rule_config)
@@ -90,9 +90,9 @@ RSpec.describe Sxn::Core::RulesManager do
 
     it "adds a valid template rule" do
       rule_config = { "source" => "template.erb", "destination" => "output.txt" }
-      
+
       result = rules_manager.add_rule("test-project", "template", rule_config)
-      
+
       expect(result[:project]).to eq("test-project")
       expect(result[:type]).to eq("template")
       expect(result[:config]).to eq(rule_config)
@@ -100,48 +100,48 @@ RSpec.describe Sxn::Core::RulesManager do
 
     it "raises error for non-existent project" do
       allow(mock_project_manager).to receive(:get_project).and_return(nil)
-      
-      expect {
+
+      expect do
         rules_manager.add_rule("non-existent", "copy_files", {})
-      }.to raise_error(Sxn::ProjectNotFoundError, "Project 'non-existent' not found")
+      end.to raise_error(Sxn::ProjectNotFoundError, "Project 'non-existent' not found")
     end
 
     it "raises error for invalid rule type" do
-      expect {
+      expect do
         rules_manager.add_rule("test-project", "invalid_type", {})
-      }.to raise_error(Sxn::InvalidRuleTypeError, /Invalid rule type: invalid_type/)
+      end.to raise_error(Sxn::InvalidRuleTypeError, /Invalid rule type: invalid_type/)
     end
 
     it "raises error for invalid copy_files config" do
       invalid_config = { "strategy" => "copy" } # missing source
-      
-      expect {
+
+      expect do
         rules_manager.add_rule("test-project", "copy_files", invalid_config)
-      }.to raise_error(Sxn::InvalidRuleConfigError, /must have 'source' field/)
+      end.to raise_error(Sxn::InvalidRuleConfigError, /must have 'source' field/)
     end
 
     it "raises error for invalid setup_commands config" do
       invalid_config = { "command" => "bundle install" } # should be array
-      
-      expect {
+
+      expect do
         rules_manager.add_rule("test-project", "setup_commands", invalid_config)
-      }.to raise_error(Sxn::InvalidRuleConfigError, /command must be an array/)
+      end.to raise_error(Sxn::InvalidRuleConfigError, /command must be an array/)
     end
 
     it "raises error for invalid template config" do
       invalid_config = { "source" => "template.erb" } # missing destination
-      
-      expect {
+
+      expect do
         rules_manager.add_rule("test-project", "template", invalid_config)
-      }.to raise_error(Sxn::InvalidRuleConfigError, /must have 'source' and 'destination' fields/)
+      end.to raise_error(Sxn::InvalidRuleConfigError, /must have 'source' and 'destination' fields/)
     end
 
     it "initializes project rules structure if not exists" do
       projects_config["test-project"] = {}
-      
+
       rule_config = { "source" => "test.txt", "strategy" => "copy" }
       rules_manager.add_rule("test-project", "copy_files", rule_config)
-      
+
       expect(projects_config["test-project"]["rules"]).to be_a(Hash)
       expect(projects_config["test-project"]["rules"]["copy_files"]).to be_an(Array)
     end
@@ -165,36 +165,36 @@ RSpec.describe Sxn::Core::RulesManager do
 
     it "removes specific rule by index" do
       removed_rule = rules_manager.remove_rule("test-project", "copy_files", 0)
-      
+
       expect(removed_rule).to eq({ "source" => "file1.txt", "strategy" => "copy" })
       expect(existing_rules.length).to eq(1)
     end
 
     it "removes all rules when no index specified" do
       removed_rules = rules_manager.remove_rule("test-project", "copy_files")
-      
+
       expect(removed_rules).to be_empty
       expect(existing_rules).to be_empty
     end
 
     it "raises error for non-existent project" do
       allow(mock_project_manager).to receive(:get_project).and_return(nil)
-      
-      expect {
+
+      expect do
         rules_manager.remove_rule("non-existent", "copy_files")
-      }.to raise_error(Sxn::ProjectNotFoundError, "Project 'non-existent' not found")
+      end.to raise_error(Sxn::ProjectNotFoundError, "Project 'non-existent' not found")
     end
 
     it "raises error when no rules exist for rule type" do
-      expect {
+      expect do
         rules_manager.remove_rule("test-project", "setup_commands")
-      }.to raise_error(Sxn::RuleNotFoundError, /No setup_commands rules found/)
+      end.to raise_error(Sxn::RuleNotFoundError, /No setup_commands rules found/)
     end
 
     it "raises error for invalid rule index" do
-      expect {
+      expect do
         rules_manager.remove_rule("test-project", "copy_files", 99)
-      }.to raise_error(Sxn::RuleNotFoundError, "Rule index 99 not found")
+      end.to raise_error(Sxn::RuleNotFoundError, "Rule index 99 not found")
     end
   end
 
@@ -203,7 +203,7 @@ RSpec.describe Sxn::Core::RulesManager do
       let(:project_rules) do
         {
           "copy_files" => [{ "source" => "test.txt", "strategy" => "copy" }],
-          "setup_commands" => [{ "command" => ["npm", "install"] }]
+          "setup_commands" => [{ "command" => %w[npm install] }]
         }
       end
 
@@ -213,7 +213,7 @@ RSpec.describe Sxn::Core::RulesManager do
 
       it "lists rules for specific project" do
         rules = rules_manager.list_rules("test-project")
-        
+
         expect(rules.size).to eq(2)
         expect(rules[0][:project]).to eq("test-project")
         expect(rules[0][:type]).to eq("copy_files")
@@ -222,10 +222,10 @@ RSpec.describe Sxn::Core::RulesManager do
 
       it "raises error for non-existent project" do
         allow(mock_project_manager).to receive(:get_project).and_return(nil)
-        
-        expect {
+
+        expect do
           rules_manager.list_rules("non-existent")
-        }.to raise_error(Sxn::ProjectNotFoundError, "Project 'non-existent' not found")
+        end.to raise_error(Sxn::ProjectNotFoundError, "Project 'non-existent' not found")
       end
     end
 
@@ -240,16 +240,18 @@ RSpec.describe Sxn::Core::RulesManager do
       before do
         allow(mock_project_manager).to receive(:list_projects).and_return(projects)
         allow(mock_project_manager).to receive(:get_project_rules).with("project1").and_return({
-          "copy_files" => [{ "source" => "file1.txt" }]
-        })
+                                                                                                 "copy_files" => [{ "source" => "file1.txt" }]
+                                                                                               })
         allow(mock_project_manager).to receive(:get_project_rules).with("project2").and_return({
-          "setup_commands" => [{ "command" => ["npm", "install"] }]
-        })
+                                                                                                 "setup_commands" => [{ "command" => %w[
+                                                                                                   npm install
+                                                                                                 ] }]
+                                                                                               })
       end
 
       it "lists rules for all projects" do
         rules = rules_manager.list_rules
-        
+
         expect(rules.size).to eq(2)
         expect(rules.map { |r| r[:project] }).to contain_exactly("project1", "project2")
       end
@@ -278,9 +280,9 @@ RSpec.describe Sxn::Core::RulesManager do
     it "applies rules successfully" do
       project_rules = { "copy_files" => [{ "source" => "test.txt" }] }
       allow(mock_project_manager).to receive(:get_project_rules).and_return(project_rules)
-      
-      results = rules_manager.apply_rules("test-project")
-      
+
+      rules_manager.apply_rules("test-project")
+
       expect(mock_rules_engine).to have_received(:apply_rules).with(
         project_rules
       )
@@ -288,40 +290,40 @@ RSpec.describe Sxn::Core::RulesManager do
 
     it "uses specified session" do
       rules_manager.apply_rules("test-project", "custom-session")
-      
+
       expect(mock_session_manager).to have_received(:get_session).with("custom-session")
     end
 
     it "raises error for non-existent project" do
       allow(mock_project_manager).to receive(:get_project).and_return(nil)
-      
-      expect {
+
+      expect do
         rules_manager.apply_rules("non-existent")
-      }.to raise_error(Sxn::ProjectNotFoundError, "Project 'non-existent' not found")
+      end.to raise_error(Sxn::ProjectNotFoundError, "Project 'non-existent' not found")
     end
 
     it "raises error when no active session" do
       allow(mock_config_manager).to receive(:current_session).and_return(nil)
-      
-      expect {
+
+      expect do
         rules_manager.apply_rules("test-project")
-      }.to raise_error(Sxn::NoActiveSessionError, "No active session specified")
+      end.to raise_error(Sxn::NoActiveSessionError, "No active session specified")
     end
 
     it "raises error when session not found" do
       allow(mock_session_manager).to receive(:get_session).and_return(nil)
-      
-      expect {
+
+      expect do
         rules_manager.apply_rules("test-project")
-      }.to raise_error(Sxn::SessionNotFoundError, "Session 'test-session' not found")
+      end.to raise_error(Sxn::SessionNotFoundError, "Session 'test-session' not found")
     end
 
     it "raises error when worktree not found" do
       allow(mock_worktree_manager).to receive(:get_worktree).and_return(nil)
-      
-      expect {
+
+      expect do
         rules_manager.apply_rules("test-project")
-      }.to raise_error(Sxn::WorktreeNotFoundError, /No worktree found/)
+      end.to raise_error(Sxn::WorktreeNotFoundError, /No worktree found/)
     end
   end
 
@@ -333,7 +335,7 @@ RSpec.describe Sxn::Core::RulesManager do
           { "strategy" => "copy" } # invalid - missing source
         ],
         "setup_commands" => [
-          { "command" => ["npm", "install"] } # valid
+          { "command" => %w[npm install] } # valid
         ]
       }
     end
@@ -344,20 +346,20 @@ RSpec.describe Sxn::Core::RulesManager do
 
     it "validates all rules and returns results" do
       results = rules_manager.validate_rules("test-project")
-      
+
       expect(results.size).to eq(3)
-      
+
       # First copy_files rule - valid
       expect(results[0][:valid]).to be(true)
       expect(results[0][:type]).to eq("copy_files")
       expect(results[0][:index]).to eq(0)
-      
+
       # Second copy_files rule - invalid
       expect(results[1][:valid]).to be(false)
       expect(results[1][:type]).to eq("copy_files")
       expect(results[1][:index]).to eq(1)
       expect(results[1][:errors]).not_to be_empty
-      
+
       # Setup command rule - valid
       expect(results[2][:valid]).to be(true)
       expect(results[2][:type]).to eq("setup_commands")
@@ -365,17 +367,17 @@ RSpec.describe Sxn::Core::RulesManager do
 
     it "raises error for non-existent project" do
       allow(mock_project_manager).to receive(:get_project).and_return(nil)
-      
-      expect {
+
+      expect do
         rules_manager.validate_rules("non-existent")
-      }.to raise_error(Sxn::ProjectNotFoundError, "Project 'non-existent' not found")
+      end.to raise_error(Sxn::ProjectNotFoundError, "Project 'non-existent' not found")
     end
   end
 
   describe "#generate_rule_template" do
     it "generates copy_files template for Rails" do
       template = rules_manager.generate_rule_template("copy_files", "rails")
-      
+
       expect(template).to be_an(Array)
       expect(template).to include({ "source" => "config/master.key", "strategy" => "copy" })
       expect(template).to include({ "source" => ".env", "strategy" => "copy" })
@@ -383,29 +385,29 @@ RSpec.describe Sxn::Core::RulesManager do
 
     it "generates setup_commands template for JavaScript" do
       template = rules_manager.generate_rule_template("setup_commands", "javascript")
-      
+
       expect(template).to be_an(Array)
-      expect(template).to include({ "command" => ["npm", "install"] })
+      expect(template).to include({ "command" => %w[npm install] })
     end
 
     it "generates template rule template" do
       template = rules_manager.generate_rule_template("template")
-      
+
       expect(template).to be_an(Array)
       expect(template.first).to have_key("source")
       expect(template.first).to have_key("destination")
     end
 
     it "raises error for unknown rule type" do
-      expect {
+      expect do
         rules_manager.generate_rule_template("unknown_type")
-      }.to raise_error(Sxn::InvalidRuleTypeError, "Unknown rule type: unknown_type")
+      end.to raise_error(Sxn::InvalidRuleTypeError, "Unknown rule type: unknown_type")
     end
 
     it "generates generic templates for unknown project types" do
       copy_template = rules_manager.generate_rule_template("copy_files", "unknown")
       setup_template = rules_manager.generate_rule_template("setup_commands", "unknown")
-      
+
       expect(copy_template).to include({ "source" => "path/to/file", "strategy" => "copy" })
       expect(setup_template).to include({ "command" => ["echo", "Replace with your setup command"] })
     end
@@ -414,17 +416,17 @@ RSpec.describe Sxn::Core::RulesManager do
   describe "#get_available_rule_types" do
     it "returns list of available rule types with descriptions" do
       types = rules_manager.get_available_rule_types
-      
+
       expect(types).to be_an(Array)
       expect(types.size).to eq(3)
-      
+
       copy_files_type = types.find { |t| t[:name] == "copy_files" }
       expect(copy_files_type[:description]).to include("Copy files")
       expect(copy_files_type[:example]).to be_a(Hash)
-      
+
       setup_commands_type = types.find { |t| t[:name] == "setup_commands" }
       expect(setup_commands_type[:description]).to include("Run setup commands")
-      
+
       template_type = types.find { |t| t[:name] == "template" }
       expect(template_type[:description]).to include("Process template files")
     end
@@ -434,16 +436,16 @@ RSpec.describe Sxn::Core::RulesManager do
     describe "#validate_rule_type!" do
       it "accepts valid rule types" do
         %w[copy_files setup_commands template].each do |type|
-          expect {
+          expect do
             rules_manager.send(:validate_rule_type!, type)
-          }.not_to raise_error
+          end.not_to raise_error
         end
       end
 
       it "rejects invalid rule types" do
-        expect {
+        expect do
           rules_manager.send(:validate_rule_type!, "invalid_type")
-        }.to raise_error(Sxn::InvalidRuleTypeError, /Invalid rule type: invalid_type/)
+        end.to raise_error(Sxn::InvalidRuleTypeError, /Invalid rule type: invalid_type/)
       end
     end
 
@@ -454,68 +456,68 @@ RSpec.describe Sxn::Core::RulesManager do
           { "source" => "file.txt", "strategy" => "copy" },
           { "source" => "file.txt", "strategy" => "symlink" }
         ]
-        
+
         valid_configs.each do |config|
-          expect {
+          expect do
             rules_manager.send(:validate_copy_files_config!, config)
-          }.not_to raise_error
+          end.not_to raise_error
         end
       end
 
       it "rejects config without source" do
-        expect {
+        expect do
           rules_manager.send(:validate_copy_files_config!, { "strategy" => "copy" })
-        }.to raise_error(Sxn::InvalidRuleConfigError, /must have 'source' field/)
+        end.to raise_error(Sxn::InvalidRuleConfigError, /must have 'source' field/)
       end
 
       it "rejects invalid strategy" do
-        expect {
+        expect do
           rules_manager.send(:validate_copy_files_config!, { "source" => "file.txt", "strategy" => "invalid" })
-        }.to raise_error(Sxn::InvalidRuleConfigError, /strategy must be 'copy' or 'symlink'/)
+        end.to raise_error(Sxn::InvalidRuleConfigError, /strategy must be 'copy' or 'symlink'/)
       end
     end
 
     describe "#validate_setup_commands_config!" do
       it "accepts valid config" do
-        valid_config = { "command" => ["npm", "install"] }
-        
-        expect {
+        valid_config = { "command" => %w[npm install] }
+
+        expect do
           rules_manager.send(:validate_setup_commands_config!, valid_config)
-        }.not_to raise_error
+        end.not_to raise_error
       end
 
       it "rejects config without command" do
-        expect {
+        expect do
           rules_manager.send(:validate_setup_commands_config!, { "working_dir" => "/tmp" })
-        }.to raise_error(Sxn::InvalidRuleConfigError, /must have 'command' field/)
+        end.to raise_error(Sxn::InvalidRuleConfigError, /must have 'command' field/)
       end
 
       it "rejects non-array command" do
-        expect {
+        expect do
           rules_manager.send(:validate_setup_commands_config!, { "command" => "npm install" })
-        }.to raise_error(Sxn::InvalidRuleConfigError, /command must be an array/)
+        end.to raise_error(Sxn::InvalidRuleConfigError, /command must be an array/)
       end
     end
 
     describe "#validate_template_config!" do
       it "accepts valid config" do
         valid_config = { "source" => "template.erb", "destination" => "output.txt" }
-        
-        expect {
+
+        expect do
           rules_manager.send(:validate_template_config!, valid_config)
-        }.not_to raise_error
+        end.not_to raise_error
       end
 
       it "rejects config without source" do
-        expect {
+        expect do
           rules_manager.send(:validate_template_config!, { "destination" => "output.txt" })
-        }.to raise_error(Sxn::InvalidRuleConfigError, /must have 'source' and 'destination' fields/)
+        end.to raise_error(Sxn::InvalidRuleConfigError, /must have 'source' and 'destination' fields/)
       end
 
       it "rejects config without destination" do
-        expect {
+        expect do
           rules_manager.send(:validate_template_config!, { "source" => "template.erb" })
-        }.to raise_error(Sxn::InvalidRuleConfigError, /must have 'source' and 'destination' fields/)
+        end.to raise_error(Sxn::InvalidRuleConfigError, /must have 'source' and 'destination' fields/)
       end
     end
   end
@@ -528,29 +530,29 @@ RSpec.describe Sxn::Core::RulesManager do
           { "source" => "file2.txt", "strategy" => "symlink" }
         ],
         "setup_commands" => [
-          { "command" => ["npm", "install"] }
+          { "command" => %w[npm install] }
         ]
       }
     end
 
     it "formats rules with proper structure" do
       formatted = rules_manager.send(:format_rules_for_display, "test-project", rules)
-      
+
       expect(formatted.size).to eq(3)
-      
+
       expect(formatted[0]).to include(
         project: "test-project",
         type: "copy_files",
         index: 0,
         enabled: true
       )
-      
+
       expect(formatted[1]).to include(
         project: "test-project",
         type: "copy_files",
         index: 1
       )
-      
+
       expect(formatted[2]).to include(
         project: "test-project",
         type: "setup_commands",

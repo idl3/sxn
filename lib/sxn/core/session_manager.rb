@@ -2,6 +2,7 @@
 
 require "securerandom"
 require "time"
+require "shellwords"
 
 module Sxn
   module Core
@@ -15,17 +16,15 @@ module Sxn
       def create_session(name, description: nil, linear_task: nil)
         validate_session_name!(name)
         ensure_sessions_folder_exists!
-        
-        if session_exists?(name)
-          raise Sxn::SessionExistsError, "Session '#{name}' already exists"
-        end
+
+        raise Sxn::SessionAlreadyExistsError, "Session '#{name}' already exists" if session_exists?(name)
 
         session_id = SecureRandom.uuid
         session_path = File.join(@config_manager.sessions_folder_path, name)
-        
+
         # Create session directory
         FileUtils.mkdir_p(session_path)
-        
+
         # Create session record
         session_data = {
           id: session_id,
@@ -39,9 +38,11 @@ module Sxn
           projects: [],
           worktrees: {}
         }
-        
+
         @database.create_session(session_data)
         session_data
+      rescue Sxn::Database::DuplicateSessionError => e
+        raise Sxn::SessionAlreadyExistsError, e.message
       end
 
       def remove_session(name, force: false)
@@ -52,38 +53,43 @@ module Sxn
           # Check for uncommitted changes in worktrees
           uncommitted_worktrees = find_uncommitted_worktrees(session)
           unless uncommitted_worktrees.empty?
-            raise Sxn::SessionHasChangesError, 
+            raise Sxn::SessionHasChangesError,
                   "Session has uncommitted changes in: #{uncommitted_worktrees.join(", ")}"
           end
         end
 
         # Remove worktrees first
         remove_session_worktrees(session)
-        
+
         # Remove session directory
-        FileUtils.rm_rf(session[:path]) if File.exist?(session[:path])
-        
+        FileUtils.rm_rf(session[:path])
+
         # Remove from database
         @database.delete_session(session[:id])
-        
+
         # Clear current session if it was this one
-        if @config_manager.current_session == name
-          @config_manager.update_current_session(nil)
-        end
-        
+        @config_manager.update_current_session(nil) if @config_manager.current_session == name
+
         true
       end
 
-      def list_sessions(status: nil, limit: 100)
-        filters = {}
-        filters[:status] = status if status
-        sessions = @database.list_sessions(filters: filters, limit: limit)
+      def list_sessions(status: nil, limit: 100, filters: nil, **options)
+        # Support both the filters parameter and individual status parameter
+        filter_hash = filters || {}
+        filter_hash[:status] = status if status
+
+        # Merge any other options
+        filter_hash.merge!(options) if options.any?
+
+        sessions = @database.list_sessions(filters: filter_hash, limit: limit)
         sessions.map { |s| format_session_data(s) }
       end
 
       def get_session(name)
         session = @database.get_session_by_name(name)
         session ? format_session_data(session) : nil
+      rescue Sxn::Database::SessionNotFoundError
+        nil
       end
 
       def use_session(name)
@@ -91,17 +97,17 @@ module Sxn
         raise Sxn::SessionNotFoundError, "Session '#{name}' not found" unless session
 
         @config_manager.update_current_session(name)
-        
+
         # Update session status to active
         update_session_status(session[:id], "active")
-        
+
         session
       end
 
       def current_session
         current_name = @config_manager.current_session
         return nil unless current_name
-        
+
         get_session(current_name)
       end
 
@@ -126,10 +132,9 @@ module Sxn
         projects << project_name unless projects.include?(project_name)
 
         @database.update_session(session[:id], {
-          worktrees: worktrees,
-          projects: projects.uniq,
-          updated_at: Time.now.iso8601
-        })
+                                   worktrees: worktrees,
+                                   projects: projects.uniq
+                                 })
       end
 
       def remove_worktree_from_session(session_name, project_name)
@@ -144,10 +149,9 @@ module Sxn
         projects.delete(project_name)
 
         @database.update_session(session[:id], {
-          worktrees: worktrees,
-          projects: projects,
-          updated_at: Time.now.iso8601
-        })
+                                   worktrees: worktrees,
+                                   projects: projects
+                                 })
       end
 
       def get_session_worktrees(session_name)
@@ -160,10 +164,31 @@ module Sxn
 
       def archive_session(name)
         update_session_status_by_name(name, "archived")
+        true
       end
 
       def activate_session(name)
         update_session_status_by_name(name, "active")
+        true
+      end
+
+      def cleanup_old_sessions(days_old = 30)
+        cutoff_date = Time.now.utc - (days_old * 24 * 60 * 60)
+        old_sessions = @database.list_sessions.select do |session|
+          begin
+            session_time = Time.parse(session[:updated_at]).utc
+            session_time < cutoff_date
+          rescue ArgumentError
+            # If we can't parse the time, err on the side of caution and don't delete
+            false
+          end
+        end
+
+        old_sessions.each do |session|
+          remove_session(session[:name], force: true)
+        end
+
+        old_sessions.length
       end
 
       private
@@ -172,30 +197,28 @@ module Sxn
         unless @config_manager.initialized?
           raise Sxn::ConfigurationError, "Project not initialized. Run 'sxn init' first."
         end
-        
+
         db_path = File.join(File.dirname(@config_manager.config_path), "sessions.db")
         Sxn::Database::SessionDatabase.new(db_path)
       end
 
       def validate_session_name!(name)
-        unless name.match?(/\A[a-zA-Z0-9_-]+\z/)
-          raise Sxn::InvalidSessionNameError, 
-                "Session name must contain only letters, numbers, hyphens, and underscores"
-        end
+        return if name.match?(/\A[a-zA-Z0-9_-]+\z/)
+
+        raise Sxn::InvalidSessionNameError,
+              "Session name must contain only letters, numbers, hyphens, and underscores"
       end
 
       def ensure_sessions_folder_exists!
         sessions_folder = @config_manager.sessions_folder_path
-        unless sessions_folder
-          raise Sxn::ConfigurationError, "Sessions folder not configured"
-        end
+        raise Sxn::ConfigurationError, "Sessions folder not configured" unless sessions_folder
 
-        FileUtils.mkdir_p(sessions_folder) unless File.exist?(sessions_folder)
+        FileUtils.mkdir_p(sessions_folder)
       end
 
       def format_session_data(db_row)
         metadata = db_row[:metadata] || {}
-        
+
         {
           id: db_row[:id],
           name: db_row[:name],
@@ -203,25 +226,41 @@ module Sxn
           created_at: db_row[:created_at],
           updated_at: db_row[:updated_at],
           status: db_row[:status],
-          description: metadata["description"],
-          linear_task: metadata["linear_task"],
-          projects: metadata["projects"] || [],
-          worktrees: metadata["worktrees"] || {}
+          description: metadata["description"] || db_row[:description],
+          linear_task: metadata["linear_task"] || db_row[:linear_task],
+          # Support both metadata and database columns for backward compatibility
+          projects: db_row[:projects] || metadata["projects"] || [],
+          worktrees: db_row[:worktrees] || metadata["worktrees"] || {}
         }
       end
 
-      def update_session_status(session_id, status)
-        @database.update_session(session_id, { 
-          status: status, 
-          updated_at: Time.now.iso8601 
-        })
+      def update_session_status(session_id, status, **additional_options)
+        updates = { status: status }
+        
+        # Put additional options into metadata if provided
+        if additional_options.any?
+          current_session = @database.get_session(session_id)
+          current_metadata = current_session[:metadata] || {}
+          updates[:metadata] = current_metadata.merge(additional_options)
+        end
+        
+        @database.update_session(session_id, updates)
       end
 
-      def update_session_status_by_name(name, status)
+      def update_session_status_by_name(name, status, **additional_options)
         session = get_session(name)
         raise Sxn::SessionNotFoundError, "Session '#{name}' not found" unless session
+
+        updates = { status: status }
         
-        update_session_status(session[:id], status)
+        # Put additional options into metadata if provided
+        if additional_options.any?
+          current_session = @database.get_session(session[:id])
+          current_metadata = current_session[:metadata] || {}
+          updates[:metadata] = current_metadata.merge(additional_options)
+        end
+        
+        @database.update_session(session[:id], updates)
       end
 
       def find_uncommitted_worktrees(session)
@@ -230,7 +269,11 @@ module Sxn
 
         worktrees.each do |project, worktree_info|
           path = worktree_info[:path] || worktree_info["path"]
-          next unless File.directory?(path)
+          
+          # If directory doesn't exist, skip it (not uncommitted, just missing)
+          unless File.directory?(path)
+            next
+          end
 
           begin
             Dir.chdir(path) do
@@ -239,11 +282,12 @@ module Sxn
               # Check for unstaged changes
               unstaged = !system("git diff-files --quiet", out: File::NULL, err: File::NULL)
               # Check for untracked files
-              untracked = !system("git ls-files --others --exclude-standard --quiet", out: File::NULL, err: File::NULL)
+              untracked_output = `git ls-files --others --exclude-standard 2>/dev/null`
+              untracked = !untracked_output.empty?
 
               uncommitted << project if staged || unstaged || untracked
             end
-          rescue => e
+          rescue StandardError
             # If we can't check git status, assume it has changes to be safe
             uncommitted << project
           end
@@ -254,7 +298,7 @@ module Sxn
 
       def remove_session_worktrees(session)
         worktrees = session[:worktrees] || {}
-        
+
         worktrees.each do |project, worktree_info|
           path = worktree_info[:path] || worktree_info["path"]
           next unless File.directory?(path)
@@ -264,17 +308,20 @@ module Sxn
             parent_repo = find_parent_repository(path)
             if parent_repo
               Dir.chdir(parent_repo) do
-                system("git worktree remove #{Shellwords.escape(path)}", 
-                       out: File::NULL, err: File::NULL)
+                success = system("git worktree remove #{Shellwords.escape(path)}",
+                                 out: File::NULL, err: File::NULL)
+                unless success
+                  $stderr.puts "Warning: Could not cleanly remove git worktree for #{project}: git command failed"
+                end
               end
             end
-          rescue => e
+          rescue StandardError => e
             # Log error but continue with removal
-            warn "Warning: Could not cleanly remove git worktree for #{project}: #{e.message}"
+            $stderr.puts "Warning: Could not cleanly remove git worktree for #{project}: #{e.message}"
           end
 
           # Remove directory if it still exists
-          FileUtils.rm_rf(path) if File.exist?(path)
+          FileUtils.rm_rf(path)
         end
       end
 
@@ -287,11 +334,9 @@ module Sxn
         if content.start_with?("gitdir:")
           git_dir = content.sub(/^gitdir:\s*/, "")
           # Extract parent repo from worktrees path
-          if git_dir.include?("/worktrees/")
-            git_dir.split("/worktrees/").first
-          end
+          git_dir.split("/worktrees/").first if git_dir.include?("/worktrees/")
         end
-      rescue
+      rescue StandardError
         nil
       end
     end

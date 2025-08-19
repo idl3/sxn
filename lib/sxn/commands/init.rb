@@ -13,7 +13,7 @@ module Sxn
       option :auto_detect, type: :boolean, default: true, desc: "Automatically detect and register projects"
       option :quiet, type: :boolean, aliases: "-q", desc: "Suppress interactive prompts"
 
-      def initialize(*)
+      def initialize(args = ARGV, local_options = {}, config = {})
         super
         @ui = Sxn::UI::Output.new
         @prompt = Sxn::UI::Prompt.new
@@ -42,16 +42,13 @@ module Sxn
           @ui.success("Initialized sxn in #{result_folder}")
 
           # Auto-detect projects if enabled
-          if options[:auto_detect] && !options[:quiet]
-            auto_detect_projects
-          end
+          auto_detect_projects if options[:auto_detect] && !options[:quiet]
 
           display_next_steps
-
         rescue Sxn::Error => e
           @ui.error("Initialization failed: #{e.message}")
           exit(e.exit_code)
-        rescue => e
+        rescue StandardError => e
           @ui.error("Unexpected error: #{e.message}")
           @ui.debug(e.backtrace.join("\n")) if ENV["SXN_DEBUG"]
           exit(1)
@@ -65,7 +62,7 @@ module Sxn
 
         if options[:quiet]
           # Use default folder in quiet mode
-          return folder || File.basename(Dir.pwd) + "-sessions"
+          return folder || "#{File.basename(Dir.pwd)}-sessions"
         end
 
         # Interactive mode
@@ -76,7 +73,7 @@ module Sxn
         @ui.subsection("Project Detection")
 
         detected = @config_manager.detect_projects
-        
+
         if detected.empty?
           @ui.empty_state("No projects detected in current directory")
           return
@@ -92,21 +89,19 @@ module Sxn
 
       def register_detected_projects(projects)
         project_manager = Sxn::Core::ProjectManager.new(@config_manager)
-        
+
         Sxn::UI::ProgressBar.with_progress("Registering projects", projects) do |project, progress|
-          begin
-            result = project_manager.add_project(
-              project[:name],
-              project[:path],
-              type: project[:type]
-            )
-            
-            progress.log("✅ #{project[:name]} (#{project[:type]})")
-            result
-          rescue => e
-            progress.log("❌ #{project[:name]}: #{e.message}")
-            nil
-          end
+          result = project_manager.add_project(
+            project[:name],
+            project[:path],
+            type: project[:type]
+          )
+
+          progress.log("✅ #{project[:name]} (#{project[:type]})")
+          result
+        rescue StandardError => e
+          progress.log("❌ #{project[:name]}: #{e.message}")
+          nil
         end
 
         @ui.success("Project registration completed")
@@ -115,17 +110,17 @@ module Sxn
       def display_next_steps
         @ui.newline
         @ui.subsection("Next Steps")
-        
+
         @ui.command_example(
           "sxn projects list",
           "View registered projects"
         )
-        
+
         @ui.command_example(
           "sxn add my-session",
           "Create your first session"
         )
-        
+
         @ui.command_example(
           "sxn worktree add <project> [branch]",
           "Add a worktree to your session"

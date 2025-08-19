@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "English"
 require "spec_helper"
 require "tempfile"
 require "tmpdir"
@@ -13,7 +14,7 @@ RSpec.describe Sxn::Security::SecureFileCopier do
   let(:copier) { described_class.new(project_root, logger: logger) }
 
   after do
-    FileUtils.rm_rf(temp_dir) if Dir.exist?(temp_dir)
+    FileUtils.rm_rf(temp_dir)
   end
 
   describe "#initialize" do
@@ -49,7 +50,7 @@ RSpec.describe Sxn::Security::SecureFileCopier do
     context "with basic file copying" do
       it "copies file successfully" do
         result = copier.copy_file("source.txt", dest_path)
-        
+
         expect(result).to be_a(described_class::CopyResult)
         expect(result.operation).to eq(:copy)
         expect(File.exist?(dest_file)).to be true
@@ -57,31 +58,31 @@ RSpec.describe Sxn::Security::SecureFileCopier do
       end
 
       it "sets default permissions for non-sensitive files" do
-        result = copier.copy_file("source.txt", dest_path)
-        
+        copier.copy_file("source.txt", dest_path)
+
         file_mode = File.stat(dest_file).mode & 0o777
         expect(file_mode).to eq(0o644) # DEFAULT_PERMISSIONS[:config]
       end
 
       it "creates destination directory when needed" do
         nested_dest = "subdir/nested/file.txt"
-        result = copier.copy_file("source.txt", nested_dest)
-        
+        copier.copy_file("source.txt", nested_dest)
+
         expect(File.exist?(File.join(temp_dir, nested_dest))).to be true
         expect(File.read(File.join(temp_dir, nested_dest))).to eq(source_content)
       end
 
       it "respects explicit permissions" do
-        result = copier.copy_file("source.txt", dest_path, permissions: 0o600)
-        
+        copier.copy_file("source.txt", dest_path, permissions: 0o600)
+
         file_mode = File.stat(dest_file).mode & 0o777
         expect(file_mode).to eq(0o600)
       end
 
       it "preserves source permissions when requested" do
         File.chmod(0o755, source_file)
-        result = copier.copy_file("source.txt", dest_path, preserve_permissions: true)
-        
+        copier.copy_file("source.txt", dest_path, preserve_permissions: true)
+
         file_mode = File.stat(dest_file).mode & 0o777
         expect(file_mode).to eq(0o755)
       end
@@ -119,25 +120,25 @@ RSpec.describe Sxn::Security::SecureFileCopier do
       end
 
       it "sets secure permissions for sensitive files" do
-        result = copier.copy_file("config/master.key", "copied_master.key")
-        
+        copier.copy_file("config/master.key", "copied_master.key")
+
         file_mode = File.stat(File.join(temp_dir, "copied_master.key")).mode & 0o777
         expect(file_mode).to eq(0o600) # DEFAULT_PERMISSIONS[:sensitive]
       end
 
       it "warns about world-readable sensitive files" do
         File.chmod(0o644, File.join(temp_dir, ".env"))
-        
+
         # Capture log output
         log_output = StringIO.new
         test_logger = Logger.new(log_output)
         test_copier = described_class.new(temp_dir, logger: test_logger)
-        
+
         # Set up Sxn.logger to capture the warning
         allow(Sxn).to receive(:logger).and_return(test_logger)
-        
-        result = test_copier.copy_file(".env", "copied.env")
-        
+
+        test_copier.copy_file(".env", "copied.env")
+
         expect(log_output.string).to include("world-readable sensitive file")
       end
     end
@@ -145,7 +146,7 @@ RSpec.describe Sxn::Security::SecureFileCopier do
     context "with encryption" do
       it "encrypts file content when requested" do
         result = copier.copy_file("source.txt", dest_path, encrypt: true)
-        
+
         expect(result.encrypted).to be true
         encrypted_content = File.read(dest_file)
         expect(encrypted_content).not_to eq(source_content)
@@ -154,7 +155,7 @@ RSpec.describe Sxn::Security::SecureFileCopier do
 
       it "generates checksum for encrypted files" do
         result = copier.copy_file("source.txt", dest_path, encrypt: true)
-        
+
         expect(result.checksum).to be_a(String)
         expect(result.checksum.length).to eq(64) # SHA-256 hex digest
       end
@@ -166,19 +167,19 @@ RSpec.describe Sxn::Security::SecureFileCopier do
         path_validator = instance_double(Sxn::Security::SecurePathValidator)
         allow(Sxn::Security::SecurePathValidator).to receive(:new).and_return(path_validator)
         allow(path_validator).to receive(:validate_file_operation).and_raise(Errno::ENOENT, "No such file or directory")
-        
+
         test_copier = described_class.new(temp_dir)
-        expect {
+        expect do
           test_copier.copy_file("nonexistent.txt", dest_path)
-        }.to raise_error(Errno::ENOENT)
+        end.to raise_error(Errno::ENOENT)
       end
 
       it "validates source file is readable" do
         File.chmod(0o000, source_file)
-        
-        expect {
+
+        expect do
           copier.copy_file("source.txt", dest_path)
-        }.to raise_error(Sxn::SecurityError, /not readable/)
+        end.to raise_error(Sxn::SecurityError, /not readable/)
       ensure
         File.chmod(0o644, source_file) # Restore for cleanup
       end
@@ -186,28 +187,30 @@ RSpec.describe Sxn::Security::SecureFileCopier do
       it "prevents copying extremely large files" do
         # Create a mock file that reports huge size
         allow(File).to receive(:size).with(source_file).and_return(200 * 1024 * 1024) # 200MB
-        
+
         # Mock path validator to avoid path validation errors
         path_validator = instance_double(Sxn::Security::SecurePathValidator)
         allow(Sxn::Security::SecurePathValidator).to receive(:new).and_return(path_validator)
-        allow(path_validator).to receive(:validate_file_operation).and_return([source_file, File.join(temp_dir, dest_path)])
-        
+        allow(path_validator).to receive(:validate_file_operation).and_return([source_file,
+                                                                               File.join(temp_dir, dest_path)])
+
         test_copier = described_class.new(temp_dir)
-        expect {
+        expect do
           test_copier.copy_file("source.txt", dest_path)
-        }.to raise_error(Sxn::SecurityError, /too large/)
+        end.to raise_error(Sxn::SecurityError, /too large/)
       end
 
       it "validates paths are within project boundaries" do
         # Mock path validator to throw the expected error
         path_validator = instance_double(Sxn::Security::SecurePathValidator)
         allow(Sxn::Security::SecurePathValidator).to receive(:new).and_return(path_validator)
-        allow(path_validator).to receive(:validate_file_operation).and_raise(Sxn::PathValidationError, "outside project boundaries")
-        
+        allow(path_validator).to receive(:validate_file_operation).and_raise(Sxn::PathValidationError,
+                                                                             "outside project boundaries")
+
         test_copier = described_class.new(temp_dir)
-        expect {
+        expect do
           test_copier.copy_file("source.txt", "../outside.txt")
-        }.to raise_error(Sxn::PathValidationError, /outside project boundaries/)
+        end.to raise_error(Sxn::PathValidationError, /outside project boundaries/)
       end
 
       it "prevents overwriting files owned by different users" do
@@ -220,11 +223,11 @@ RSpec.describe Sxn::Security::SecureFileCopier do
       it "uses atomic file operations" do
         # Mock FileUtils.cp to fail after temp file creation
         allow(FileUtils).to receive(:cp).and_raise(StandardError.new("Copy failed"))
-        
-        expect {
+
+        expect do
           copier.copy_file("source.txt", dest_path)
-        }.to raise_error(Sxn::SecurityError, /Copy failed/)
-        
+        end.to raise_error(Sxn::SecurityError, /Copy failed/)
+
         # Temporary file should be cleaned up
         expect(File.exist?("#{dest_file}.tmp")).to be false
         expect(File.exist?(dest_file)).to be false
@@ -247,10 +250,10 @@ RSpec.describe Sxn::Security::SecureFileCopier do
         path_validator = instance_double(Sxn::Security::SecurePathValidator)
         allow(Sxn::Security::SecurePathValidator).to receive(:new).and_return(path_validator)
         allow(path_validator).to receive(:validate_file_operation).and_return([source_file, link_file])
-        
+
         test_copier = described_class.new(temp_dir)
         result = test_copier.create_symlink("source.txt", link_path)
-        
+
         expect(result).to be_a(described_class::CopyResult)
         expect(result.operation).to eq(:symlink)
         expect(File.symlink?(link_file)).to be true
@@ -260,19 +263,19 @@ RSpec.describe Sxn::Security::SecureFileCopier do
       it "overwrites existing symlink when force is true" do
         # Create initial symlink
         File.symlink(source_file, link_file)
-        
+
         # Create another source file
         other_source = File.join(temp_dir, "other.txt")
         File.write(other_source, "other content")
-        
+
         # Mock path validator for symlink operations
         path_validator = instance_double(Sxn::Security::SecurePathValidator)
         allow(Sxn::Security::SecurePathValidator).to receive(:new).and_return(path_validator)
         allow(path_validator).to receive(:validate_file_operation).and_return([other_source, link_file])
-        
+
         test_copier = described_class.new(temp_dir)
-        result = test_copier.create_symlink("other.txt", link_path, force: true)
-        
+        test_copier.create_symlink("other.txt", link_path, force: true)
+
         expect(File.readlink(link_file)).to eq(File.join(temp_dir, "other.txt"))
       end
     end
@@ -282,12 +285,13 @@ RSpec.describe Sxn::Security::SecureFileCopier do
         # Mock path validator to throw the expected error
         path_validator = instance_double(Sxn::Security::SecurePathValidator)
         allow(Sxn::Security::SecurePathValidator).to receive(:new).and_return(path_validator)
-        allow(path_validator).to receive(:validate_file_operation).and_raise(Sxn::PathValidationError, "outside project boundaries")
-        
+        allow(path_validator).to receive(:validate_file_operation).and_raise(Sxn::PathValidationError,
+                                                                             "outside project boundaries")
+
         test_copier = described_class.new(temp_dir)
-        expect {
+        expect do
           test_copier.create_symlink("source.txt", "../outside_link")
-        }.to raise_error(Sxn::PathValidationError, /outside project boundaries/)
+        end.to raise_error(Sxn::PathValidationError, /outside project boundaries/)
       end
 
       it "validates source file exists" do
@@ -295,11 +299,11 @@ RSpec.describe Sxn::Security::SecureFileCopier do
         path_validator = instance_double(Sxn::Security::SecurePathValidator)
         allow(Sxn::Security::SecurePathValidator).to receive(:new).and_return(path_validator)
         allow(path_validator).to receive(:validate_file_operation).and_raise(Errno::ENOENT, "No such file or directory")
-        
+
         test_copier = described_class.new(temp_dir)
-        expect {
+        expect do
           test_copier.create_symlink("nonexistent.txt", link_path)
-        }.to raise_error(Errno::ENOENT)
+        end.to raise_error(Errno::ENOENT)
       end
     end
   end
@@ -315,10 +319,10 @@ RSpec.describe Sxn::Security::SecureFileCopier do
     context "with file encryption" do
       it "encrypts file in place" do
         key = copier.encrypt_file("test.txt")
-        
+
         expect(key).to be_a(String)
         expect(Base64.strict_decode64(key).length).to eq(32) # 256-bit key
-        
+
         encrypted_content = File.read(test_file)
         expect(encrypted_content).not_to eq(test_content)
         expect(encrypted_content.split(":").length).to eq(3) # IV:auth_tag:ciphertext
@@ -326,7 +330,7 @@ RSpec.describe Sxn::Security::SecureFileCopier do
 
       it "sets secure permissions after encryption" do
         copier.encrypt_file("test.txt")
-        
+
         file_mode = File.stat(test_file).mode & 0o777
         expect(file_mode).to eq(0o600)
       end
@@ -334,7 +338,7 @@ RSpec.describe Sxn::Security::SecureFileCopier do
       it "can decrypt encrypted file" do
         key = copier.encrypt_file("test.txt")
         result = copier.decrypt_file("test.txt", key)
-        
+
         expect(result).to be true
         decrypted_content = File.read(test_file)
         expect(decrypted_content).to eq(test_content)
@@ -343,16 +347,16 @@ RSpec.describe Sxn::Security::SecureFileCopier do
       it "fails to decrypt with wrong key" do
         copier.encrypt_file("test.txt")
         wrong_key = Base64.strict_encode64(OpenSSL::Random.random_bytes(32))
-        
-        expect {
+
+        expect do
           copier.decrypt_file("test.txt", wrong_key)
-        }.to raise_error(Sxn::SecurityError, /Decryption failed/)
+        end.to raise_error(Sxn::SecurityError, /Decryption failed/)
       end
 
       it "uses provided encryption key" do
         custom_key = Base64.strict_encode64(OpenSSL::Random.random_bytes(32))
         returned_key = copier.encrypt_file("test.txt", key: Base64.strict_decode64(custom_key))
-        
+
         expect(returned_key).to eq(custom_key)
       end
     end
@@ -363,23 +367,24 @@ RSpec.describe Sxn::Security::SecureFileCopier do
         path_validator = instance_double(Sxn::Security::SecurePathValidator)
         allow(Sxn::Security::SecurePathValidator).to receive(:new).and_return(path_validator)
         allow(path_validator).to receive(:validate_path).and_raise(Errno::ENOENT, "No such file or directory")
-        
+
         test_copier = described_class.new(temp_dir)
-        expect {
+        expect do
           test_copier.encrypt_file("nonexistent.txt")
-        }.to raise_error(Errno::ENOENT)
+        end.to raise_error(Errno::ENOENT)
       end
 
       it "validates file path is within project" do
         # Mock path validator to throw the expected error
         path_validator = instance_double(Sxn::Security::SecurePathValidator)
         allow(Sxn::Security::SecurePathValidator).to receive(:new).and_return(path_validator)
-        allow(path_validator).to receive(:validate_path).and_raise(Sxn::PathValidationError, "outside project boundaries")
-        
+        allow(path_validator).to receive(:validate_path).and_raise(Sxn::PathValidationError,
+                                                                   "outside project boundaries")
+
         test_copier = described_class.new(temp_dir)
-        expect {
+        expect do
           test_copier.encrypt_file("../outside.txt")
-        }.to raise_error(Sxn::SecurityError, /outside project boundaries/)
+        end.to raise_error(Sxn::SecurityError, /outside project boundaries/)
       end
     end
   end
@@ -505,38 +510,38 @@ RSpec.describe Sxn::Security::SecureFileCopier do
     end
 
     it "handles very long file paths" do
-      long_name = "a" * 200 + ".txt"
-      result = copier.copy_file("source.txt", long_name)
-      
+      long_name = "#{"a" * 200}.txt"
+      copier.copy_file("source.txt", long_name)
+
       expect(File.exist?(File.join(temp_dir, long_name))).to be true
     end
 
     it "handles files with special characters in names" do
-      special_name = "file with spaces & special chars!@#$.txt"
-      result = copier.copy_file("source.txt", special_name)
-      
+      special_name = "file with spaces & special chars!@#{$INPUT_LINE_NUMBER}txt"
+      copier.copy_file("source.txt", special_name)
+
       expect(File.exist?(File.join(temp_dir, special_name))).to be true
     end
 
     it "prevents overwriting critical system files" do
       # This should be prevented by path validation
-      expect {
+      expect do
         copier.copy_file("source.txt", "/etc/passwd")
-      }.to raise_error(Sxn::PathValidationError, /outside project boundaries/)
+      end.to raise_error(Sxn::PathValidationError, /outside project boundaries/)
     end
 
     it "handles concurrent access gracefully" do
       # Test atomic operations under concurrent access
       threads = []
-      
+
       5.times do |i|
         threads << Thread.new do
           copier.copy_file("source.txt", "concurrent_#{i}.txt")
         end
       end
-      
+
       threads.each(&:join)
-      
+
       5.times do |i|
         expect(File.exist?(File.join(temp_dir, "concurrent_#{i}.txt"))).to be true
       end
@@ -555,7 +560,7 @@ RSpec.describe Sxn::Security::SecureFileCopier do
 
     it "logs file copy operations" do
       copier.copy_file("source.txt", "dest.txt")
-      
+
       log_content = log_output.string
       expect(log_content).to include("FILE_COPY")
       expect(log_content).to include("source.txt")
@@ -563,14 +568,14 @@ RSpec.describe Sxn::Security::SecureFileCopier do
 
     it "logs symlink creation" do
       copier.create_symlink("source.txt", "link.txt")
-      
+
       log_content = log_output.string
       expect(log_content).to include("SYMLINK_CREATE")
     end
 
     it "logs encryption operations" do
       copier.encrypt_file("source.txt")
-      
+
       log_content = log_output.string
       expect(log_content).to include("FILE_ENCRYPT")
     end
@@ -578,14 +583,14 @@ RSpec.describe Sxn::Security::SecureFileCopier do
     it "logs decryption operations" do
       key = copier.encrypt_file("source.txt")
       copier.decrypt_file("source.txt", key)
-      
+
       log_content = log_output.string
       expect(log_content).to include("FILE_DECRYPT")
     end
 
     it "includes timestamp and process ID in logs" do
       copier.copy_file("source.txt", "dest.txt")
-      
+
       log_content = log_output.string
       expect(log_content).to match(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/) # ISO timestamp
       expect(log_content).to include(Process.pid.to_s)

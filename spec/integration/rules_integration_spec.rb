@@ -22,7 +22,7 @@ RSpec.describe "Rules System Integration" do
       # Mock SecureFileCopier to bypass path validation for all tests in this context
       mock_copier = instance_double("Sxn::Security::SecureFileCopier")
       allow(Sxn::Security::SecureFileCopier).to receive(:new).and_return(mock_copier)
-      
+
       mock_copy_result = instance_double("Sxn::Security::SecureFileCopier::CopyResult")
       allow(mock_copy_result).to receive(:source_path).and_return("config/master.key")
       allow(mock_copy_result).to receive(:destination_path).and_return("config/master.key")
@@ -31,40 +31,40 @@ RSpec.describe "Rules System Integration" do
       allow(mock_copy_result).to receive(:checksum).and_return("abc123")
       allow(mock_copy_result).to receive(:duration).and_return(0.1)
       allow(mock_copy_result).to receive(:to_h).and_return({
-        source_path: "config/master.key",
-        destination_path: "config/master.key",
-        operation: "copy",
-        encrypted: false,
-        checksum: "abc123",
-        duration: 0.1
-      })
+                                                             source_path: "config/master.key",
+                                                             destination_path: "config/master.key",
+                                                             operation: "copy",
+                                                             encrypted: false,
+                                                             checksum: "abc123",
+                                                             duration: 0.1
+                                                           })
       allow(mock_copier).to receive(:copy_file) do |source, destination, **options|
         # Create the actual files for tests that check file existence
         src_path = File.join(project_path, source)
         dst_path = File.join(session_path, destination)
-        
+
         if File.exist?(src_path)
           FileUtils.mkdir_p(File.dirname(dst_path))
           FileUtils.cp(src_path, dst_path)
           File.chmod(options[:permissions] || 0o644, dst_path) if options[:permissions]
         end
-        
+
         mock_copy_result
       end
-      
-      allow(mock_copier).to receive(:create_symlink) do |source, destination, **options|
+
+      allow(mock_copier).to receive(:create_symlink) do |source, destination, **_options|
         # Create actual symlinks for tests that check symlink existence
         src_path = File.join(project_path, source)
         dst_path = File.join(session_path, destination)
-        
+
         if File.exist?(src_path)
           FileUtils.mkdir_p(File.dirname(dst_path))
           File.symlink(src_path, dst_path)
         end
-        
+
         mock_copy_result
       end
-      
+
       allow(mock_copier).to receive(:sensitive_file?).and_return(false)
     end
 
@@ -97,7 +97,7 @@ RSpec.describe "Rules System Integration" do
           "config" => {
             "commands" => [
               {
-                "command" => ["bundle", "install"],
+                "command" => %w[bundle install],
                 "description" => "Install Ruby dependencies",
                 "timeout" => 120
               }
@@ -126,7 +126,7 @@ RSpec.describe "Rules System Integration" do
         mock_executor = instance_double("Sxn::Security::SecureCommandExecutor")
         allow(Sxn::Security::SecureCommandExecutor).to receive(:new).and_return(mock_executor)
         allow(mock_executor).to receive(:command_allowed?).and_return(true)
-        
+
         mock_result = instance_double("Sxn::Security::SecureCommandExecutor::CommandResult")
         allow(mock_result).to receive(:success?).and_return(true)
         allow(mock_result).to receive(:failure?).and_return(false)
@@ -140,7 +140,7 @@ RSpec.describe "Rules System Integration" do
         mock_processor = instance_double("Sxn::Templates::TemplateProcessor")
         allow(Sxn::Templates::TemplateProcessor).to receive(:new).and_return(mock_processor)
         allow(mock_processor).to receive(:validate_syntax).and_return(true)
-        allow(mock_processor).to receive(:process) do |template_content, variables|
+        allow(mock_processor).to receive(:process) do |_template_content, _variables|
           # Return processed template content
           "# Session Information\n\nCreated: 2025-01-16\nProject: Rails Application"
         end
@@ -149,65 +149,65 @@ RSpec.describe "Rules System Integration" do
         mock_variables = instance_double("Sxn::Templates::TemplateVariables")
         allow(Sxn::Templates::TemplateVariables).to receive(:new).and_return(mock_variables)
         allow(mock_variables).to receive(:collect).and_return({
-          session: { 
-            name: "test-session",
-            path: session_path,
-            created_at: "2025-01-16 10:00:00 UTC",
-            updated_at: "2025-01-16 10:00:00 UTC",
-            status: "active"
-          },
-          project: { 
-            name: "test-project",
-            type: "rails",
-            path: project_path
-          },
-          git: {
-            branch: "main",
-            author_name: "Test User",
-            author_email: "test@example.com"
-          },
-          environment: {
-            ruby: { version: "3.3.0" },
-            os: { name: "darwin", arch: "x86_64" }
-          },
-          user: {
-            username: "testuser",
-            git_name: "Test User"
-          },
-          timestamp: {
-            now: "2025-01-16 10:00:00 UTC"
-          }
-        })
+                                                                session: {
+                                                                  name: "test-session",
+                                                                  path: session_path,
+                                                                  created_at: "2025-01-16 10:00:00 UTC",
+                                                                  updated_at: "2025-01-16 10:00:00 UTC",
+                                                                  status: "active"
+                                                                },
+                                                                project: {
+                                                                  name: "test-project",
+                                                                  type: "rails",
+                                                                  path: project_path
+                                                                },
+                                                                git: {
+                                                                  branch: "main",
+                                                                  author_name: "Test User",
+                                                                  author_email: "test@example.com"
+                                                                },
+                                                                environment: {
+                                                                  ruby: { version: "3.3.0" },
+                                                                  os: { name: "darwin", arch: "x86_64" }
+                                                                },
+                                                                user: {
+                                                                  username: "testuser",
+                                                                  git_name: "Test User"
+                                                                },
+                                                                timestamp: {
+                                                                  now: "2025-01-16 10:00:00 UTC"
+                                                                }
+                                                              })
         allow(mock_variables).to receive(:build_variables).and_return({
-          session: { 
-            name: "test-session",
-            path: session_path,
-            created_at: "2025-01-16 10:00:00 UTC",
-            updated_at: "2025-01-16 10:00:00 UTC",
-            status: "active"
-          },
-          project: { 
-            name: "test-project",
-            type: "rails",
-            path: project_path
-          },
-          git: {
-            branch: "main",
-            author_name: "Test User",
-            author_email: "test@example.com"
-          },
-          environment: {
-            ruby: { version: "3.3.0" },
-            os: { name: "darwin", arch: "x86_64" }
-          },
-          user: {
-            username: "testuser",
-            git_name: "Test User"
-          },
-          timestamp: {
-            now: "2025-01-16 10:00:00 UTC"
-          }
-        })
+                                                                        session: {
+                                                                          name: "test-session",
+                                                                          path: session_path,
+                                                                          created_at: "2025-01-16 10:00:00 UTC",
+                                                                          updated_at: "2025-01-16 10:00:00 UTC",
+                                                                          status: "active"
+                                                                        },
+                                                                        project: {
+                                                                          name: "test-project",
+                                                                          type: "rails",
+                                                                          path: project_path
+                                                                        },
+                                                                        git: {
+                                                                          branch: "main",
+                                                                          author_name: "Test User",
+                                                                          author_email: "test@example.com"
+                                                                        },
+                                                                        environment: {
+                                                                          ruby: { version: "3.3.0" },
+                                                                          os: { name: "darwin", arch: "x86_64" }
+                                                                        },
+                                                                        user: {
+                                                                          username: "testuser",
+                                                                          git_name: "Test User"
+                                                                        },
+                                                                        timestamp: {
+                                                                          now: "2025-01-16 10:00:00 UTC"
+                                                                        }
+                                                                      })
       end
 
       it "applies all rules in correct dependency order" do
@@ -236,7 +236,7 @@ RSpec.describe "Rules System Integration" do
 
         # Check generated documentation
         expect(File.exist?(File.join(session_path, "SESSION_INFO.md"))).to be true
-        
+
         session_info_content = File.read(File.join(session_path, "SESSION_INFO.md"))
         expect(session_info_content).to include("Session Information")
       end
@@ -268,7 +268,7 @@ RSpec.describe "Rules System Integration" do
         mock_executor = instance_double("Sxn::Security::SecureCommandExecutor")
         allow(Sxn::Security::SecureCommandExecutor).to receive(:new).and_return(mock_executor)
         allow(mock_executor).to receive(:command_allowed?).and_return(true)
-        
+
         mock_result = instance_double("Sxn::Security::SecureCommandExecutor::CommandResult")
         allow(mock_result).to receive(:success?).and_return(false)
         allow(mock_result).to receive(:failure?).and_return(true)
@@ -285,7 +285,7 @@ RSpec.describe "Rules System Integration" do
         expect(result.success?).to be false
         expect(result.failed_rules).not_to be_empty
         expect(result.errors).not_to be_empty
-        
+
         # First rule should succeed, second should fail
         expect(result.applied_rules.size).to eq(1) # Only copy_sensitive_files
         expect(result.failed_rules.size).to eq(1) # install_dependencies fails
@@ -296,17 +296,17 @@ RSpec.describe "Rules System Integration" do
         simple_copy_config = {
           "copy_sensitive_files" => comprehensive_rules_config["copy_sensitive_files"]
         }
-        
+
         result = rules_engine.apply_rules(simple_copy_config)
         expect(result.success?).to be true
-        
+
         # Verify files were created
         expect(File.exist?(File.join(session_path, "config/master.key"))).to be true
         expect(File.symlink?(File.join(session_path, ".env"))).to be true
-        
+
         # Rollback
         expect(rules_engine.rollback_rules).to be true
-        
+
         # Verify files were removed
         expect(File.exist?(File.join(session_path, "config/master.key"))).to be false
         expect(File.exist?(File.join(session_path, ".env"))).to be false
@@ -345,10 +345,10 @@ RSpec.describe "Rules System Integration" do
 
       it "executes independent rules in parallel" do
         result = rules_engine.apply_rules(parallel_rules_config, parallel: true, max_parallelism: 2)
-        
+
         expect(result.success?).to be true
         expect(result.applied_rules.size).to eq(3)
-        
+
         # All files should be copied
         expect(File.exist?(File.join(session_path, "config/master.key"))).to be true
         expect(File.exist?(File.join(session_path, ".env"))).to be true
@@ -359,16 +359,15 @@ RSpec.describe "Rules System Integration" do
     context "with continue_on_failure option" do
       before do
         # Override the parent context's successful command executor with one that fails first
-        call_count = 0
         mock_executor = instance_double("Sxn::Security::SecureCommandExecutor")
-        
+
         # Clear any existing mocks and set new ones
         allow(Sxn::Security::SecureCommandExecutor).to receive(:new).and_return(mock_executor)
         allow(mock_executor).to receive(:command_allowed?).and_return(true)
-        
+
         allow(mock_executor).to receive(:execute) do |command, description:, **|
           mock_result = instance_double("Sxn::Security::SecureCommandExecutor::CommandResult")
-          
+
           # Make bundle install fail, others succeed
           if command.include?("bundle") && command.include?("install")
             # Bundle install command fails
@@ -385,7 +384,7 @@ RSpec.describe "Rules System Integration" do
             allow(mock_result).to receive(:stderr).and_return("")
             allow(mock_result).to receive(:stdout).and_return("Output")
           end
-          
+
           allow(mock_result).to receive(:duration).and_return(1.0)
           mock_result
         end
@@ -394,7 +393,7 @@ RSpec.describe "Rules System Integration" do
         mock_processor = instance_double("Sxn::Templates::TemplateProcessor")
         allow(Sxn::Templates::TemplateProcessor).to receive(:new).and_return(mock_processor)
         allow(mock_processor).to receive(:validate_syntax).and_return(true)
-        allow(mock_processor).to receive(:process) do |template_content, variables|
+        allow(mock_processor).to receive(:process) do |_template_content, _variables|
           "Documentation"
         end
         allow(mock_processor).to receive(:extract_variables).and_return([])
@@ -415,7 +414,7 @@ RSpec.describe "Rules System Integration" do
         )
 
         result = rules_engine.apply_rules(config_with_continue, continue_on_failure: true)
-        
+
         # Should succeed overall with continue_on_failure enabled
         expect(result.success?).to be true
         expect(result.applied_rules.size).to eq(3) # All rules should be applied
@@ -445,7 +444,7 @@ RSpec.describe "Rules System Integration" do
 
       setup_commands = suggested_rules["setup_commands"]["config"]["commands"]
       commands = setup_commands.map { |c| c["command"] }
-      expect(commands).to include(["bundle", "install"])
+      expect(commands).to include(%w[bundle install])
     end
 
     it "validates suggested rules configuration" do
@@ -453,13 +452,13 @@ RSpec.describe "Rules System Integration" do
       mock_executor = instance_double("Sxn::Security::SecureCommandExecutor")
       allow(Sxn::Security::SecureCommandExecutor).to receive(:new).and_return(mock_executor)
       allow(mock_executor).to receive(:command_allowed?).and_return(true)
-      
+
       suggested_rules = detector.suggest_default_rules
-      
+
       # Should be able to validate the suggested configuration
-      expect {
+      expect do
         rules_engine.validate_rules_config(suggested_rules)
-      }.not_to raise_error
+      end.not_to raise_error
     end
   end
 
@@ -479,9 +478,9 @@ RSpec.describe "Rules System Integration" do
       end
 
       it "provides clear validation errors" do
-        expect {
+        expect do
           rules_engine.validate_rules_config(invalid_config)
-        }.to raise_error(Sxn::Rules::ValidationError, /Required source file does not exist/)
+        end.to raise_error(Sxn::Rules::ValidationError, /Required source file does not exist/)
       end
     end
 
@@ -502,9 +501,9 @@ RSpec.describe "Rules System Integration" do
       end
 
       it "detects and reports circular dependencies" do
-        expect {
+        expect do
           rules_engine.validate_rules_config(circular_config)
-        }.to raise_error(Sxn::Rules::ValidationError, /Circular dependency detected/)
+        end.to raise_error(Sxn::Rules::ValidationError, /Circular dependency detected/)
       end
     end
   end
@@ -514,7 +513,7 @@ RSpec.describe "Rules System Integration" do
       # Mock SecureFileCopier to bypass path validation
       mock_copier = instance_double("Sxn::Security::SecureFileCopier")
       allow(Sxn::Security::SecureFileCopier).to receive(:new).and_return(mock_copier)
-      
+
       mock_copy_result = instance_double("Sxn::Security::SecureFileCopier::CopyResult")
       allow(mock_copy_result).to receive(:source_path).and_return("config/master.key")
       allow(mock_copy_result).to receive(:destination_path).and_return("config/master.key")
@@ -523,28 +522,28 @@ RSpec.describe "Rules System Integration" do
       allow(mock_copy_result).to receive(:checksum).and_return("abc123")
       allow(mock_copy_result).to receive(:duration).and_return(0.1)
       allow(mock_copy_result).to receive(:to_h).and_return({
-        source_path: "config/master.key",
-        destination_path: "config/master.key",
-        operation: "copy",
-        encrypted: false,
-        checksum: "abc123",
-        duration: 0.1
-      })
+                                                             source_path: "config/master.key",
+                                                             destination_path: "config/master.key",
+                                                             operation: "copy",
+                                                             encrypted: false,
+                                                             checksum: "abc123",
+                                                             duration: 0.1
+                                                           })
       allow(mock_copier).to receive(:copy_file) do |source, destination, **options|
         # Create the actual files for tests that check file existence
         src_path = File.join(project_path, source)
         dst_path = File.join(session_path, destination)
-        
+
         if File.exist?(src_path)
           FileUtils.mkdir_p(File.dirname(dst_path))
           FileUtils.cp(src_path, dst_path)
           File.chmod(options[:permissions] || 0o644, dst_path) if options[:permissions]
         end
-        
+
         mock_copy_result
       end
     end
-    
+
     it "properly handles sensitive files with encryption" do
       sensitive_config = {
         "copy_secrets" => {
@@ -568,7 +567,7 @@ RSpec.describe "Rules System Integration" do
       # Verify file was created with correct permissions
       copied_file = File.join(session_path, "config/master.key")
       expect(File.exist?(copied_file)).to be true
-      
+
       stat = File.stat(copied_file)
       expect(stat.mode & 0o777).to eq(0o600)
     end
@@ -585,9 +584,9 @@ RSpec.describe "Rules System Integration" do
         }
       }
 
-      expect {
+      expect do
         rules_engine.validate_rules_config(dangerous_config)
-      }.to raise_error(Sxn::Rules::ValidationError, /Command config 0: command not whitelisted/)
+      end.to raise_error(Sxn::Rules::ValidationError, /Command config 0: command not whitelisted/)
     end
   end
 
@@ -596,7 +595,7 @@ RSpec.describe "Rules System Integration" do
       # Mock SecureFileCopier to bypass path validation
       mock_copier = instance_double("Sxn::Security::SecureFileCopier")
       allow(Sxn::Security::SecureFileCopier).to receive(:new).and_return(mock_copier)
-      
+
       mock_copy_result = instance_double("Sxn::Security::SecureFileCopier::CopyResult")
       allow(mock_copy_result).to receive(:source_path).and_return("Gemfile")
       allow(mock_copy_result).to receive(:destination_path).and_return("Gemfile")
@@ -605,33 +604,33 @@ RSpec.describe "Rules System Integration" do
       allow(mock_copy_result).to receive(:checksum).and_return("abc123")
       allow(mock_copy_result).to receive(:duration).and_return(0.1)
       allow(mock_copy_result).to receive(:to_h).and_return({
-        source_path: "Gemfile",
-        destination_path: "Gemfile",
-        operation: "copy",
-        encrypted: false,
-        checksum: "abc123",
-        duration: 0.1
-      })
+                                                             source_path: "Gemfile",
+                                                             destination_path: "Gemfile",
+                                                             operation: "copy",
+                                                             encrypted: false,
+                                                             checksum: "abc123",
+                                                             duration: 0.1
+                                                           })
       allow(mock_copier).to receive(:copy_file) do |source, destination, **options|
         # Create the actual files for tests that check file existence
         src_path = File.join(project_path, source)
         dst_path = File.join(session_path, destination)
-        
+
         if File.exist?(src_path)
           FileUtils.mkdir_p(File.dirname(dst_path))
           FileUtils.cp(src_path, dst_path)
           File.chmod(options[:permissions] || 0o644, dst_path) if options[:permissions]
         end
-        
+
         mock_copy_result
       end
-      
+
       allow(mock_copier).to receive(:sensitive_file?).and_return(false)
     end
-    
+
     let(:large_rules_config) do
       rules = {}
-      
+
       # Create 20 independent copy file rules
       20.times do |i|
         rules["copy_rule_#{i}"] = {
@@ -643,7 +642,7 @@ RSpec.describe "Rules System Integration" do
           }
         }
       end
-      
+
       rules
     end
 
@@ -664,7 +663,7 @@ RSpec.describe "Rules System Integration" do
     # Create base directories
     FileUtils.mkdir_p(project_path)
     FileUtils.mkdir_p(session_path)
-    
+
     # Create Rails project structure
     FileUtils.mkdir_p(File.join(project_path, "config"))
     FileUtils.mkdir_p(File.join(project_path, "app/models"))
@@ -683,7 +682,7 @@ RSpec.describe "Rules System Integration" do
       gem 'rails', '~> 7.0.4'
       gem 'sqlite3', '~> 1.4'
       gem 'puma', '~> 5.0'
-      
+
       group :development, :test do
         gem 'rspec-rails'
         gem 'factory_bot_rails'
@@ -715,14 +714,14 @@ RSpec.describe "Rules System Integration" do
     # Create template
     template_content = <<~LIQUID
       # Session Information
-      
+
       - **Name**: {{session.name}}
       - **Created**: {{session.created_at}}
       - **Project**: {{project.name}}
       - **Type**: {{project.type}}
-      
+
       ## Setup Commands
-      
+
       ```bash
       cd {{session.path}}
       bundle install

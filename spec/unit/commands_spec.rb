@@ -15,8 +15,8 @@ RSpec.describe Sxn::Commands do
 
   describe "autoloaded constants" do
     it "defines all expected command autoloads" do
-      expected_constants = [:Init, :Sessions, :Projects, :Worktrees, :Rules]
-      
+      expected_constants = %i[Init Sessions Projects Worktrees Rules]
+
       expected_constants.each do |const|
         expect(Sxn::Commands.const_defined?(const)).to be true
       end
@@ -53,10 +53,6 @@ RSpec.describe Sxn::Commands do
   describe "command class availability" do
     before do
       # Force autoload to trigger
-      Sxn::Commands::Init
-      Sxn::Commands::Sessions
-      Sxn::Commands::Projects
-      Sxn::Commands::Worktrees
       Sxn::Commands::Rules
     end
 
@@ -77,8 +73,8 @@ RSpec.describe Sxn::Commands do
 
     it "all command classes are properly namespaced" do
       constants = Sxn::Commands.constants
-      expected_constants = [:Init, :Sessions, :Projects, :Worktrees, :Rules]
-      
+      expected_constants = %i[Init Sessions Projects Worktrees Rules]
+
       expected_constants.each do |const|
         expect(constants).to include(const)
       end

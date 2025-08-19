@@ -43,7 +43,7 @@ RSpec.describe Sxn::Rules::BaseRule do
     klass
   end
 
-  let(:rule) { test_rule_class.new(rule_name, config, project_path, session_path, dependencies: dependencies) }
+  let(:rule) { test_rule_class.new(project_path, session_path, config, dependencies: dependencies) }
 
   after do
     FileUtils.rm_rf(project_path)
@@ -52,7 +52,7 @@ RSpec.describe Sxn::Rules::BaseRule do
 
   describe "#initialize" do
     it "initializes with valid parameters" do
-      expect(rule.name).to eq(rule_name)
+      expect(rule.name).to eq("base_rule")
       expect(rule.config).to eq(config)
       expect(rule.project_path).to eq(File.realpath(project_path))
       expect(rule.session_path).to eq(File.realpath(session_path))
@@ -63,33 +63,33 @@ RSpec.describe Sxn::Rules::BaseRule do
     end
 
     it "raises error for non-existent project path" do
-      expect {
-        test_rule_class.new(rule_name, config, "/non/existent", session_path)
-      }.to raise_error(ArgumentError, /Invalid path provided/)
+      expect do
+        test_rule_class.new("/non/existent", session_path, config)
+      end.to raise_error(ArgumentError, /Invalid path provided/)
     end
 
     it "raises error for non-existent session path" do
-      expect {
-        test_rule_class.new(rule_name, config, project_path, "/non/existent")
-      }.to raise_error(ArgumentError, /Invalid path provided/)
+      expect do
+        test_rule_class.new(project_path, "/non/existent", config)
+      end.to raise_error(ArgumentError, /Invalid path provided/)
     end
 
     it "raises error for non-directory project path" do
       file_path = File.join(project_path, "file.txt")
       File.write(file_path, "test")
-      
-      expect {
-        test_rule_class.new(rule_name, config, file_path, session_path)
-      }.to raise_error(ArgumentError, /Project path is not a directory/)
+
+      expect do
+        test_rule_class.new(file_path, session_path, config)
+      end.to raise_error(ArgumentError, /Project path is not a directory/)
     end
 
     it "raises error for non-writable session path" do
       # Make session path read-only
       File.chmod(0o444, session_path)
-      
-      expect {
-        test_rule_class.new(rule_name, config, project_path, session_path)
-      }.to raise_error(ArgumentError, /Session path is not writable/)
+
+      expect do
+        test_rule_class.new(project_path, session_path, config)
+      end.to raise_error(ArgumentError, /Session path is not writable/)
     ensure
       File.chmod(0o755, session_path)
     end
@@ -110,29 +110,29 @@ RSpec.describe Sxn::Rules::BaseRule do
     end
 
     it "fails validation with invalid configuration" do
-      invalid_rule = test_rule_class.new(rule_name, { "fail_validation" => true }, project_path, session_path)
-      
-      expect {
+      invalid_rule = test_rule_class.new(project_path, session_path, { "fail_validation" => true })
+
+      expect do
         invalid_rule.validate
-      }.to raise_error(Sxn::Rules::ValidationError, "Test validation error")
-      
+      end.to raise_error(Sxn::Rules::ValidationError, "Test validation error")
+
       expect(invalid_rule.state).to eq(:failed)
       expect(invalid_rule.errors).not_to be_empty
     end
 
     it "validates dependencies" do
-      rule_with_deps = test_rule_class.new(rule_name, config, project_path, session_path, dependencies: ["dep1", "dep2"])
-      
+      rule_with_deps = test_rule_class.new(project_path, session_path, config, dependencies: %w[dep1 dep2])
+
       expect(rule_with_deps.validate).to be true
-      expect(rule_with_deps.dependencies).to eq(["dep1", "dep2"])
+      expect(rule_with_deps.dependencies).to eq(%w[dep1 dep2])
     end
 
     it "fails validation with invalid dependencies" do
-      rule_with_invalid_deps = test_rule_class.new(rule_name, config, project_path, session_path, dependencies: [123, nil])
-      
-      expect {
+      rule_with_invalid_deps = test_rule_class.new(project_path, session_path, config, dependencies: [123, nil])
+
+      expect do
         rule_with_invalid_deps.validate
-      }.to raise_error(Sxn::Rules::ValidationError, /Invalid dependency/)
+      end.to raise_error(Sxn::Rules::ValidationError, /Invalid dependency/)
     end
 
     it "changes state during validation" do
@@ -154,7 +154,7 @@ RSpec.describe Sxn::Rules::BaseRule do
 
     it "tracks changes during application" do
       rule.apply
-      
+
       expect(rule.changes.size).to eq(1)
       change = rule.changes.first
       expect(change.type).to eq(:test_action)
@@ -186,7 +186,7 @@ RSpec.describe Sxn::Rules::BaseRule do
     end
 
     it "does nothing if rule is pending" do
-      pending_rule = test_rule_class.new("pending", config, project_path, session_path)
+      pending_rule = test_rule_class.new(project_path, session_path, config)
       expect(pending_rule.rollback).to be true
       expect(pending_rule.state).to eq(:pending)
     end
@@ -194,11 +194,11 @@ RSpec.describe Sxn::Rules::BaseRule do
 
   describe "#can_execute?" do
     let(:rule_with_deps) do
-      test_rule_class.new(rule_name, config, project_path, session_path, dependencies: ["dep1", "dep2"])
+      test_rule_class.new(project_path, session_path, config, dependencies: %w[dep1 dep2])
     end
 
     it "returns true when all dependencies are satisfied" do
-      completed_rules = ["dep1", "dep2", "other"]
+      completed_rules = %w[dep1 dep2 other]
       expect(rule_with_deps.can_execute?(completed_rules)).to be true
     end
 
@@ -233,9 +233,9 @@ RSpec.describe Sxn::Rules::BaseRule do
 
     it "returns hash representation" do
       hash = rule.to_h
-      
+
       expect(hash).to include(
-        name: rule_name,
+        name: "base_rule",
         type: "TestRuleClass",
         state: :applied,
         config: config,
@@ -271,7 +271,7 @@ RSpec.describe Sxn::Rules::BaseRule do
       it "removes created files" do
         File.write(temp_file, "test content")
         change = described_class::RuleChange.new(:file_created, temp_file)
-        
+
         expect(File.exist?(temp_file)).to be true
         change.rollback
         expect(File.exist?(temp_file)).to be false
@@ -280,7 +280,7 @@ RSpec.describe Sxn::Rules::BaseRule do
       it "removes created directories" do
         Dir.mkdir(temp_dir)
         change = described_class::RuleChange.new(:directory_created, temp_dir)
-        
+
         expect(File.directory?(temp_dir)).to be true
         change.rollback
         expect(File.directory?(temp_dir)).to be false
@@ -289,13 +289,13 @@ RSpec.describe Sxn::Rules::BaseRule do
       it "restores modified files from backup" do
         original_content = "original"
         backup_file = "#{temp_file}.backup"
-        
+
         File.write(temp_file, "modified")
         File.write(backup_file, original_content)
-        
+
         change = described_class::RuleChange.new(:file_modified, temp_file, { backup_path: backup_file })
         change.rollback
-        
+
         expect(File.read(temp_file)).to eq(original_content)
         expect(File.exist?(backup_file)).to be false
       end
@@ -304,9 +304,9 @@ RSpec.describe Sxn::Rules::BaseRule do
         source_file = File.join(project_path, "source.txt")
         File.write(source_file, "test")
         File.symlink(source_file, temp_file)
-        
+
         change = described_class::RuleChange.new(:symlink_created, temp_file)
-        
+
         expect(File.symlink?(temp_file)).to be true
         change.rollback
         expect(File.exist?(temp_file)).to be false
@@ -314,24 +314,24 @@ RSpec.describe Sxn::Rules::BaseRule do
 
       it "handles command execution rollback" do
         change = described_class::RuleChange.new(:command_executed, "test command")
-        
+
         # Should not raise error (commands can't be rolled back)
         expect { change.rollback }.not_to raise_error
       end
 
       it "raises error for unknown change type" do
         change = described_class::RuleChange.new(:unknown_type, "target")
-        
-        expect {
+
+        expect do
           change.rollback
-        }.to raise_error(Sxn::Rules::RollbackError, /Unknown change type/)
+        end.to raise_error(Sxn::Rules::RollbackError, /Unknown change type/)
       end
     end
 
     describe "#to_h" do
       it "returns hash representation" do
         hash = change.to_h
-        
+
         expect(hash).to include(
           type: :file_created,
           target: "/path/to/file",
@@ -342,55 +342,99 @@ RSpec.describe Sxn::Rules::BaseRule do
     end
   end
 
+  describe "error handling and edge cases" do
+    it "handles rollback errors gracefully" do
+      # Apply the rule first to have something to rollback
+      rule.validate
+      rule.apply
+      
+      # Add a non-test change that will actually trigger rollback
+      rule.send(:track_change, :file_created, "/tmp/test_file")
+      
+      # Mock a rollback failure
+      allow_any_instance_of(described_class::RuleChange).to receive(:rollback).and_raise(StandardError, "Rollback failed")
+      
+      expect do
+        rule.rollback
+      end.to raise_error(Sxn::Rules::RollbackError, /Failed to rollback rule/)
+      
+      expect(rule.state).to eq(:failed)
+      expect(rule.errors).not_to be_empty
+    end
+
+    it "validates config hash correctly" do
+      valid_rule = test_rule_class.new(project_path, session_path, { "valid" => true })
+      empty_rule = test_rule_class.new(project_path, session_path, {})
+      nil_rule = test_rule_class.new(project_path, session_path, nil)
+      invalid_rule = test_rule_class.new(project_path, session_path, "not a hash")
+      
+      expect(valid_rule.send(:validate_config_hash)).to be true
+      expect(empty_rule.send(:validate_config_hash)).to be true
+      expect(nil_rule.send(:validate_config_hash)).to be true
+      expect(invalid_rule.send(:validate_config_hash)).to be false
+    end
+
+    it "enforces session path writability" do
+      readonly_session_path = Dir.mktmpdir
+      File.chmod(0o444, readonly_session_path) # Read-only
+      
+      expect do
+        test_rule_class.new(project_path, readonly_session_path, config)
+      end.to raise_error(ArgumentError, /Session path is not writable/)
+      
+    ensure
+      File.chmod(0o755, readonly_session_path)
+      FileUtils.rm_rf(readonly_session_path)
+    end
+  end
+
   describe "state management" do
     it "tracks state changes" do
       expect(rule.state).to eq(:pending)
-      
+
       rule.validate
       expect(rule.state).to eq(:validated)
-      
+
       rule.apply
       expect(rule.state).to eq(:applied)
-      
+
       rule.rollback
       expect(rule.state).to eq(:rolled_back)
     end
 
     it "sets failed state on errors" do
-      invalid_rule = test_rule_class.new(rule_name, { "fail_validation" => true }, project_path, session_path)
-      
-      expect {
+      invalid_rule = test_rule_class.new(project_path, session_path, { "fail_validation" => true })
+
+      expect do
         invalid_rule.validate
-      }.to raise_error(Sxn::Rules::ValidationError)
-      
+      end.to raise_error(Sxn::Rules::ValidationError)
+
       expect(invalid_rule.state).to eq(:failed)
       expect(invalid_rule.failed?).to be true
     end
   end
 
   describe "logging" do
-    let(:logger) { instance_double("Logger") }
+    # Create fresh logger mock for each test to prevent leakage
+    let(:logger) { instance_double("Logger", debug: nil, info: nil, warn: nil, error: nil, level: nil) }
 
     before do
+      # Reset Sxn logger state and set up fresh mock
+      Sxn.instance_variable_set(:@logger, nil)
       allow(Sxn).to receive(:logger).and_return(logger)
-      allow(logger).to receive(:debug)
-      allow(logger).to receive(:info)
-      allow(logger).to receive(:warn)
-      allow(logger).to receive(:error)
-      allow(logger).to receive(:level=)
     end
 
     it "logs state changes" do
       expect(logger).to receive(:debug).with(/State changed from pending to validating/)
       expect(logger).to receive(:debug).with(/State changed from validating to validated/)
-      
+
       rule.validate
     end
 
     it "provides rule context in logs" do
       rule.validate
       rule.apply
-      
+
       # Verify logger was called with rule context
       expect(logger).to have_received(:debug).at_least(:once)
     end

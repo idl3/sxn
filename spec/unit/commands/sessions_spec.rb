@@ -21,7 +21,7 @@ RSpec.describe Sxn::Commands::Sessions do
       linear_task: "ATL-123",
       created_at: Time.now.iso8601,
       updated_at: Time.now.iso8601,
-      projects: ["project1", "project2"]
+      projects: %w[project1 project2]
     }
   end
 
@@ -32,7 +32,7 @@ RSpec.describe Sxn::Commands::Sessions do
     allow(Sxn::UI::Table).to receive(:new).and_return(mock_table)
     allow(Sxn::Core::ConfigManager).to receive(:new).and_return(config_manager)
     allow(Sxn::Core::SessionManager).to receive(:new).and_return(session_manager)
-    
+
     # Default mock setup
     allow(config_manager).to receive(:initialized?).and_return(true)
     allow(mock_ui).to receive(:section)
@@ -57,7 +57,7 @@ RSpec.describe Sxn::Commands::Sessions do
     allow(mock_prompt).to receive(:ask).and_return("test-input")
     allow(mock_prompt).to receive(:ask_yes_no).and_return(true)
     allow(command).to receive(:options).and_return(Thor::CoreExt::HashWithIndifferentAccess.new)
-    
+
     # Default session manager spies for methods that might not be called
     allow(session_manager).to receive(:create_session)
     allow(session_manager).to receive(:use_session)
@@ -79,7 +79,7 @@ RSpec.describe Sxn::Commands::Sessions do
         allow(session_manager).to receive(:create_session).and_return(sample_session)
         allow(session_manager).to receive(:use_session)
         allow(session_manager).to receive(:get_session).and_return(sample_session)
-        
+
         options = Thor::CoreExt::HashWithIndifferentAccess.new
         options[:activate] = true
         options[:description] = nil
@@ -101,7 +101,7 @@ RSpec.describe Sxn::Commands::Sessions do
       it "creates session without activation when --no-activate option" do
         allow(session_manager).to receive(:create_session).and_return(sample_session)
         allow(session_manager).to receive(:get_session).and_return(sample_session)
-        
+
         options = Thor::CoreExt::HashWithIndifferentAccess.new
         options[:activate] = false
         options[:description] = nil
@@ -119,7 +119,7 @@ RSpec.describe Sxn::Commands::Sessions do
         allow(session_manager).to receive(:create_session).and_return(sample_session)
         allow(session_manager).to receive(:use_session)
         allow(session_manager).to receive(:get_session).and_return(sample_session)
-        
+
         options = Thor::CoreExt::HashWithIndifferentAccess.new
         options[:description] = "Test description"
         options[:linear_task] = "ATL-456"
@@ -144,7 +144,7 @@ RSpec.describe Sxn::Commands::Sessions do
         allow(session_manager).to receive(:create_session).and_return(sample_session)
         allow(session_manager).to receive(:use_session)
         allow(session_manager).to receive(:get_session).and_return(sample_session)
-        
+
         options = Thor::CoreExt::HashWithIndifferentAccess.new
         options[:activate] = true
         options[:description] = nil
@@ -154,7 +154,7 @@ RSpec.describe Sxn::Commands::Sessions do
         command.add
 
         expect(mock_prompt).to have_received(:session_name).with(
-          existing_sessions: ["existing1", "existing2"]
+          existing_sessions: %w[existing1 existing2]
         )
         expect(session_manager).to have_received(:create_session).with(
           "interactive-session",
@@ -211,7 +211,7 @@ RSpec.describe Sxn::Commands::Sessions do
       it "displays sessions in a table with default options" do
         allow(session_manager).to receive(:list_sessions).and_return(sessions)
         allow(session_manager).to receive(:current_session).and_return({ name: "session1" })
-        
+
         options = Thor::CoreExt::HashWithIndifferentAccess.new
         options[:status] = nil
         options[:limit] = 50
@@ -232,7 +232,7 @@ RSpec.describe Sxn::Commands::Sessions do
         active_sessions = [sessions[0]]
         allow(session_manager).to receive(:list_sessions).and_return(active_sessions)
         allow(session_manager).to receive(:current_session).and_return(nil)
-        
+
         options = Thor::CoreExt::HashWithIndifferentAccess.new
         options[:status] = "active"
         options[:limit] = 50
@@ -249,7 +249,7 @@ RSpec.describe Sxn::Commands::Sessions do
       it "applies custom limit when provided" do
         allow(session_manager).to receive(:list_sessions).and_return(sessions)
         allow(session_manager).to receive(:current_session).and_return(nil)
-        
+
         options = Thor::CoreExt::HashWithIndifferentAccess.new
         options[:status] = nil
         options[:limit] = 10
@@ -381,10 +381,10 @@ RSpec.describe Sxn::Commands::Sessions do
       end
 
       it "displays verbose information when --verbose option" do
-        verbose_session = sample_session.merge(projects: ["project1", "project2"])
+        verbose_session = sample_session.merge(projects: %w[project1 project2])
         allow(session_manager).to receive(:current_session).and_return(verbose_session)
         allow(session_manager).to receive(:get_session).and_return(verbose_session)
-        
+
         options = Thor::CoreExt::HashWithIndifferentAccess.new
         options[:verbose] = true
         allow(command).to receive(:options).and_return(options)
@@ -461,7 +461,7 @@ RSpec.describe Sxn::Commands::Sessions do
         sessions = [{ name: "session1" }, { name: "session2" }]
         allow(session_manager).to receive(:list_sessions).and_return(sessions)
         allow(mock_prompt).to receive(:select).and_return("session1")
-        
+
         options = Thor::CoreExt::HashWithIndifferentAccess.new
         options[:force] = nil
         allow(command).to receive(:options).and_return(options)
@@ -490,7 +490,7 @@ RSpec.describe Sxn::Commands::Sessions do
         allow(session_manager).to receive(:remove_session).and_raise(
           Sxn::SessionHasChangesError.new("Session has uncommitted changes")
         )
-        
+
         error = Sxn::SessionHasChangesError.new("Session has uncommitted changes")
         allow(error).to receive(:exit_code).and_return(24)
         allow(session_manager).to receive(:remove_session).and_raise(error)
@@ -623,17 +623,17 @@ RSpec.describe Sxn::Commands::Sessions do
       it "passes when initialized" do
         allow(config_manager).to receive(:initialized?).and_return(true)
 
-        expect {
+        expect do
           command.send(:ensure_initialized!)
-        }.not_to raise_error
+        end.not_to raise_error
       end
 
       it "exits when not initialized" do
         allow(config_manager).to receive(:initialized?).and_return(false)
 
-        expect {
+        expect do
           command.send(:ensure_initialized!)
-        }.to raise_error(SystemExit)
+        end.to raise_error(SystemExit)
 
         expect(mock_ui).to have_received(:error).with("Project not initialized")
         expect(mock_ui).to have_received(:recovery_suggestion)

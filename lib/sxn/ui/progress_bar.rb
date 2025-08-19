@@ -8,15 +8,15 @@ module Sxn
     class ProgressBar
       def initialize(title, total: 100, format: :classic)
         format_string = case format
-                       when :classic
-                         "#{title} [:bar] :percent :elapsed"
-                       when :detailed
-                         "#{title} [:bar] :current/:total (:percent) :elapsed ETA: :eta"
-                       when :simple
-                         "#{title} :percent"
-                       else
-                         title
-                       end
+                        when :classic
+                          "#{title} [:bar] :percent :elapsed"
+                        when :detailed
+                          "#{title} [:bar] :current/:total (:percent) :elapsed ETA: :eta"
+                        when :simple
+                          "#{title} :percent"
+                        else
+                          title
+                        end
 
         @bar = TTY::ProgressBar.new(format_string, total: total, clear: true)
       end
@@ -63,10 +63,10 @@ module Sxn
 
       def self.for_operation(title, total_steps: 5, &block)
         progress = new(title, total: total_steps, format: :detailed)
-        
+
         stepper = Stepper.new(progress)
         result = block.call(stepper)
-        
+
         progress.finish
         result
       end

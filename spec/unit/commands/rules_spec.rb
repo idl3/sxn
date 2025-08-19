@@ -135,7 +135,7 @@ RSpec.describe Sxn::Commands::Rules do
       let(:project_rules) do
         [
           { project: "test-project", type: "copy_files", config: { source: "file.txt" } },
-          { project: "test-project", type: "setup_commands", config: { command: ["npm", "install"] } }
+          { project: "test-project", type: "setup_commands", config: { command: %w[npm install] } }
         ]
       end
 
@@ -343,7 +343,7 @@ RSpec.describe Sxn::Commands::Rules do
     let(:rule_types) do
       [
         { name: "copy_files", description: "Copy files", example: { "source" => "file.txt" } },
-        { name: "setup_commands", description: "Run commands", example: { "command" => ["npm", "install"] } }
+        { name: "setup_commands", description: "Run commands", example: { "command" => %w[npm install] } }
       ]
     end
 
@@ -365,17 +365,17 @@ RSpec.describe Sxn::Commands::Rules do
       it "passes when initialized" do
         allow(mock_config_manager).to receive(:initialized?).and_return(true)
 
-        expect {
+        expect do
           rules_command.send(:ensure_initialized!)
-        }.not_to raise_error
+        end.not_to raise_error
       end
 
       it "exits when not initialized" do
         allow(mock_config_manager).to receive(:initialized?).and_return(false)
 
-        expect {
+        expect do
           rules_command.send(:ensure_initialized!)
-        }.to raise_error(SystemExit)
+        end.to raise_error(SystemExit)
 
         expect(mock_ui).to have_received(:error).with("Project not initialized")
         expect(mock_ui).to have_received(:recovery_suggestion)

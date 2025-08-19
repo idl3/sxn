@@ -14,7 +14,7 @@ module Sxn
       def sessions(sessions)
         return empty_table("No sessions found") if sessions.empty?
 
-        headers = ["Name", "Status", "Projects", "Created", "Updated"]
+        headers = %w[Name Status Projects Created Updated]
         rows = sessions.map do |session|
           [
             session[:name],
@@ -47,7 +47,7 @@ module Sxn
       def worktrees(worktrees)
         return empty_table("No worktrees in current session") if worktrees.empty?
 
-        headers = ["Project", "Branch", "Path", "Status"]
+        headers = %w[Project Branch Path Status]
         rows = worktrees.map do |worktree|
           [
             worktree[:project],
@@ -64,7 +64,7 @@ module Sxn
         filtered_rules = project_filter ? rules.select { |r| r[:project] == project_filter } : rules
         return empty_table("No rules configured") if filtered_rules.empty?
 
-        headers = ["Project", "Type", "Config", "Status"]
+        headers = %w[Project Type Config Status]
         rows = filtered_rules.map do |rule|
           [
             rule[:project],
@@ -78,7 +78,7 @@ module Sxn
       end
 
       def config_summary(config)
-        headers = ["Setting", "Value", "Source"]
+        headers = %w[Setting Value Source]
         rows = [
           ["Sessions Folder", config[:sessions_folder] || "Not set", "config"],
           ["Current Session", config[:current_session] || "None", "config"],
@@ -87,6 +87,12 @@ module Sxn
         ]
 
         render_table(headers, rows)
+      end
+
+      # Add a header to the table output
+      def header(title)
+        puts "\n#{@pastel.bold.underline(title)}"
+        puts
       end
 
       private
@@ -123,45 +129,54 @@ module Sxn
         else
           @pastel.red("Missing")
         end
+      rescue StandardError
+        @pastel.red("Missing")
       end
 
       def git_clean?(path)
-        Dir.chdir(path) do
+        result = Dir.chdir(path) do
           system("git diff-index --quiet HEAD --", out: File::NULL, err: File::NULL)
         end
-      rescue
+        !!result
+      rescue StandardError
         false
       end
 
       def format_date(date_string)
         return "" unless date_string
-        
+
         date = Time.parse(date_string)
-        if date > Time.now - 86400 # Within 24 hours
+        if date > Time.now - 86_400 # Within 24 hours
           date.strftime("%H:%M")
-        elsif date > Time.now - 604800 # Within a week
+        elsif date > Time.now - 604_800 # Within a week
           date.strftime("%a %H:%M")
         else
           date.strftime("%m/%d")
         end
-      rescue
+      rescue StandardError
         date_string
       end
 
       def truncate_path(path, max_length: 30)
         return "" unless path
         return path if path.length <= max_length
-        
-        "...#{path[-max_length + 3..-1]}"
+
+        # Show just the filename with "..." prefix
+        filename = File.basename(path)
+        "...#{filename}"
       end
 
       def truncate_config(config, max_length: 40)
         return "" unless config
-        
+
         config_str = config.is_a?(String) ? config : config.to_s
         return config_str if config_str.length <= max_length
-        
-        "#{config_str[0..max_length - 4]}..."
+
+        # Take the beginning and add "..." at the end
+        # For max_length 20, we want "This is a very lo..." (20 chars total)
+        # So we take first 17 chars + "..." = 20 chars total
+        truncate_length = max_length - 3
+        "#{config_str[0, truncate_length]}..."
       end
     end
   end

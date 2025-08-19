@@ -14,7 +14,7 @@ RSpec.describe Sxn::Rules do
   end
 
   after do
-    FileUtils.rm_rf(temp_dir) if Dir.exist?(temp_dir)
+    FileUtils.rm_rf(temp_dir)
   end
 
   describe "module structure" do
@@ -62,35 +62,36 @@ RSpec.describe Sxn::Rules do
 
     it "creates a rule instance for valid type" do
       rule = Sxn::Rules.create_rule("test_rule", "copy_files", rule_config, project_path, session_path)
-      
+
       expect(rule).to be_a(Sxn::Rules::BaseRule)
       expect(rule).to be_a(Sxn::Rules::CopyFilesRule)
     end
 
     it "raises error for invalid rule type" do
-      expect {
+      expect do
         Sxn::Rules.create_rule("test_rule", "invalid_type", {}, project_path, session_path)
-      }.to raise_error(ArgumentError, /Invalid rule type: invalid_type/)
+      end.to raise_error(ArgumentError, /Invalid rule type: invalid_type/)
     end
 
     it "passes dependencies to rule constructor" do
-      dependencies = ["dependency1", "dependency2"]
-      rule = Sxn::Rules.create_rule("test_rule", "copy_files", rule_config, project_path, session_path, dependencies: dependencies)
-      
+      dependencies = %w[dependency1 dependency2]
+      rule = Sxn::Rules.create_rule("test_rule", "copy_files", rule_config, project_path, session_path,
+                                    dependencies: dependencies)
+
       expect(rule.dependencies).to eq(dependencies)
     end
 
     it "creates setup_commands rule" do
-      command_config = { "commands" => [{ "command" => ["echo", "test"] }] }
+      command_config = { "commands" => [{ "command" => %w[echo test] }] }
       rule = Sxn::Rules.create_rule("test_command", "setup_commands", command_config, project_path, session_path)
-      
+
       expect(rule).to be_a(Sxn::Rules::SetupCommandsRule)
     end
 
     it "creates template rule" do
       template_config = { "templates" => [{ "source" => "template.liquid", "destination" => "output.txt" }] }
       rule = Sxn::Rules.create_rule("test_template", "template", template_config, project_path, session_path)
-      
+
       expect(rule).to be_a(Sxn::Rules::TemplateRule)
     end
   end
@@ -122,9 +123,9 @@ RSpec.describe Sxn::Rules do
         }
       }
 
-      expect {
+      expect do
         Sxn::Rules.validate_configuration(invalid_config, project_path, session_path)
-      }.to raise_error(ArgumentError)
+      end.to raise_error(Sxn::Rules::ValidationError)
     end
 
     it "validates using RulesEngine" do
@@ -168,7 +169,7 @@ RSpec.describe Sxn::Rules do
 
       it "defines strategy with enum values" do
         strategy_config = copy_files_info[:config_schema]["files"][:items]["strategy"]
-        expect(strategy_config[:enum]).to eq(["copy", "symlink"])
+        expect(strategy_config[:enum]).to eq(%w[copy symlink])
         expect(strategy_config[:default]).to eq("copy")
       end
     end
@@ -258,17 +259,15 @@ RSpec.describe Sxn::Rules do
 
   describe "error handling" do
     it "handles rule creation errors gracefully" do
-      expect {
+      expect do
         Sxn::Rules.create_rule("test", "nonexistent", {}, project_path, session_path)
-      }.to raise_error(ArgumentError)
+      end.to raise_error(ArgumentError)
     end
 
     it "provides meaningful error messages" do
-      begin
-        Sxn::Rules.create_rule("test", "invalid", {}, project_path, session_path)
-      rescue ArgumentError => e
-        expect(e.message).to include("Invalid rule type: invalid")
-      end
+      Sxn::Rules.create_rule("test", "invalid", {}, project_path, session_path)
+    rescue ArgumentError => e
+      expect(e.message).to include("Invalid rule type: invalid")
     end
   end
 end

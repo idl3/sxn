@@ -50,20 +50,20 @@ No worktrees have been created yet. Use `sxn worktree add <project>` to add proj
 {% if git.branch %}
 - **Current Branch**: `{{ git.branch }}`
 {% endif %}
-{% if git.author_name %}
-- **Git User**: {{ git.author_name }} <{{ git.author_email }}>
+{% if git.author %}
+- **Git User**: {{ git.author.name }} <{{ git.author.email }}>
 {% endif %}
 {% if git.remote_url %}
 - **Remote URL**: {{ git.remote_url }}
 {% endif %}
 
-{% if git.has_changes %}
+{% if git.status %}
 ### Working Directory Status
-- **Modified Files**: {{ git.modified_files | default: 0 }}
-- **Added Files**: {{ git.added_files | default: 0 }}
-- **Deleted Files**: {{ git.deleted_files | default: 0 }}
-- **Untracked Files**: {{ git.untracked_files | default: 0 }}
-- **Total Changes**: {{ git.total_changes | default: 0 }}
+- **Modified Files**: {{ git.status.modified_files | default: 0 }}
+- **Added Files**: {{ git.status.added_files | default: 0 }}
+- **Deleted Files**: {{ git.status.deleted_files | default: 0 }}
+- **Untracked Files**: {{ git.status.untracked_files | default: 0 }}
+- **Total Changes**: {{ git.status.total_changes | default: 0 }}
 {% endif %}
 
 ## Session Commands

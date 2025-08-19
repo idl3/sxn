@@ -352,27 +352,25 @@ RSpec.describe "Error integration" do
     ]
 
     error_classes.each do |error_class|
-      expect {
-        begin
-          raise error_class.new("Test message")
-        rescue error_class => e
-          expect(e.message).to eq("Test message")
-          expect(e.exit_code).to eq(1)
-          raise
-        end
-      }.to raise_error(error_class)
+      expect do
+        raise error_class, "Test message"
+      rescue error_class => e
+        expect(e.message).to eq("Test message")
+        expect(e.exit_code).to eq(1)
+        raise
+      end.to raise_error(error_class)
     end
   end
 
   it "all errors can be created with custom exit codes" do
     custom_exit_code = 42
-    
+
     error = Sxn::ConfigurationError.new("Test", exit_code: custom_exit_code)
     expect(error.exit_code).to eq(custom_exit_code)
-    
+
     error = Sxn::SessionError.new("Test", exit_code: custom_exit_code)
     expect(error.exit_code).to eq(custom_exit_code)
-    
+
     error = Sxn::RuleError.new("Test", exit_code: custom_exit_code)
     expect(error.exit_code).to eq(custom_exit_code)
   end

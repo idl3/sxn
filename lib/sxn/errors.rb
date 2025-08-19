@@ -54,6 +54,11 @@ module Sxn
   class InvalidRuleTypeError < RuleError; end
   class InvalidRuleConfigError < RuleError; end
 
+  # Generic validation and application errors
+  class ValidationError < Error; end
+  class ApplicationError < Error; end
+  class RollbackError < Error; end
+
   # Template processing errors
   class TemplateError < Error; end
   class TemplateNotFoundError < TemplateError; end

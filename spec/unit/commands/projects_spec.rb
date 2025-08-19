@@ -49,7 +49,7 @@ RSpec.describe Sxn::Commands::Projects do
     allow(mock_ui).to receive(:debug)
     allow(mock_table).to receive(:projects)
     allow(mock_table).to receive(:rules)
-    
+
     # Ensure all prompt methods are stubbed
     allow(mock_prompt).to receive(:project_name).and_return("test-project")
     allow(mock_prompt).to receive(:project_path).and_return("/test/path")
@@ -138,6 +138,30 @@ RSpec.describe Sxn::Commands::Projects do
         expect(mock_ui).to have_received(:progress_failed)
         expect(mock_ui).to have_received(:error).with("Project already exists")
       end
+      
+      it "handles StandardError with debug output when SXN_DEBUG is set" do
+        ENV["SXN_DEBUG"] = "true"
+        error = StandardError.new("Unexpected error")
+        allow(error).to receive(:backtrace).and_return(["line1", "line2", "line3"])
+        allow(mock_project_manager).to receive(:add_project).and_raise(error)
+
+        expect { projects_command.add("test", "/path") }.to raise_error(SystemExit)
+        expect(mock_ui).to have_received(:progress_failed)
+        expect(mock_ui).to have_received(:error).with("Unexpected error: Unexpected error")
+        expect(mock_ui).to have_received(:debug).with("line1\nline2\nline3")
+      ensure
+        ENV.delete("SXN_DEBUG")
+      end
+      
+      it "handles StandardError without debug output when SXN_DEBUG is not set" do
+        error = StandardError.new("Unexpected error")
+        allow(mock_project_manager).to receive(:add_project).and_raise(error)
+
+        expect { projects_command.add("test", "/path") }.to raise_error(SystemExit)
+        expect(mock_ui).to have_received(:progress_failed)
+        expect(mock_ui).to have_received(:error).with("Unexpected error: Unexpected error")
+        expect(mock_ui).not_to have_received(:debug)
+      end
     end
   end
 
@@ -201,6 +225,16 @@ RSpec.describe Sxn::Commands::Projects do
         expect(mock_ui).to have_received(:error).with("Project in use")
         expect(mock_ui).to have_received(:recovery_suggestion).with(/Archive or remove/)
       end
+      
+      it "handles general Sxn::Error during removal" do
+        error = Sxn::Error.new("General error")
+        allow(error).to receive(:exit_code).and_return(12)
+        allow(mock_prompt).to receive(:confirm_deletion).and_return(true)
+        allow(mock_project_manager).to receive(:remove_project).and_raise(error)
+
+        expect { projects_command.remove("test-project") }.to raise_error(SystemExit)
+        expect(mock_ui).to have_received(:error).with("General error")
+      end
     end
   end
 
@@ -240,6 +274,17 @@ RSpec.describe Sxn::Commands::Projects do
         expect(mock_ui).to have_received(:recovery_suggestion)
       end
     end
+    
+    context "when errors occur" do
+      it "handles Sxn::Error during list" do
+        error = Sxn::Error.new("List error")
+        allow(error).to receive(:exit_code).and_return(15)
+        allow(mock_project_manager).to receive(:list_projects).and_raise(error)
+
+        expect { projects_command.list }.to raise_error(SystemExit)
+        expect(mock_ui).to have_received(:error).with("List error")
+      end
+    end
   end
 
   describe "#scan" do
@@ -274,9 +319,11 @@ RSpec.describe Sxn::Commands::Projects do
       it "automatically registers detected projects" do
         allow(mock_project_manager).to receive(:scan_projects).and_return(detected_projects)
         allow(mock_project_manager).to receive(:auto_register_projects).and_return([
-          { status: :success, project: detected_projects[0] },
-          { status: :success, project: detected_projects[1] }
-        ])
+                                                                                     { status: :success,
+                                                                                       project: detected_projects[0] },
+                                                                                     { status: :success,
+                                                                                       project: detected_projects[1] }
+                                                                                   ])
 
         projects_command.options = { register: true }
         projects_command.scan
@@ -321,6 +368,17 @@ RSpec.describe Sxn::Commands::Projects do
         expect(mock_ui).to have_received(:empty_state).with("No projects detected")
       end
     end
+    
+    context "when scan encounters errors" do
+      it "handles Sxn::Error during scan" do
+        error = Sxn::Error.new("Scan error")
+        allow(error).to receive(:exit_code).and_return(16)
+        allow(mock_project_manager).to receive(:scan_projects).and_raise(error)
+
+        expect { projects_command.scan }.to raise_error(SystemExit)
+        expect(mock_ui).to have_received(:error).with("Scan error")
+      end
+    end
   end
 
   describe "#validate" do
@@ -336,10 +394,10 @@ RSpec.describe Sxn::Commands::Projects do
       end
 
       it "shows validation issues" do
-        validation_result = { 
-          valid: false, 
-          issues: ["Path does not exist", "Not a git repository"], 
-          project: sample_project 
+        validation_result = {
+          valid: false,
+          issues: ["Path does not exist", "Not a git repository"],
+          project: sample_project
         }
         allow(mock_project_manager).to receive(:validate_project).and_return(validation_result)
 
@@ -355,7 +413,7 @@ RSpec.describe Sxn::Commands::Projects do
       it "prompts for project selection" do
         projects = [sample_project]
         validation_result = { valid: true, issues: [], project: sample_project }
-        
+
         allow(mock_project_manager).to receive(:list_projects).and_return(projects)
         allow(mock_prompt).to receive(:select).and_return("test-project")
         allow(mock_project_manager).to receive(:validate_project).and_return(validation_result)
@@ -366,6 +424,25 @@ RSpec.describe Sxn::Commands::Projects do
           "Select project to validate:",
           [{ name: "test-project (rails)", value: "test-project" }]
         )
+      end
+      
+      it "shows empty state when no projects for validation" do
+        allow(mock_project_manager).to receive(:list_projects).and_return([])
+
+        projects_command.validate
+
+        expect(mock_ui).to have_received(:empty_state).with("No projects configured")
+      end
+    end
+    
+    context "when validation encounters errors" do
+      it "handles Sxn::Error during validate" do
+        error = Sxn::Error.new("Validation error")
+        allow(error).to receive(:exit_code).and_return(17)
+        allow(mock_project_manager).to receive(:validate_project).and_raise(error)
+
+        expect { projects_command.validate("test-project") }.to raise_error(SystemExit)
+        expect(mock_ui).to have_received(:error).with("Validation error")
       end
     end
   end
@@ -443,6 +520,25 @@ RSpec.describe Sxn::Commands::Projects do
           [{ name: "test-project (rails)", value: "test-project" }]
         )
       end
+      
+      it "shows empty state when no projects for info" do
+        allow(mock_project_manager).to receive(:list_projects).and_return([])
+
+        projects_command.info
+
+        expect(mock_ui).to have_received(:empty_state).with("No projects configured")
+      end
+    end
+    
+    context "when info encounters errors" do
+      it "handles Sxn::Error during info" do
+        error = Sxn::Error.new("Info error")
+        allow(error).to receive(:exit_code).and_return(18)
+        allow(mock_project_manager).to receive(:get_project).and_raise(error)
+
+        expect { projects_command.info("test-project") }.to raise_error(SystemExit)
+        expect(mock_ui).to have_received(:error).with("Info error")
+      end
     end
   end
 
@@ -492,7 +588,7 @@ RSpec.describe Sxn::Commands::Projects do
 
       it "handles empty project list" do
         allow(mock_project_manager).to receive(:auto_register_projects)
-        
+
         projects_command.send(:register_projects, [])
 
         expect(mock_project_manager).not_to have_received(:auto_register_projects)

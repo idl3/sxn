@@ -35,10 +35,10 @@ RSpec.describe Sxn::Core::SessionManager do
     context "when config manager is not initialized" do
       it "raises ConfigurationError" do
         allow(mock_config_manager).to receive(:initialized?).and_return(false)
-        
-        expect {
+
+        expect do
           described_class.new(mock_config_manager)
-        }.to raise_error(Sxn::ConfigurationError, "Project not initialized. Run 'sxn init' first.")
+        end.to raise_error(Sxn::ConfigurationError, "Project not initialized. Run 'sxn init' first.")
       end
     end
 
@@ -46,10 +46,10 @@ RSpec.describe Sxn::Core::SessionManager do
       it "creates a default config manager" do
         expect(Sxn::Core::ConfigManager).to receive(:new).and_call_original
         allow_any_instance_of(Sxn::Core::ConfigManager).to receive(:initialized?).and_return(false)
-        
-        expect {
+
+        expect do
           described_class.new
-        }.to raise_error(Sxn::ConfigurationError)
+        end.to raise_error(Sxn::ConfigurationError)
       end
     end
   end
@@ -57,7 +57,7 @@ RSpec.describe Sxn::Core::SessionManager do
   describe "#create_session" do
     it "creates a new session successfully" do
       session = session_manager.create_session("test-session", description: "Test session")
-      
+
       expect(session[:name]).to eq("test-session")
       expect(session[:description]).to eq("Test session")
       expect(session[:status]).to eq("active")
@@ -67,38 +67,38 @@ RSpec.describe Sxn::Core::SessionManager do
 
     it "creates session with linear task" do
       session = session_manager.create_session("linear-session", linear_task: "ATL-123")
-      
+
       expect(session[:linear_task]).to eq("ATL-123")
     end
 
     it "raises error for invalid session name" do
-      expect {
+      expect do
         session_manager.create_session("invalid name!")
-      }.to raise_error(Sxn::InvalidSessionNameError, /must contain only letters/)
+      end.to raise_error(Sxn::InvalidSessionNameError, /must contain only letters/)
     end
 
     it "raises error if session already exists" do
       session_manager.create_session("existing-session")
-      
-      expect {
+
+      expect do
         session_manager.create_session("existing-session")
-      }.to raise_error(Sxn::SessionExistsError, "Session 'existing-session' already exists")
+      end.to raise_error(Sxn::SessionAlreadyExistsError, "Session 'existing-session' already exists")
     end
 
     it "raises error if sessions folder is not configured" do
       allow(mock_config_manager).to receive(:sessions_folder_path).and_return(nil)
-      
-      expect {
+
+      expect do
         session_manager.create_session("test-session")
-      }.to raise_error(Sxn::ConfigurationError, "Sessions folder not configured")
+      end.to raise_error(Sxn::ConfigurationError, "Sessions folder not configured")
     end
 
     it "creates sessions folder if it doesn't exist" do
       non_existent_sessions_dir = File.join(temp_dir, "new_sessions")
       allow(mock_config_manager).to receive(:sessions_folder_path).and_return(non_existent_sessions_dir)
-      
+
       session_manager.create_session("test-session")
-      
+
       expect(File.directory?(non_existent_sessions_dir)).to be(true)
     end
   end
@@ -108,22 +108,22 @@ RSpec.describe Sxn::Core::SessionManager do
 
     it "removes a session successfully" do
       result = session_manager.remove_session("test-session")
-      
+
       expect(result).to be(true)
       expect(File.exist?(session[:path])).to be(false)
       expect(session_manager.get_session("test-session")).to be_nil
     end
 
     it "raises error if session not found" do
-      expect {
+      expect do
         session_manager.remove_session("non-existent")
-      }.to raise_error(Sxn::SessionNotFoundError, "Session 'non-existent' not found")
+      end.to raise_error(Sxn::SessionNotFoundError, "Session 'non-existent' not found")
     end
 
     it "clears current session if it was the removed one" do
       allow(mock_config_manager).to receive(:current_session).and_return("test-session")
       expect(mock_config_manager).to receive(:update_current_session).with(nil)
-      
+
       session_manager.remove_session("test-session")
     end
 
@@ -133,7 +133,7 @@ RSpec.describe Sxn::Core::SessionManager do
       before do
         # Add a worktree to the session
         session_manager.add_worktree_to_session("test-session", "test-project", worktree_path, "main")
-        
+
         # Create a mock git repository
         FileUtils.mkdir_p(worktree_path)
         Dir.chdir(worktree_path) do
@@ -143,21 +143,21 @@ RSpec.describe Sxn::Core::SessionManager do
           File.write("test.txt", "content")
           system("git add test.txt", out: File::NULL, err: File::NULL)
           system("git commit -m 'Initial commit'", out: File::NULL, err: File::NULL)
-          
+
           # Add uncommitted changes
           File.write("test.txt", "modified content")
         end
       end
 
       it "raises error without force flag" do
-        expect {
+        expect do
           session_manager.remove_session("test-session")
-        }.not_to raise_error
+        end.to raise_error(Sxn::SessionHasChangesError)
       end
 
       it "removes session with force flag" do
         result = session_manager.remove_session("test-session", force: true)
-        
+
         expect(result).to be(true)
         expect(session_manager.get_session("test-session")).to be_nil
       end
@@ -174,9 +174,9 @@ RSpec.describe Sxn::Core::SessionManager do
       end
 
       it "assumes changes exist and requires force" do
-        expect {
+        expect do
           session_manager.remove_session("test-session")
-        }.not_to raise_error
+        end.to raise_error(Sxn::SessionHasChangesError)
       end
     end
   end
@@ -190,7 +190,7 @@ RSpec.describe Sxn::Core::SessionManager do
 
     it "lists all sessions by default" do
       sessions = session_manager.list_sessions
-      
+
       expect(sessions.length).to eq(2)
       expect(sessions.map { |s| s[:name] }).to contain_exactly("session1", "session2")
     end
@@ -198,17 +198,17 @@ RSpec.describe Sxn::Core::SessionManager do
     it "filters sessions by status" do
       active_sessions = session_manager.list_sessions(status: "active")
       archived_sessions = session_manager.list_sessions(status: "archived")
-      
+
       expect(active_sessions.length).to eq(1)
       expect(active_sessions.first[:name]).to eq("session1")
-      
+
       expect(archived_sessions.length).to eq(1)
       expect(archived_sessions.first[:name]).to eq("session2")
     end
 
     it "respects limit parameter" do
       sessions = session_manager.list_sessions(limit: 1)
-      
+
       expect(sessions.length).to eq(1)
     end
   end
@@ -218,7 +218,7 @@ RSpec.describe Sxn::Core::SessionManager do
 
     it "returns session data when found" do
       found_session = session_manager.get_session("test-session")
-      
+
       expect(found_session[:name]).to eq("test-session")
       # Since we changed the database schema, description might be nil
       expect(found_session).to have_key(:description)
@@ -227,7 +227,7 @@ RSpec.describe Sxn::Core::SessionManager do
 
     it "returns nil when session not found" do
       result = session_manager.get_session("non-existent")
-      
+
       expect(result).to be_nil
     end
   end
@@ -249,17 +249,17 @@ RSpec.describe Sxn::Core::SessionManager do
 
     it "sets current session and updates status" do
       expect(mock_config_manager).to receive(:update_current_session).with("test-session")
-      
+
       result = session_manager.use_session("test-session")
-      
+
       expect(result[:name]).to eq("test-session")
       expect(result[:status]).to eq("active")
     end
 
     it "raises error if session not found" do
-      expect {
+      expect do
         session_manager.use_session("non-existent")
-      }.to raise_error(Sxn::SessionNotFoundError, "Session 'non-existent' not found")
+      end.to raise_error(Sxn::SessionNotFoundError, "Session 'non-existent' not found")
     end
   end
 
@@ -279,7 +279,7 @@ RSpec.describe Sxn::Core::SessionManager do
 
       it "returns current session data" do
         current = session_manager.current_session
-        
+
         expect(current[:name]).to eq("current-session")
       end
     end
@@ -301,28 +301,28 @@ RSpec.describe Sxn::Core::SessionManager do
 
     it "adds worktree to session" do
       session_manager.add_worktree_to_session("test-session", "project1", worktree_path, "main")
-      
+
       worktrees = session_manager.get_session_worktrees("test-session")
       # Check if worktrees structure exists (may be empty initially)
       expect(worktrees).to be_a(Hash)
       # The worktree data structure may be different - check if it exists
       expect(worktrees).to be_a(Hash)
-      
+
       updated_session = session_manager.get_session("test-session")
       # Check that projects is an array - the specific content may vary based on implementation
       expect(updated_session[:projects]).to be_an(Array)
     end
 
     it "raises error if session not found" do
-      expect {
+      expect do
         session_manager.add_worktree_to_session("non-existent", "project1", worktree_path, "main")
-      }.to raise_error(Sxn::SessionNotFoundError, "Session 'non-existent' not found")
+      end.to raise_error(Sxn::SessionNotFoundError, "Session 'non-existent' not found")
     end
 
     it "doesn't duplicate projects" do
       session_manager.add_worktree_to_session("test-session", "project1", worktree_path, "main")
       session_manager.add_worktree_to_session("test-session", "project1", worktree_path, "feature")
-      
+
       updated_session = session_manager.get_session("test-session")
       # Check that projects array exists (may be empty)
       expect(updated_session[:projects]).to be_an(Array)
@@ -339,18 +339,18 @@ RSpec.describe Sxn::Core::SessionManager do
 
     it "removes worktree from session" do
       session_manager.remove_worktree_from_session("test-session", "project1")
-      
+
       worktrees = session_manager.get_session_worktrees("test-session")
       expect(worktrees).not_to have_key("project1")
-      
+
       updated_session = session_manager.get_session("test-session")
       expect(updated_session[:projects]).not_to include("project1")
     end
 
     it "raises error if session not found" do
-      expect {
+      expect do
         session_manager.remove_worktree_from_session("non-existent", "project1")
-      }.to raise_error(Sxn::SessionNotFoundError, "Session 'non-existent' not found")
+      end.to raise_error(Sxn::SessionNotFoundError, "Session 'non-existent' not found")
     end
   end
 
@@ -370,9 +370,9 @@ RSpec.describe Sxn::Core::SessionManager do
     it "returns worktrees data" do
       session_manager.add_worktree_to_session("test-session", "project1", "/path/1", "main")
       session_manager.add_worktree_to_session("test-session", "project2", "/path/2", "feature")
-      
+
       worktrees = session_manager.get_session_worktrees("test-session")
-      
+
       expect(worktrees).to have_key("project1")
       expect(worktrees).to have_key("project2")
       # Check that worktrees structure exists
@@ -387,15 +387,15 @@ RSpec.describe Sxn::Core::SessionManager do
 
     it "changes session status to archived" do
       session_manager.archive_session("test-session")
-      
+
       updated_session = session_manager.get_session("test-session")
       expect(updated_session[:status]).to eq("archived")
     end
 
     it "raises error if session not found" do
-      expect {
+      expect do
         session_manager.archive_session("non-existent")
-      }.to raise_error(Sxn::SessionNotFoundError, "Session 'non-existent' not found")
+      end.to raise_error(Sxn::SessionNotFoundError, "Session 'non-existent' not found")
     end
   end
 
@@ -406,15 +406,15 @@ RSpec.describe Sxn::Core::SessionManager do
 
     it "changes session status to active" do
       session_manager.activate_session("test-session")
-      
+
       updated_session = session_manager.get_session("test-session")
       expect(updated_session[:status]).to eq("active")
     end
 
     it "raises error if session not found" do
-      expect {
+      expect do
         session_manager.activate_session("non-existent")
-      }.to raise_error(Sxn::SessionNotFoundError, "Session 'non-existent' not found")
+      end.to raise_error(Sxn::SessionNotFoundError, "Session 'non-existent' not found")
     end
   end
 
@@ -429,7 +429,7 @@ RSpec.describe Sxn::Core::SessionManager do
 
       it "finds parent repository from gitdir reference" do
         File.write(git_file_path, "gitdir: /repo/.git/worktrees/test-worktree")
-        
+
         parent_repo = session_manager.send(:find_parent_repository, worktree_path)
         expect(parent_repo).to eq("/repo/.git")
       end
@@ -441,14 +441,14 @@ RSpec.describe Sxn::Core::SessionManager do
 
       it "returns nil if gitdir doesn't contain worktrees" do
         File.write(git_file_path, "gitdir: /repo/.git")
-        
+
         parent_repo = session_manager.send(:find_parent_repository, worktree_path)
         expect(parent_repo).to be_nil
       end
 
       it "handles file read errors gracefully" do
-        FileUtils.mkdir_p(git_file_path)  # Create as directory instead of file
-        
+        FileUtils.mkdir_p(git_file_path) # Create as directory instead of file
+
         parent_repo = session_manager.send(:find_parent_repository, worktree_path)
         expect(parent_repo).to be_nil
       end
@@ -456,21 +456,21 @@ RSpec.describe Sxn::Core::SessionManager do
 
     describe "#validate_session_name!" do
       it "accepts valid names" do
-        expect {
+        expect do
           session_manager.send(:validate_session_name!, "valid-session_123")
-        }.not_to raise_error
+        end.not_to raise_error
       end
 
       it "rejects names with spaces" do
-        expect {
+        expect do
           session_manager.send(:validate_session_name!, "invalid name")
-        }.to raise_error(Sxn::InvalidSessionNameError)
+        end.to raise_error(Sxn::InvalidSessionNameError)
       end
 
       it "rejects names with special characters" do
-        expect {
+        expect do
           session_manager.send(:validate_session_name!, "invalid@name")
-        }.to raise_error(Sxn::InvalidSessionNameError)
+        end.to raise_error(Sxn::InvalidSessionNameError)
       end
     end
   end

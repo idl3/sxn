@@ -6,7 +6,7 @@ RSpec.describe Sxn::Rules::TemplateRule do
   let(:project_path) { Dir.mktmpdir("project") }
   let(:session_path) { Dir.mktmpdir("session") }
   let(:rule_name) { "template_test_real" }
-  
+
   let(:basic_config) do
     {
       "templates" => [
@@ -23,7 +23,7 @@ RSpec.describe Sxn::Rules::TemplateRule do
     FileUtils.mkdir_p(File.join(project_path, ".sxn/templates"))
     template_content = <<~LIQUID
       # Session: {{session.name}}
-      
+
       Created at: {{session.created_at}}
       Project: {{project.name}}
       Custom: {{custom_var}}
@@ -37,7 +37,7 @@ RSpec.describe Sxn::Rules::TemplateRule do
   end
 
   describe "real execution without mocking" do
-    let(:rule) { described_class.new(rule_name, basic_config, project_path, session_path) }
+    let(:rule) { described_class.new(project_path, session_path, basic_config) }
 
     describe "#initialize" do
       it "creates real template processor and variables instances" do
@@ -54,45 +54,45 @@ RSpec.describe Sxn::Rules::TemplateRule do
 
       context "with invalid configuration" do
         let(:invalid_config) { { "templates" => [] } }
-        let(:invalid_rule) { described_class.new(rule_name, invalid_config, project_path, session_path) }
+        let(:invalid_rule) { described_class.new(project_path, session_path, invalid_config) }
 
         it "raises validation error" do
-          expect {
+          expect do
             invalid_rule.validate
-          }.to raise_error(Sxn::Rules::ValidationError, /'templates' cannot be empty/)
+          end.to raise_error(Sxn::Rules::ValidationError, /'templates' cannot be empty/)
         end
       end
 
       context "with missing templates key" do
         let(:missing_config) { {} }
-        let(:missing_rule) { described_class.new(rule_name, missing_config, project_path, session_path) }
+        let(:missing_rule) { described_class.new(project_path, session_path, missing_config) }
 
         it "raises validation error" do
-          expect {
+          expect do
             missing_rule.validate
-          }.to raise_error(Sxn::Rules::ValidationError, /requires 'templates' configuration/)
+          end.to raise_error(Sxn::Rules::ValidationError, /requires 'templates' configuration/)
         end
       end
 
       context "with non-array templates" do
         let(:non_array_config) { { "templates" => "not-an-array" } }
-        let(:non_array_rule) { described_class.new(rule_name, non_array_config, project_path, session_path) }
+        let(:non_array_rule) { described_class.new(project_path, session_path, non_array_config) }
 
         it "raises validation error" do
-          expect {
+          expect do
             non_array_rule.validate
-          }.to raise_error(Sxn::Rules::ValidationError, /'templates' must be an array/)
+          end.to raise_error(Sxn::Rules::ValidationError, /'templates' must be an array/)
         end
       end
 
       context "with non-hash template config" do
         let(:non_hash_config) { { "templates" => ["not-a-hash"] } }
-        let(:non_hash_rule) { described_class.new(rule_name, non_hash_config, project_path, session_path) }
+        let(:non_hash_rule) { described_class.new(project_path, session_path, non_hash_config) }
 
         it "raises validation error" do
-          expect {
+          expect do
             non_hash_rule.validate
-          }.to raise_error(Sxn::Rules::ValidationError, /Template config 0 must be a hash/)
+          end.to raise_error(Sxn::Rules::ValidationError, /Template config 0 must be a hash/)
         end
       end
 
@@ -100,12 +100,12 @@ RSpec.describe Sxn::Rules::TemplateRule do
         let(:missing_source_config) do
           { "templates" => [{ "destination" => "test.md" }] }
         end
-        let(:missing_source_rule) { described_class.new(rule_name, missing_source_config, project_path, session_path) }
+        let(:missing_source_rule) { described_class.new(project_path, session_path, missing_source_config) }
 
         it "raises validation error" do
-          expect {
+          expect do
             missing_source_rule.validate
-          }.to raise_error(Sxn::Rules::ValidationError, /must have a 'source' string/)
+          end.to raise_error(Sxn::Rules::ValidationError, /must have a 'source' string/)
         end
       end
 
@@ -113,12 +113,12 @@ RSpec.describe Sxn::Rules::TemplateRule do
         let(:missing_dest_config) do
           { "templates" => [{ "source" => "test.liquid" }] }
         end
-        let(:missing_dest_rule) { described_class.new(rule_name, missing_dest_config, project_path, session_path) }
+        let(:missing_dest_rule) { described_class.new(project_path, session_path, missing_dest_config) }
 
         it "raises validation error" do
-          expect {
+          expect do
             missing_dest_rule.validate
-          }.to raise_error(Sxn::Rules::ValidationError, /must have a 'destination' string/)
+          end.to raise_error(Sxn::Rules::ValidationError, /must have a 'destination' string/)
         end
       end
 
@@ -134,12 +134,12 @@ RSpec.describe Sxn::Rules::TemplateRule do
             ]
           }
         end
-        let(:unsupported_rule) { described_class.new(rule_name, unsupported_engine_config, project_path, session_path) }
+        let(:unsupported_rule) { described_class.new(project_path, session_path, unsupported_engine_config) }
 
         it "raises validation error" do
-          expect {
+          expect do
             unsupported_rule.validate
-          }.to raise_error(Sxn::Rules::ValidationError, /unsupported engine 'mustache'/)
+          end.to raise_error(Sxn::Rules::ValidationError, /unsupported engine 'mustache'/)
         end
       end
 
@@ -155,12 +155,12 @@ RSpec.describe Sxn::Rules::TemplateRule do
             ]
           }
         end
-        let(:invalid_vars_rule) { described_class.new(rule_name, invalid_vars_config, project_path, session_path) }
+        let(:invalid_vars_rule) { described_class.new(project_path, session_path, invalid_vars_config) }
 
         it "raises validation error" do
-          expect {
+          expect do
             invalid_vars_rule.validate
-          }.to raise_error(Sxn::Rules::ValidationError, /'variables' must be a hash/)
+          end.to raise_error(Sxn::Rules::ValidationError, /'variables' must be a hash/)
         end
       end
 
@@ -175,12 +175,12 @@ RSpec.describe Sxn::Rules::TemplateRule do
             ]
           }
         end
-        let(:unsafe_rule) { described_class.new(rule_name, unsafe_dest_config, project_path, session_path) }
+        let(:unsafe_rule) { described_class.new(project_path, session_path, unsafe_dest_config) }
 
         it "raises validation error" do
-          expect {
+          expect do
             unsafe_rule.validate
-          }.to raise_error(Sxn::Rules::ValidationError, /destination path is not safe/)
+          end.to raise_error(Sxn::Rules::ValidationError, /destination path is not safe/)
         end
       end
 
@@ -195,12 +195,12 @@ RSpec.describe Sxn::Rules::TemplateRule do
             ]
           }
         end
-        let(:absolute_rule) { described_class.new(rule_name, absolute_dest_config, project_path, session_path) }
+        let(:absolute_rule) { described_class.new(project_path, session_path, absolute_dest_config) }
 
         it "raises validation error" do
-          expect {
+          expect do
             absolute_rule.validate
-          }.to raise_error(Sxn::Rules::ValidationError, /destination path is not safe/)
+          end.to raise_error(Sxn::Rules::ValidationError, /destination path is not safe/)
         end
       end
 
@@ -216,12 +216,12 @@ RSpec.describe Sxn::Rules::TemplateRule do
             ]
           }
         end
-        let(:missing_file_rule) { described_class.new(rule_name, missing_file_config, project_path, session_path) }
+        let(:missing_file_rule) { described_class.new(project_path, session_path, missing_file_config) }
 
         it "raises validation error" do
-          expect {
+          expect do
             missing_file_rule.validate
-          }.to raise_error(Sxn::Rules::ValidationError, /Required template file does not exist/)
+          end.to raise_error(Sxn::Rules::ValidationError, /Required template file does not exist/)
         end
       end
     end
@@ -232,10 +232,10 @@ RSpec.describe Sxn::Rules::TemplateRule do
       it "executes real template processing with state changes" do
         expect(rule.apply).to be true
         expect(rule.state).to eq(:applied)
-        
+
         output_file = File.join(session_path, "README.md")
         expect(File.exist?(output_file)).to be true
-        
+
         content = File.read(output_file)
         expect(content).to include("# Session:")
         expect(content).to include("Created at:")
@@ -248,7 +248,7 @@ RSpec.describe Sxn::Rules::TemplateRule do
 
       it "tracks file creation change" do
         rule.apply
-        
+
         expect(rule.changes).not_to be_empty
         change = rule.changes.first
         expect(change.type).to eq(:file_created)
@@ -268,13 +268,13 @@ RSpec.describe Sxn::Rules::TemplateRule do
             ]
           }
         end
-        let(:custom_vars_rule) { described_class.new(rule_name, custom_vars_config, project_path, session_path) }
+        let(:custom_vars_rule) { described_class.new(project_path, session_path, custom_vars_config) }
 
         before { custom_vars_rule.validate }
 
         it "merges custom variables into template processing" do
           custom_vars_rule.apply
-          
+
           output_file = File.join(session_path, "README.md")
           content = File.read(output_file)
           expect(content).to include("Custom: custom_value")
@@ -293,7 +293,7 @@ RSpec.describe Sxn::Rules::TemplateRule do
             ]
           }
         end
-        let(:optional_rule) { described_class.new(rule_name, optional_config, project_path, session_path) }
+        let(:optional_rule) { described_class.new(project_path, session_path, optional_config) }
 
         before { optional_rule.validate }
 
@@ -328,18 +328,18 @@ RSpec.describe Sxn::Rules::TemplateRule do
               ]
             }
           end
-          let(:overwrite_rule) { described_class.new(rule_name, overwrite_config, project_path, session_path) }
+          let(:overwrite_rule) { described_class.new(project_path, session_path, overwrite_config) }
 
           before { overwrite_rule.validate }
 
           it "overwrites existing files and creates backup" do
             overwrite_rule.apply
-            
+
             # File should be overwritten
             content = File.read(existing_file)
             expect(content).not_to eq("existing content")
             expect(content).to include("# Session:")
-            
+
             # Backup should be created
             change = overwrite_rule.changes.first
             expect(change.metadata).to have_key(:backup_path)
@@ -359,13 +359,13 @@ RSpec.describe Sxn::Rules::TemplateRule do
             ]
           }
         end
-        let(:nested_rule) { described_class.new(rule_name, nested_config, project_path, session_path) }
+        let(:nested_rule) { described_class.new(project_path, session_path, nested_config) }
 
         before { nested_rule.validate }
 
         it "creates nested directories automatically" do
           nested_rule.apply
-          
+
           nested_file = File.join(session_path, "docs/deep/nested/README.md")
           expect(File.exist?(nested_file)).to be true
           expect(File.directory?(File.dirname(nested_file))).to be true
@@ -387,13 +387,13 @@ RSpec.describe Sxn::Rules::TemplateRule do
             ]
           }
         end
-        let(:multi_rule) { described_class.new(rule_name, multi_config, project_path, session_path) }
+        let(:multi_rule) { described_class.new(project_path, session_path, multi_config) }
 
         before { multi_rule.validate }
 
         it "processes multiple templates successfully" do
           multi_rule.apply
-          
+
           expect(multi_rule.changes.size).to eq(2)
           expect(File.exist?(File.join(session_path, "README.md"))).to be true
           expect(File.exist?(File.join(session_path, "docs/SESSION.md"))).to be true
@@ -408,9 +408,9 @@ RSpec.describe Sxn::Rules::TemplateRule do
         end
 
         it "handles template syntax errors gracefully" do
-          expect {
+          expect do
             rule.apply
-          }.to raise_error(Sxn::Rules::ApplicationError, /Template syntax error/)
+          end.to raise_error(Sxn::Rules::ApplicationError, /Template syntax error/)
           expect(rule.state).to eq(:failed)
         end
       end
@@ -425,9 +425,9 @@ RSpec.describe Sxn::Rules::TemplateRule do
             "source" => "test.liquid",
             "destination" => "test.md"
           }
-          
+
           variables = rule.send(:build_template_variables, template_config)
-          
+
           expect(variables).to have_key(:template)
           expect(variables[:template][:source]).to eq("test.liquid")
           expect(variables[:template][:destination]).to eq("test.md")
@@ -440,7 +440,7 @@ RSpec.describe Sxn::Rules::TemplateRule do
             "destination" => "test.md",
             "variables" => { "custom" => "value" }
           }
-          
+
           variables = rule.send(:build_template_variables, template_config)
           expect(variables["custom"]).to eq("value")
         end
@@ -450,9 +450,9 @@ RSpec.describe Sxn::Rules::TemplateRule do
         it "merges nested hashes correctly" do
           hash1 = { a: { b: 1 }, c: 2 }
           hash2 = { a: { d: 3 }, e: 4 }
-          
+
           result = rule.send(:deep_merge, hash1, hash2)
-          
+
           expect(result[:a][:b]).to eq(1)
           expect(result[:a][:d]).to eq(3)
           expect(result[:c]).to eq(2)
@@ -462,7 +462,7 @@ RSpec.describe Sxn::Rules::TemplateRule do
         it "overwrites non-hash values" do
           hash1 = { key: "original" }
           hash2 = { key: "new" }
-          
+
           result = rule.send(:deep_merge, hash1, hash2)
           expect(result[:key]).to eq("new")
         end
@@ -477,7 +477,7 @@ RSpec.describe Sxn::Rules::TemplateRule do
         it "handles extraction errors gracefully" do
           # Mock an error in the template processor
           allow(rule.instance_variable_get(:@template_processor)).to receive(:extract_variables).and_raise(StandardError)
-          
+
           variables = rule.send(:extract_used_variables, "content")
           expect(variables).to eq([])
         end

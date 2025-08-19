@@ -42,51 +42,64 @@ RSpec.describe Sxn do
   end
 
   describe "logger configuration" do
-    let(:mock_logger) { instance_double(Logger) }
+    # Use a fresh mock for each test to prevent leakage
+    let(:mock_logger) { instance_double(Logger, level: nil, formatter: nil, "level=": nil, "formatter=": nil) }
 
     before do
-      allow(Logger).to receive(:new).and_return(mock_logger)
-      allow(mock_logger).to receive(:level=)
-      allow(mock_logger).to receive(:formatter=)
+      # Reset Sxn logger state before each test
+      Sxn.instance_variable_set(:@logger, nil)
+
+      # Clear any existing stubs on Sxn
+      RSpec::Mocks.space.proxy_for(Sxn).reset if RSpec::Mocks.space.proxy_for(Sxn).respond_to?(:reset)
     end
 
     describe ".setup_logger" do
       it "creates a logger with default info level" do
-        expect(Logger).to receive(:new).with($stdout).and_return(mock_logger)
-        expect(mock_logger).to receive(:level=).with(Logger::INFO)
-        
+        fresh_logger = instance_double(Logger, level: nil, formatter: nil)
+        expect(Logger).to receive(:new).with($stdout).and_return(fresh_logger)
+        expect(fresh_logger).to receive(:level=).with(Logger::INFO)
+        expect(fresh_logger).to receive(:formatter=).with(anything)
+
         logger = Sxn.setup_logger
-        
-        expect(logger).to eq(mock_logger)
-        expect(Sxn.logger).to eq(mock_logger)
+
+        expect(logger).to eq(fresh_logger)
+        expect(Sxn.logger).to eq(fresh_logger)
       end
 
       it "accepts custom log level" do
-        expect(mock_logger).to receive(:level=).with(Logger::DEBUG)
-        
+        fresh_logger = instance_double(Logger, level: nil, formatter: nil)
+        allow(Logger).to receive(:new).and_return(fresh_logger)
+        expect(fresh_logger).to receive(:level=).with(Logger::DEBUG)
+        expect(fresh_logger).to receive(:formatter=).with(anything)
+
         Sxn.setup_logger(level: :debug)
       end
 
       it "accepts log level as string" do
-        expect(mock_logger).to receive(:level=).with(Logger::ERROR)
-        
+        fresh_logger = instance_double(Logger, level: nil, formatter: nil)
+        allow(Logger).to receive(:new).and_return(fresh_logger)
+        expect(fresh_logger).to receive(:level=).with(Logger::ERROR)
+        expect(fresh_logger).to receive(:formatter=).with(anything)
+
         Sxn.setup_logger(level: "error")
       end
 
       it "sets custom formatter" do
         time = Time.new(2023, 1, 1, 12, 0, 0)
         allow(Time).to receive(:now).and_return(time)
-        
-        Sxn.setup_logger
-        
-        # Get the formatter that was set
+
+        fresh_logger = instance_double(Logger, level: nil)
+        allow(Logger).to receive(:new).and_return(fresh_logger)
+        allow(fresh_logger).to receive(:level=)
+
+        # Capture the formatter that gets set
         formatter = nil
-        allow(mock_logger).to receive(:formatter=) do |f|
+        allow(fresh_logger).to receive(:formatter=) do |f|
           formatter = f
         end
-        
+
         Sxn.setup_logger
-        
+
         # Test the formatter
         formatted = formatter.call("INFO", time, nil, "Test message")
         expect(formatted).to eq("[2023-01-01 12:00:00] INFO: Test message\n")
@@ -95,13 +108,20 @@ RSpec.describe Sxn do
 
     describe ".logger" do
       it "returns the configured logger" do
+        fresh_logger = instance_double(Logger, level: nil, formatter: nil)
+        allow(Logger).to receive(:new).and_return(fresh_logger)
+        allow(fresh_logger).to receive(:level=)
+        allow(fresh_logger).to receive(:formatter=)
         Sxn.setup_logger
-        expect(Sxn.logger).to eq(mock_logger)
+        expect(Sxn.logger).to eq(fresh_logger)
       end
     end
 
     describe ".logger=" do
       it "allows setting a custom logger" do
+        # Ensure we start with a nil logger
+        Sxn.instance_variable_set(:@logger, nil)
+
         custom_logger = double("CustomLogger")
         Sxn.logger = custom_logger
         expect(Sxn.logger).to eq(custom_logger)
@@ -119,7 +139,7 @@ RSpec.describe Sxn do
     describe ".load_config" do
       it "loads configuration using Config.current" do
         Sxn.load_config
-        
+
         expect(Sxn::Config).to have_received(:current)
         expect(Sxn.config).to eq(mock_config)
       end
@@ -150,7 +170,7 @@ RSpec.describe Sxn do
     it "loads required dependencies" do
       # Test that Zeitwerk is properly configured
       expect(defined?(Zeitwerk)).to be_truthy
-      
+
       # Test that key modules are autoloaded
       expect { Sxn::Core::ConfigManager }.not_to raise_error
       expect { Sxn::Commands::Init }.not_to raise_error
@@ -176,23 +196,28 @@ RSpec.describe Sxn do
   describe "class methods behavior" do
     describe "accessor methods" do
       it "allows reading and writing logger" do
-        original_logger = Sxn.logger
+        # Clear any existing stubs on Sxn from the global setup
+        RSpec::Mocks.space.proxy_for(Sxn).reset if RSpec::Mocks.space.proxy_for(Sxn).respond_to?(:reset)
+
+        # Ensure clean state
+        Sxn.instance_variable_set(:@logger, nil)
+
         new_logger = double("NewLogger")
-        
+
         Sxn.logger = new_logger
         expect(Sxn.logger).to eq(new_logger)
-        
-        # Restore original
-        Sxn.logger = original_logger
+
+        # Clean up after test
+        Sxn.instance_variable_set(:@logger, nil)
       end
 
       it "allows reading and writing config" do
         original_config = Sxn.config
         new_config = double("NewConfig")
-        
+
         Sxn.config = new_config
         expect(Sxn.config).to eq(new_config)
-        
+
         # Restore original
         Sxn.config = original_config
       end

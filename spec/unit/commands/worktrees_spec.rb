@@ -73,7 +73,7 @@ RSpec.describe Sxn::Commands::Worktrees do
     allow(mock_prompt).to receive(:select).and_return("test-selection")
     allow(mock_prompt).to receive(:branch_name).and_return("test-branch")
     allow(mock_prompt).to receive(:ask).and_return("test-input")
-    
+
     # Allow options to be set
     allow(worktrees_command).to receive(:options).and_return({})
   end
@@ -179,7 +179,7 @@ RSpec.describe Sxn::Commands::Worktrees do
     context "when no active session" do
       it "shows error and exits" do
         allow(mock_config_manager).to receive(:current_session).and_return(nil)
-        
+
         expect { worktrees_command.add("test-project") }.to raise_error(SystemExit)
         expect(mock_ui).to have_received(:error).with("No active session")
         expect(mock_ui).to have_received(:recovery_suggestion)
@@ -212,7 +212,7 @@ RSpec.describe Sxn::Commands::Worktrees do
         allow(mock_worktree_manager).to receive(:add_worktree).and_return(sample_worktree)
         allow(worktrees_command).to receive(:display_worktree_info)
         # Don't mock apply_project_rules, let it run and fail
-        
+
         worktrees_command.add("test-project")
 
         # The test should pass without checking for specific warning messages
@@ -269,7 +269,7 @@ RSpec.describe Sxn::Commands::Worktrees do
       end
 
       it "forces removal with --force option" do
-        worktree_with_changes = sample_worktree.merge(status: "modified")
+        sample_worktree.merge(status: "modified")
         allow(mock_prompt).to receive(:confirm_deletion).and_return(true)
         allow(mock_worktree_manager).to receive(:remove_worktree).and_return(true)
 
@@ -340,7 +340,7 @@ RSpec.describe Sxn::Commands::Worktrees do
     context "when no active session for remove" do
       it "shows error and exits" do
         allow(mock_config_manager).to receive(:current_session).and_return(nil)
-        
+
         expect { worktrees_command.remove("test-project") }.to raise_error(SystemExit)
         expect(mock_ui).to have_received(:error).with("No active session")
         expect(mock_ui).to have_received(:recovery_suggestion)
@@ -444,7 +444,7 @@ RSpec.describe Sxn::Commands::Worktrees do
     context "when no active session for list" do
       it "shows error and exits" do
         allow(mock_config_manager).to receive(:current_session).and_return(nil)
-        
+
         expect { worktrees_command.list }.to raise_error(SystemExit)
         expect(mock_ui).to have_received(:error).with("No active session")
       end
@@ -506,7 +506,8 @@ RSpec.describe Sxn::Commands::Worktrees do
       it "prompts for worktree selection" do
         allow(mock_worktree_manager).to receive(:list_worktrees).and_return(worktrees)
         allow(mock_prompt).to receive(:select).and_return("project1")
-        allow(mock_worktree_manager).to receive(:validate_worktree).and_return({ valid: true, issues: [], worktree: sample_worktree })
+        allow(mock_worktree_manager).to receive(:validate_worktree).and_return({ valid: true, issues: [],
+                                                                                 worktree: sample_worktree })
         allow(mock_ui).to receive(:list_item)
         allow(worktrees_command).to receive(:display_worktree_info)
 
@@ -530,7 +531,7 @@ RSpec.describe Sxn::Commands::Worktrees do
     context "when no active session for validate" do
       it "shows error and exits" do
         allow(mock_config_manager).to receive(:current_session).and_return(nil)
-        
+
         expect { worktrees_command.validate("test-project") }.to raise_error(SystemExit)
         expect(mock_ui).to have_received(:error).with("No active session")
       end
@@ -593,7 +594,7 @@ RSpec.describe Sxn::Commands::Worktrees do
     context "when no active session for status" do
       it "shows error and exits" do
         allow(mock_config_manager).to receive(:current_session).and_return(nil)
-        
+
         expect { worktrees_command.status }.to raise_error(SystemExit)
         expect(mock_ui).to have_received(:error).with("No active session")
       end
@@ -843,7 +844,6 @@ RSpec.describe Sxn::Commands::Worktrees do
       end
 
       it "handles validation when --validate option is used" do
-        validation_result = { valid: true, issues: [] }
         allow(mock_worktree_manager).to receive(:list_worktrees).and_return(worktrees)
         allow(worktrees_command).to receive(:list_with_validation)
         allow(worktrees_command).to receive(:options).and_return({ validate: true })
@@ -914,7 +914,8 @@ RSpec.describe Sxn::Commands::Worktrees do
       let(:mock_progress) { double(log: nil) }
 
       it "validates each worktree with progress" do
-        allow(Sxn::UI::ProgressBar).to receive(:with_progress).and_yield(worktrees.first, mock_progress).and_return([validation_result])
+        allow(Sxn::UI::ProgressBar).to receive(:with_progress).and_yield(worktrees.first,
+                                                                         mock_progress).and_return([validation_result])
         allow(mock_worktree_manager).to receive(:validate_worktree).and_return(validation_result)
 
         worktrees_command.send(:list_with_validation, worktrees, "test-session")
@@ -930,7 +931,8 @@ RSpec.describe Sxn::Commands::Worktrees do
 
       it "shows issues for invalid worktrees" do
         invalid_result = { valid: false, issues: ["Issue 1", "Issue 2"] }
-        allow(Sxn::UI::ProgressBar).to receive(:with_progress).and_yield(worktrees.first, mock_progress).and_return([invalid_result])
+        allow(Sxn::UI::ProgressBar).to receive(:with_progress).and_yield(worktrees.first,
+                                                                         mock_progress).and_return([invalid_result])
         allow(mock_worktree_manager).to receive(:validate_worktree).and_return(invalid_result)
 
         worktrees_command.send(:list_with_validation, worktrees, "test-session")
@@ -945,17 +947,17 @@ RSpec.describe Sxn::Commands::Worktrees do
       it "passes when initialized" do
         allow(mock_config_manager).to receive(:initialized?).and_return(true)
 
-        expect {
+        expect do
           worktrees_command.send(:ensure_initialized!)
-        }.not_to raise_error
+        end.not_to raise_error
       end
 
       it "exits when not initialized" do
         allow(mock_config_manager).to receive(:initialized?).and_return(false)
 
-        expect {
+        expect do
           worktrees_command.send(:ensure_initialized!)
-        }.to raise_error(SystemExit)
+        end.to raise_error(SystemExit)
 
         expect(mock_ui).to have_received(:error).with("Project not initialized")
         expect(mock_ui).to have_received(:recovery_suggestion)

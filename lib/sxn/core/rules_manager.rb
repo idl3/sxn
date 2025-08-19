@@ -19,18 +19,18 @@ module Sxn
 
         # Get current config
         config = @config_manager.get_config
-        
+
         # Initialize project rules if not exists
         config.projects[project_name] ||= {}
         config.projects[project_name]["rules"] ||= {}
         config.projects[project_name]["rules"][rule_type] ||= []
-        
+
         # Add new rule
         config.projects[project_name]["rules"][rule_type] << rule_config
-        
+
         # Save updated config
         save_project_config(project_name, config.projects[project_name])
-        
+
         {
           project: project_name,
           type: rule_type,
@@ -44,11 +44,12 @@ module Sxn
 
         config = @config_manager.get_config
         project_rules = config.projects.dig(project_name, "rules", rule_type)
-        
+
         raise Sxn::RuleNotFoundError, "No #{rule_type} rules found for project '#{project_name}'" unless project_rules
 
         if rule_index
           raise Sxn::RuleNotFoundError, "Rule index #{rule_index} not found" if rule_index >= project_rules.size
+
           removed_rule = project_rules.delete_at(rule_index)
         else
           removed_rule = project_rules.clear
@@ -81,15 +82,16 @@ module Sxn
         # Get worktree for this project in the session
         worktree_manager = WorktreeManager.new(@config_manager, session_manager)
         worktree = worktree_manager.get_worktree(project_name, session_name: session_name)
-        raise Sxn::WorktreeNotFoundError, "No worktree found for project '#{project_name}' in session '#{session_name}'" unless worktree
+        unless worktree
+          raise Sxn::WorktreeNotFoundError,
+                "No worktree found for project '#{project_name}' in session '#{session_name}'"
+        end
 
         # Get project rules
         rules = @project_manager.get_project_rules(project_name)
-        
+
         # Apply rules to worktree
-        results = @rules_engine.apply_rules(rules)
-        
-        results
+        @rules_engine.apply_rules(rules)
       end
 
       def validate_rules(project_name)
@@ -101,24 +103,22 @@ module Sxn
 
         rules.each do |rule_type, rule_configs|
           Array(rule_configs).each_with_index do |rule_config, index|
-            begin
-              validate_rule_config!(rule_type, rule_config)
-              validation_results << {
-                type: rule_type,
-                index: index,
-                config: rule_config,
-                valid: true,
-                errors: []
-              }
-            rescue => e
-              validation_results << {
-                type: rule_type,
-                index: index,
-                config: rule_config,
-                valid: false,
-                errors: [e.message]
-              }
-            end
+            validate_rule_config!(rule_type, rule_config)
+            validation_results << {
+              type: rule_type,
+              index: index,
+              config: rule_config,
+              valid: true,
+              errors: []
+            }
+          rescue StandardError => e
+            validation_results << {
+              type: rule_type,
+              index: index,
+              config: rule_config,
+              valid: false,
+              errors: [e.message]
+            }
           end
         end
 
@@ -148,7 +148,7 @@ module Sxn
           {
             name: "setup_commands",
             description: "Run setup commands in the worktree",
-            example: { "command" => ["bundle", "install"] }
+            example: { "command" => %w[bundle install] }
           },
           {
             name: "template",
@@ -162,9 +162,9 @@ module Sxn
 
       def validate_rule_type!(rule_type)
         valid_types = %w[copy_files setup_commands template]
-        unless valid_types.include?(rule_type)
-          raise Sxn::InvalidRuleTypeError, "Invalid rule type: #{rule_type}. Valid types: #{valid_types.join(', ')}"
-        end
+        return if valid_types.include?(rule_type)
+
+        raise Sxn::InvalidRuleTypeError, "Invalid rule type: #{rule_type}. Valid types: #{valid_types.join(", ")}"
       end
 
       def validate_rule_config!(rule_type, rule_config)
@@ -182,26 +182,26 @@ module Sxn
         unless config.is_a?(Hash) && config["source"]
           raise Sxn::InvalidRuleConfigError, "copy_files rule must have 'source' field"
         end
-        
-        if config["strategy"] && !%w[copy symlink].include?(config["strategy"])
-          raise Sxn::InvalidRuleConfigError, "copy_files strategy must be 'copy' or 'symlink'"
-        end
+
+        return unless config["strategy"] && !%w[copy symlink].include?(config["strategy"])
+
+        raise Sxn::InvalidRuleConfigError, "copy_files strategy must be 'copy' or 'symlink'"
       end
 
       def validate_setup_commands_config!(config)
         unless config.is_a?(Hash) && config["command"]
           raise Sxn::InvalidRuleConfigError, "setup_commands rule must have 'command' field"
         end
-        
-        unless config["command"].is_a?(Array)
-          raise Sxn::InvalidRuleConfigError, "setup_commands command must be an array"
-        end
+
+        return if config["command"].is_a?(Array)
+
+        raise Sxn::InvalidRuleConfigError, "setup_commands command must be an array"
       end
 
       def validate_template_config!(config)
-        unless config.is_a?(Hash) && config["source"] && config["destination"]
-          raise Sxn::InvalidRuleConfigError, "template rule must have 'source' and 'destination' fields"
-        end
+        return if config.is_a?(Hash) && config["source"] && config["destination"]
+
+        raise Sxn::InvalidRuleConfigError, "template rule must have 'source' and 'destination' fields"
       end
 
       def list_project_rules(project_name)
@@ -242,17 +242,17 @@ module Sxn
         formatted_rules
       end
 
-      def save_project_config(project_name, project_config)
+      def save_project_config(project_name, _project_config)
         # This would need to be implemented to save back to the config file
         # For now, we'll use the config manager's add_project method to update
         project = @project_manager.get_project(project_name)
         @config_manager.add_project(
-          project_name, 
-          project[:path], 
-          type: project[:type], 
+          project_name,
+          project[:path],
+          type: project[:type],
           default_branch: project[:default_branch]
         )
-        
+
         # TODO: Implement proper rule saving in config system
       end
 
@@ -281,13 +281,13 @@ module Sxn
         case project_type
         when "rails"
           [
-            { "command" => ["bundle", "install"] },
+            { "command" => %w[bundle install] },
             { "command" => ["bin/rails", "db:create"] },
             { "command" => ["bin/rails", "db:migrate"] }
           ]
         when "javascript", "typescript"
           [
-            { "command" => ["npm", "install"] }
+            { "command" => %w[npm install] }
           ]
         else
           [
@@ -296,7 +296,7 @@ module Sxn
         end
       end
 
-      def generate_template_rule_template(project_type)
+      def generate_template_rule_template(_project_type)
         [
           {
             "source" => ".sxn/templates/session-info.md",

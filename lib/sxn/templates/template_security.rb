@@ -24,27 +24,28 @@ module Sxn
         # Ruby code execution - look for actual method calls, not just words
         /\b(?:eval|exec|system|spawn|fork)\s*[\(\[]/,
         /\b(?:require|load|autoload)\s*[\(\['"]/,
-        
+
         # File/IO operations - look for actual usage, not just the words
         /\b(?:File|Dir|IO|Kernel|Process|Thread)\s*\./,
         /\b(?:File|Dir|IO)\.(?:open|read|write|delete)/,
-        
+
         # Shell injection patterns - be very specific
         # Removed backtick check as it causes too many false positives with markdown
         # Liquid doesn't execute Ruby code directly anyway
         /%x\{[^}]*\}/, # %x{} command execution
         /\bsystem\s*\(/, # Direct system calls
-        /\b%x[{\[]/, # Alternative command execution syntax
-        
+        /%x[{\[]/, # Alternative command execution syntax (removed \b since % is not a word char)
+
         # Web security patterns
         /<script\b[^>]*>/i, # Script tags
         /javascript:/i, # JavaScript protocols
         /on\w+\s*=/i, # Event handlers
-        
+
         # Liquid-specific dangerous patterns
         /\{\{.*\|\s*(?:eval|exec|system)\s*\}\}/, # Piped to dangerous filters
+        /\{\{\s*(?:eval|exec|system)\s*\(/, # Direct calls to dangerous functions
         /\{%\s*(?:eval|exec)\b/, # Liquid eval/exec commands
-        
+
         # Ruby metaprogramming that could be dangerous
         /\bsend\s*\(/,
         /\b__send__\s*\(/,
@@ -52,11 +53,11 @@ module Sxn
         /\binstance_eval\b/,
         /\bclass_eval\b/,
         /\bmodule_eval\b/,
-        
+
         # File system access patterns
         /\{\{\s*file\.(?:read|write|delete)\b/i,
         /\{%\s*(?:write_file|delete)\b/i,
-        /\{\{\s*delete\s*\(/i,
+        /\{\{\s*delete\s*\(/i
       ].freeze
 
       # Whitelisted variable namespaces
@@ -107,13 +108,21 @@ module Sxn
       def validate_template(template_content, variables = {})
         # Check cache first
         cache_key = generate_cache_key(template_content, variables)
-        return @validation_cache[cache_key] if @validation_cache.key?(cache_key)
+        if @validation_cache.key?(cache_key)
+          cached_result = @validation_cache[cache_key]
+          if cached_result == false
+            # Re-raise cached error without re-validating
+            raise Errors::TemplateSecurityError, "Cached validation error for template"
+          else
+            return cached_result
+          end
+        end
 
         begin
           result = validate_template_content(template_content)
           validate_template_variables(variables)
           validate_template_complexity(template_content)
-          
+
           @validation_cache[cache_key] = result
           result
         rescue Errors::TemplateSecurityError => e
@@ -130,20 +139,20 @@ module Sxn
         # First check total variable count before processing
         total_variables = count_total_variables(variables)
         if total_variables > MAX_VARIABLE_COUNT
-          raise Errors::TemplateSecurityError, 
+          raise Errors::TemplateSecurityError,
                 "Too many variables: #{total_variables} exceeds limit of #{MAX_VARIABLE_COUNT}"
         end
-        
+
         sanitized = {}
-        
+
         variables.each do |key, value|
           sanitized_key = sanitize_variable_key(key)
           next unless valid_variable_namespace?(sanitized_key)
-          
+
           sanitized_value = sanitize_variable_value(value, depth: 0)
           sanitized[sanitized_key] = sanitized_value
         end
-        
+
         sanitized
       end
 
@@ -160,32 +169,32 @@ module Sxn
         @validation_cache.clear
       end
 
-      private
-
-      # Validate template content for dangerous patterns
+      # Validate template content for dangerous patterns (public version for tests)
       def validate_template_content(template_content)
         DANGEROUS_PATTERNS.each do |pattern|
           next unless template_content.match?(pattern)
-          
-          raise Errors::TemplateSecurityError, 
+
+          raise Errors::TemplateSecurityError,
                 "Template contains dangerous pattern: #{pattern.source}"
         end
-        
+
         # Check for path traversal attempts
         if template_content.include?("../") || template_content.include?("..\\")
-          raise Errors::TemplateSecurityError, 
+          raise Errors::TemplateSecurityError,
                 "Template contains path traversal attempt"
         end
-        
+
         # Check for file system access attempts - be more specific
         # Look for actual File/Dir method calls, not just the words
         if template_content.match?(/\{\{\s*.*(?:File|Dir|IO)\.(?:read|write|delete|create|open).*\s*\}\}/)
-          raise Errors::TemplateSecurityError, 
+          raise Errors::TemplateSecurityError,
                 "Template attempts file system access"
         end
-        
+
         true
       end
+
+      private
 
       # Validate template variables for security issues
       def validate_template_variables(variables)
@@ -193,7 +202,7 @@ module Sxn
           validate_variable_key(key)
           validate_variable_value(value, depth: 0)
         end
-        
+
         true
       end
 
@@ -202,7 +211,7 @@ module Sxn
         # Track actual nesting depth by processing the template sequentially
         nesting_depth = 0
         max_depth = 0
-        
+
         # Process template character by character to track proper nesting
         template_content.scan(/\{%.*?%\}/m) do |tag|
           # Opening tags increase depth
@@ -212,46 +221,46 @@ module Sxn
               nesting_depth += 1
               max_depth = [max_depth, nesting_depth].max
             end
-          # Closing tags decrease depth  
+          # Closing tags decrease depth
           elsif tag.match?(/\{%\s*end(?:if|unless|for|case|capture|tablerow)\b/i)
             nesting_depth -= 1
           end
         end
-        
+
         if max_depth > MAX_TEMPLATE_DEPTH
-          raise Errors::TemplateSecurityError, 
+          raise Errors::TemplateSecurityError,
                 "Template nesting too deep: #{max_depth} exceeds limit of #{MAX_TEMPLATE_DEPTH}"
         end
-        
+
         true
       end
 
       # Validate individual variable key
       def validate_variable_key(key)
         key_str = key.to_s
-        
+
         # Check for dangerous characters
         if key_str.match?(/[^a-zA-Z0-9_]/)
-          raise Errors::TemplateSecurityError, 
+          raise Errors::TemplateSecurityError,
                 "Variable key contains dangerous characters: #{key_str}"
         end
-        
+
         # Check for reserved keywords and dangerous keywords
         if key_str.match?(/\A(?:class|module|def|end|self|super|nil|true|false|eval|exec|system)\z/)
-          raise Errors::TemplateSecurityError, 
+          raise Errors::TemplateSecurityError,
                 "Variable key is a reserved word: #{key_str}"
         end
-        
+
         true
       end
 
       # Validate individual variable value
       def validate_variable_value(value, depth: 0)
         if depth > MAX_TEMPLATE_DEPTH
-          raise Errors::TemplateSecurityError, 
+          raise Errors::TemplateSecurityError,
                 "Variable nesting too deep: #{depth} exceeds limit of #{MAX_TEMPLATE_DEPTH}"
         end
-        
+
         case value
         when String
           validate_string_value(value)
@@ -274,19 +283,19 @@ module Sxn
       # Validate string values for dangerous content
       def validate_string_value(str)
         str = str.to_s
-        
+
         # Check for script injection
         if str.match?(/<script\b[^>]*>/i)
-          raise Errors::TemplateSecurityError, 
+          raise Errors::TemplateSecurityError,
                 "String value contains script tag"
         end
-        
+
         # Check for command injection attempts
         if str.match?(/[;&|`$]/)
-          raise Errors::TemplateSecurityError, 
+          raise Errors::TemplateSecurityError,
                 "String value contains command injection characters"
         end
-        
+
         true
       end
 
@@ -301,6 +310,7 @@ module Sxn
         # For the sanitization test, we want to include variables that don't
         # have clear namespace patterns. Only filter out specific known dangerous ones.
         return true if namespace.length <= 3 # Short keys like "key" are probably safe
+
         ALLOWED_VARIABLE_NAMESPACES.include?(namespace)
       end
 
@@ -308,7 +318,7 @@ module Sxn
       def sanitize_variable_value(value, depth: 0)
         # Stop recursion at max depth by returning nil
         return nil if depth >= MAX_TEMPLATE_DEPTH
-        
+
         case value
         when Hash
           sanitized = {}
@@ -336,25 +346,25 @@ module Sxn
       # Sanitize string values
       def sanitize_string_value(str)
         str = str.to_s
-        
+
         # Remove script tags
-        str = str.gsub(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/mi, "")
-        
+        str = str.gsub(%r{<script\b[^<]*(?:(?!</script>)<[^<]*)*</script>}mi, "")
+
         # Remove HTML tags
         str = str.gsub(/<[^>]*>/, "")
-        
+
         # Remove dangerous characters
         str = str.gsub(/[;&|`$]/, "")
-        
+
         # Limit string length
-        str = str[0, 10000] if str.length > 10000
-        
+        str = str[0, 10_000] if str.length > 10_000
+
         str
       end
 
       # Count total variables recursively
       def count_total_variables(variables, count = 0)
-        variables.each do |key, value|
+        variables.each_value do |value|
           count += 1
           if value.is_a?(Hash)
             count = count_total_variables(value, count)
@@ -373,6 +383,29 @@ module Sxn
         content_hash = Digest::SHA256.hexdigest(template_content)
         variables_hash = Digest::SHA256.hexdigest(variables.inspect)
         "#{content_hash}_#{variables_hash}"
+      end
+
+      public
+
+      # Validate template path for security issues
+      #
+      # @param template_path [String, Pathname] Path to the template file
+      # @return [Boolean] true if path is safe
+      def validate_template_path(template_path)
+        path = Pathname.new(template_path)
+
+        # Check for path traversal attempts
+        normalized_path = path.expand_path.to_s
+        if normalized_path.include?("..") || normalized_path.include?("~")
+          raise Errors::TemplateSecurityError, "Template path contains traversal attempt: #{template_path}"
+        end
+
+        # Check that the file exists and is readable
+        unless path.exist? && path.readable?
+          raise Errors::TemplateSecurityError, "Template path is not accessible: #{template_path}"
+        end
+
+        true
       end
     end
   end

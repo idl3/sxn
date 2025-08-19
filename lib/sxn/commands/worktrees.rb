@@ -8,7 +8,7 @@ module Sxn
     class Worktrees < Thor
       include Thor::Actions
 
-      def initialize(*)
+      def initialize(args = ARGV, local_options = {}, config = {})
         super
         @ui = Sxn::UI::Output.new
         @prompt = Sxn::UI::Prompt.new
@@ -48,23 +48,20 @@ module Sxn
 
         begin
           @ui.progress_start("Creating worktree for #{project_name}")
-          
+
           worktree = @worktree_manager.add_worktree(
             project_name,
             branch,
             session_name: session_name
           )
-          
+
           @ui.progress_done
           @ui.success("Created worktree for #{project_name}")
 
           display_worktree_info(worktree)
 
           # Apply rules if requested
-          if options[:apply_rules]
-            apply_project_rules(project_name, session_name)
-          end
-
+          apply_project_rules(project_name, session_name) if options[:apply_rules]
         rescue Sxn::Error => e
           @ui.progress_failed
           @ui.error(e.message)
@@ -104,11 +101,11 @@ module Sxn
         # Check for uncommitted changes unless forced
         unless options[:force]
           worktree = @worktree_manager.get_worktree(project_name, session_name: session_name)
-          if worktree && worktree[:status] != "clean"
-            unless @prompt.ask_yes_no("Worktree has uncommitted changes. Continue?", default: false)
-              @ui.info("Cancelled")
-              return
-            end
+          if worktree && worktree[:status] != "clean" && !@prompt.ask_yes_no(
+            "Worktree has uncommitted changes. Continue?", default: false
+          )
+            @ui.info("Cancelled")
+            return
           end
         end
 
@@ -122,7 +119,6 @@ module Sxn
           @worktree_manager.remove_worktree(project_name, session_name: session_name)
           @ui.progress_done
           @ui.success("Removed worktree for #{project_name}")
-
         rescue Sxn::Error => e
           @ui.progress_failed
           @ui.error(e.message)
@@ -173,9 +169,9 @@ module Sxn
 
         begin
           result = @worktree_manager.validate_worktree(project_name, session_name: session_name)
-          
+
           @ui.section("Worktree Validation: #{project_name}")
-          
+
           if result[:valid]
             @ui.success("Worktree is valid")
           else
@@ -183,10 +179,7 @@ module Sxn
             result[:issues].each { |issue| @ui.list_item(issue) }
           end
 
-          if result[:worktree]
-            display_worktree_info(result[:worktree], detailed: true)
-          end
-
+          display_worktree_info(result[:worktree], detailed: true) if result[:worktree]
         rescue Sxn::Error => e
           @ui.error(e.message)
           exit(e.exit_code)
@@ -216,7 +209,6 @@ module Sxn
           else
             display_worktree_status(worktrees)
           end
-
         rescue Sxn::Error => e
           @ui.error(e.message)
           exit(e.exit_code)
@@ -226,11 +218,11 @@ module Sxn
       private
 
       def ensure_initialized!
-        unless @config_manager.initialized?
-          @ui.error("Project not initialized")
-          @ui.recovery_suggestion("Run 'sxn init' to initialize sxn in this project")
-          exit(1)
-        end
+        return if @config_manager.initialized?
+
+        @ui.error("Project not initialized")
+        @ui.recovery_suggestion("Run 'sxn init' to initialize sxn in this project")
+        exit(1)
       end
 
       def select_project(message)
@@ -263,16 +255,13 @@ module Sxn
           if worktrees.empty?
             @ui.empty_state("No worktrees in current session")
             suggest_add_worktree
+          elsif options[:validate]
+            list_with_validation(worktrees, session_name)
           else
-            if options[:validate]
-              list_with_validation(worktrees, session_name)
-            else
-              @table.worktrees(worktrees)
-              @ui.newline
-              @ui.info("Total: #{worktrees.size} worktrees")
-            end
+            @table.worktrees(worktrees)
+            @ui.newline
+            @ui.info("Total: #{worktrees.size} worktrees")
           end
-
         rescue Sxn::Error => e
           @ui.error(e.message)
           exit(e.exit_code)
@@ -280,49 +269,46 @@ module Sxn
       end
 
       def list_all_worktrees
-        begin
-          sessions = @session_manager.list_sessions(status: "active")
-          
-          @ui.section("All Worktrees")
+        sessions = @session_manager.list_sessions(status: "active")
 
-          if sessions.empty?
-            @ui.empty_state("No active sessions")
-            return
-          end
+        @ui.section("All Worktrees")
 
-          sessions.each do |session|
-            worktrees = @worktree_manager.list_worktrees(session_name: session[:name])
-            next if worktrees.empty?
-
-            @ui.subsection("Session: #{session[:name]}")
-            @table.worktrees(worktrees)
-            @ui.newline
-          end
-
-        rescue Sxn::Error => e
-          @ui.error(e.message)
-          exit(e.exit_code)
+        if sessions.empty?
+          @ui.empty_state("No active sessions")
+          return
         end
+
+        sessions.each do |session|
+          worktrees = @worktree_manager.list_worktrees(session_name: session[:name])
+          next if worktrees.empty?
+
+          @ui.subsection("Session: #{session[:name]}")
+          @table.worktrees(worktrees)
+          @ui.newline
+        end
+      rescue Sxn::Error => e
+        @ui.error(e.message)
+        exit(e.exit_code)
       end
 
       def list_with_validation(worktrees, session_name)
         @ui.subsection("Worktree Validation")
-        
+
         Sxn::UI::ProgressBar.with_progress("Validating worktrees", worktrees) do |worktree, progress|
           validation = @worktree_manager.validate_worktree(
-            worktree[:project], 
+            worktree[:project],
             session_name: session_name
           )
-          
+
           status = validation[:valid] ? "✅" : "❌"
           progress.log("#{status} #{worktree[:project]}")
-          
+
           unless validation[:valid]
             validation[:issues].each do |issue|
               progress.log("   - #{issue}")
             end
           end
-          
+
           validation
         end
 
@@ -349,19 +335,19 @@ module Sxn
 
       def display_worktree_commands(worktree)
         @ui.subsection("Available Commands")
-        
+
         @ui.command_example(
           "cd #{worktree[:path]}",
           "Navigate to worktree directory"
         )
-        
+
         if worktree[:project]
           @ui.command_example(
             "sxn rules apply #{worktree[:project]}",
             "Apply project rules to this worktree"
           )
         end
-        
+
         @ui.command_example(
           "sxn worktree validate #{worktree[:project]}",
           "Validate this worktree"
@@ -375,31 +361,31 @@ module Sxn
 
         @table.worktrees(worktrees)
         @ui.newline
-        
+
         @ui.info("Summary:")
         @ui.key_value("  Clean", clean_count, indent: 2)
-        @ui.key_value("  Modified", modified_count, indent: 2) if modified_count > 0
-        @ui.key_value("  Missing", missing_count, indent: 2) if missing_count > 0
+        @ui.key_value("  Modified", modified_count, indent: 2) if modified_count.positive?
+        @ui.key_value("  Missing", missing_count, indent: 2) if missing_count.positive?
         @ui.key_value("  Total", worktrees.size, indent: 2)
 
-        if modified_count > 0
+        if modified_count.positive?
           @ui.newline
           @ui.warning("#{modified_count} worktrees have uncommitted changes")
         end
 
-        if missing_count > 0
-          @ui.newline
-          @ui.error("#{missing_count} worktrees are missing from filesystem")
-        end
+        return unless missing_count.positive?
+
+        @ui.newline
+        @ui.error("#{missing_count} worktrees are missing from filesystem")
       end
 
       def apply_project_rules(project_name, session_name)
         rules_manager = Sxn::Core::RulesManager.new(@config_manager, @project_manager)
-        
+
         begin
           @ui.newline
           @ui.subsection("Applying Project Rules")
-          
+
           @ui.progress_start("Applying rules for #{project_name}")
           results = rules_manager.apply_rules(project_name, session_name)
           @ui.progress_done
@@ -410,8 +396,7 @@ module Sxn
             @ui.warning("Some rules failed to apply")
             results[:errors].each { |error| @ui.error("  #{error}") }
           end
-
-        rescue => e
+        rescue StandardError => e
           @ui.warning("Could not apply rules: #{e.message}")
           @ui.recovery_suggestion("Apply rules manually with 'sxn rules apply #{project_name}'")
         end
@@ -419,11 +404,10 @@ module Sxn
 
       def suggest_add_worktree
         current_session = @config_manager.current_session
+        @ui.newline
         if current_session
-          @ui.newline
           @ui.recovery_suggestion("Add worktrees with 'sxn worktree add <project> [branch]'")
         else
-          @ui.newline
           @ui.recovery_suggestion("Create and activate a session first with 'sxn add <session>'")
         end
       end

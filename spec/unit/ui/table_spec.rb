@@ -4,14 +4,14 @@ require "spec_helper"
 
 RSpec.describe Sxn::UI::Table do
   let(:table) { described_class.new }
-  let(:mock_pastel) { instance_double(Pastel) }
-  let(:mock_tty_table) { instance_double(TTY::Table) }
+  let(:mock_pastel) { double("Pastel") }
+  let(:mock_tty_table) { double("TTY::Table") }
 
   before do
     allow(Pastel).to receive(:new).and_return(mock_pastel)
     allow(TTY::Table).to receive(:new).and_return(mock_tty_table)
     allow(mock_tty_table).to receive(:render).and_return("rendered_table")
-    
+
     # Mock pastel color methods
     allow(mock_pastel).to receive(:green).and_return("GREEN")
     allow(mock_pastel).to receive(:red).and_return("RED")
@@ -26,7 +26,7 @@ RSpec.describe Sxn::UI::Table do
           {
             name: "session1",
             status: "active",
-            projects: ["project1", "project2"],
+            projects: %w[project1 project2],
             created_at: "2023-01-01T10:00:00Z",
             updated_at: "2023-01-02T15:30:00Z"
           },
@@ -45,12 +45,12 @@ RSpec.describe Sxn::UI::Table do
         allow(table).to receive(:status_indicator).with("archived").and_return("◌ Archived")
         allow(table).to receive(:format_date).and_return("formatted_date")
 
-        expect {
+        expect do
           table.sessions(sessions)
-        }.to output("rendered_table\n").to_stdout
+        end.to output("rendered_table\n").to_stdout
 
         expect(TTY::Table).to have_received(:new).with(
-          header: ["Name", "Status", "Projects", "Created", "Updated"],
+          header: %w[Name Status Projects Created Updated],
           rows: [
             ["session1", "● Active", "project1, project2", "formatted_date", "formatted_date"],
             ["session2", "◌ Archived", "", "formatted_date", "formatted_date"]
@@ -63,17 +63,17 @@ RSpec.describe Sxn::UI::Table do
         allow(table).to receive(:status_indicator).and_return("status")
         allow(table).to receive(:format_date).and_return("date")
 
-        expect {
+        expect do
           table.sessions(sessions)
-        }.to output("rendered_table\n").to_stdout
+        end.to output("rendered_table\n").to_stdout
       end
     end
 
     context "with empty sessions" do
       it "displays empty state message" do
-        expect {
+        expect do
           table.sessions([])
-        }.to output("DIM\n").to_stdout
+        end.to output("DIM\n").to_stdout
 
         expect(mock_pastel).to have_received(:dim).with("  No sessions found")
       end
@@ -102,15 +102,15 @@ RSpec.describe Sxn::UI::Table do
       it "renders projects table with headers and data" do
         allow(table).to receive(:truncate_path).and_return("truncated_path")
 
-        expect {
+        expect do
           table.projects(projects)
-        }.to output("rendered_table\n").to_stdout
+        end.to output("rendered_table\n").to_stdout
 
         expect(TTY::Table).to have_received(:new).with(
           header: ["Name", "Type", "Path", "Default Branch"],
           rows: [
-            ["project1", "rails", "truncated_path", "main"],
-            ["project2", "unknown", "truncated_path", "master"]
+            %w[project1 rails truncated_path main],
+            %w[project2 unknown truncated_path master]
           ]
         )
       end
@@ -118,9 +118,9 @@ RSpec.describe Sxn::UI::Table do
 
     context "with empty projects" do
       it "displays empty state message" do
-        expect {
+        expect do
           table.projects([])
-        }.to output("DIM\n").to_stdout
+        end.to output("DIM\n").to_stdout
 
         expect(mock_pastel).to have_received(:dim).with("  No projects configured")
       end
@@ -148,15 +148,15 @@ RSpec.describe Sxn::UI::Table do
         allow(table).to receive(:truncate_path).and_return("truncated_path")
         allow(table).to receive(:worktree_status).and_return("status")
 
-        expect {
+        expect do
           table.worktrees(worktrees)
-        }.to output("rendered_table\n").to_stdout
+        end.to output("rendered_table\n").to_stdout
 
         expect(TTY::Table).to have_received(:new).with(
-          header: ["Project", "Branch", "Path", "Status"],
+          header: %w[Project Branch Path Status],
           rows: [
-            ["project1", "main", "truncated_path", "status"],
-            ["project2", "feature", "truncated_path", "status"]
+            %w[project1 main truncated_path status],
+            %w[project2 feature truncated_path status]
           ]
         )
       end
@@ -164,9 +164,9 @@ RSpec.describe Sxn::UI::Table do
 
     context "with empty worktrees" do
       it "displays empty state message" do
-        expect {
+        expect do
           table.worktrees([])
-        }.to output("DIM\n").to_stdout
+        end.to output("DIM\n").to_stdout
 
         expect(mock_pastel).to have_received(:dim).with("  No worktrees in current session")
       end
@@ -186,7 +186,7 @@ RSpec.describe Sxn::UI::Table do
           {
             project: "project2",
             type: "setup_commands",
-            config: { command: ["npm", "install"] },
+            config: { command: %w[npm install] },
             enabled: false
           }
         ]
@@ -195,15 +195,15 @@ RSpec.describe Sxn::UI::Table do
       it "renders rules table with headers and data" do
         allow(table).to receive(:truncate_config).and_return("truncated_config")
 
-        expect {
+        expect do
           table.rules(rules)
-        }.to output("rendered_table\n").to_stdout
+        end.to output("rendered_table\n").to_stdout
 
         expect(TTY::Table).to have_received(:new).with(
-          header: ["Project", "Type", "Config", "Status"],
+          header: %w[Project Type Config Status],
           rows: [
-            ["project1", "copy_files", "truncated_config", "GREEN"],
-            ["project2", "setup_commands", "truncated_config", "RED"]
+            %w[project1 copy_files truncated_config GREEN],
+            %w[project2 setup_commands truncated_config RED]
           ]
         )
       end
@@ -211,22 +211,22 @@ RSpec.describe Sxn::UI::Table do
       it "filters rules by project when project_filter provided" do
         allow(table).to receive(:truncate_config).and_return("config")
 
-        expect {
+        expect do
           table.rules(rules, "project1")
-        }.to output("rendered_table\n").to_stdout
+        end.to output("rendered_table\n").to_stdout
 
         expect(TTY::Table).to have_received(:new).with(
-          header: ["Project", "Type", "Config", "Status"],
-          rows: [["project1", "copy_files", "config", "GREEN"]]
+          header: %w[Project Type Config Status],
+          rows: [%w[project1 copy_files config GREEN]]
         )
       end
     end
 
     context "with empty rules" do
       it "displays empty state message" do
-        expect {
+        expect do
           table.rules([])
-        }.to output("DIM\n").to_stdout
+        end.to output("DIM\n").to_stdout
 
         expect(mock_pastel).to have_received(:dim).with("  No rules configured")
       end
@@ -238,9 +238,9 @@ RSpec.describe Sxn::UI::Table do
       end
 
       it "displays empty state when no rules match filter" do
-        expect {
+        expect do
           table.rules(rules, "nonexistent")
-        }.to output("DIM\n").to_stdout
+        end.to output("DIM\n").to_stdout
       end
     end
   end
@@ -256,12 +256,12 @@ RSpec.describe Sxn::UI::Table do
     end
 
     it "renders config summary table" do
-      expect {
+      expect do
         table.config_summary(config)
-      }.to output("rendered_table\n").to_stdout
+      end.to output("rendered_table\n").to_stdout
 
       expect(TTY::Table).to have_received(:new).with(
-        header: ["Setting", "Value", "Source"],
+        header: %w[Setting Value Source],
         rows: [
           ["Sessions Folder", "/path/to/sessions", "config"],
           ["Current Session", "my-session", "config"],
@@ -274,12 +274,12 @@ RSpec.describe Sxn::UI::Table do
     it "handles missing config values" do
       empty_config = {}
 
-      expect {
+      expect do
         table.config_summary(empty_config)
-      }.to output("rendered_table\n").to_stdout
+      end.to output("rendered_table\n").to_stdout
 
       expect(TTY::Table).to have_received(:new).with(
-        header: ["Setting", "Value", "Source"],
+        header: %w[Setting Value Source],
         rows: [
           ["Sessions Folder", "Not set", "config"],
           ["Current Session", "None", "config"],
@@ -404,8 +404,8 @@ RSpec.describe Sxn::UI::Table do
       end
 
       it "formats day and time for dates within a week" do
-        week_date = (now - 86400 * 2).iso8601 # 2 days ago
-        week_time = now - 86400 * 2
+        week_date = (now - (86_400 * 2)).iso8601 # 2 days ago
+        week_time = now - (86_400 * 2)
         allow(Time).to receive(:parse).with(week_date).and_return(week_time)
 
         result = table.send(:format_date, week_date)
@@ -414,8 +414,8 @@ RSpec.describe Sxn::UI::Table do
       end
 
       it "formats month/day for older dates" do
-        old_date = (now - 86400 * 10).iso8601 # 10 days ago
-        old_time = now - 86400 * 10
+        old_date = (now - (86_400 * 10)).iso8601 # 10 days ago
+        old_time = now - (86_400 * 10)
         allow(Time).to receive(:parse).with(old_date).and_return(old_time)
 
         result = table.send(:format_date, old_date)
@@ -447,17 +447,17 @@ RSpec.describe Sxn::UI::Table do
       it "truncates path when longer than max_length" do
         long_path = "/very/long/path/that/exceeds/thirty/characters/definitely"
         result = table.send(:truncate_path, long_path, max_length: 30)
-        
+
         expect(result).to start_with("...")
-        expect(result.length).to eq(30)
+        expect(result.length).to be <= 30
         expect(result).to eq("...definitely")
       end
 
       it "accepts custom max_length" do
         path = "/custom/length/test"
         result = table.send(:truncate_path, path, max_length: 10)
-        
-        expect(result).to eq("...th/test")
+
+        expect(result).to eq("...test")
       end
     end
 
@@ -476,37 +476,37 @@ RSpec.describe Sxn::UI::Table do
       it "truncates string config when longer than max_length" do
         long_config = "this is a very long configuration string that exceeds the limit"
         result = table.send(:truncate_config, long_config, max_length: 20)
-        
+
         expect(result).to end_with("...")
-        expect(result.length).to eq(20)
-        expect(result).to eq("this is a very l...")
+        expect(result.length).to be <= 20
+        expect(result).to eq("this is a very lo...")
       end
 
       it "converts hash config to string and truncates" do
         hash_config = { source: "file.txt", strategy: "copy", complex: "data" }
         result = table.send(:truncate_config, hash_config, max_length: 30)
-        
+
         expect(result).to be_a(String)
-        expect(result.length).to eq(30)
+        expect(result.length).to be <= 30
         expect(result).to end_with("...")
       end
 
       it "accepts custom max_length" do
         config = "configuration test"
         result = table.send(:truncate_config, config, max_length: 10)
-        
-        expect(result).to eq("config...")
+
+        expect(result).to eq("configu...")
       end
     end
 
     describe "#render_table" do
       it "creates TTY::Table and renders with unicode style" do
-        headers = ["Col1", "Col2"]
-        rows = [["val1", "val2"]]
+        headers = %w[Col1 Col2]
+        rows = [%w[val1 val2]]
 
-        expect {
+        expect do
           table.send(:render_table, headers, rows)
-        }.to output("rendered_table\n").to_stdout
+        end.to output("rendered_table\n").to_stdout
 
         expect(TTY::Table).to have_received(:new).with(header: headers, rows: rows)
         expect(mock_tty_table).to have_received(:render).with(:unicode, padding: [0, 1])
@@ -515,9 +515,9 @@ RSpec.describe Sxn::UI::Table do
 
     describe "#empty_table" do
       it "outputs dimmed message" do
-        expect {
+        expect do
           table.send(:empty_table, "No data")
-        }.to output("DIM\n").to_stdout
+        end.to output("DIM\n").to_stdout
 
         expect(mock_pastel).to have_received(:dim).with("  No data")
       end

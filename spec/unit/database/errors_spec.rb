@@ -175,9 +175,9 @@ RSpec.describe "Sxn::Database error classes" do
       end
 
       expect(errors_caught).to eq([
-        Sxn::Database::DuplicateSessionError,
-        Sxn::Database::SessionNotFoundError
-      ])
+                                    Sxn::Database::DuplicateSessionError,
+                                    Sxn::Database::SessionNotFoundError
+                                  ])
     end
 
     it "can catch all database errors with base Database::Error" do
@@ -192,13 +192,11 @@ RSpec.describe "Sxn::Database error classes" do
       ]
 
       database_error_classes.each do |error_class|
-        expect {
-          begin
-            raise error_class, "test"
-          rescue Sxn::Database::Error
-            # Should catch successfully
-          end
-        }.not_to raise_error
+        expect do
+          raise error_class, "test"
+        rescue Sxn::Database::Error
+          # Should catch successfully
+        end.not_to raise_error
       end
     end
   end

@@ -45,7 +45,7 @@ module Sxn
 
       def subsection(title)
         puts ""
-        puts @pastel.bold("#{title}")
+        puts @pastel.bold(title.to_s)
         puts @pastel.dim("─" * title.length)
       end
 
@@ -88,9 +88,7 @@ module Sxn
       end
 
       def command_example(command, description = nil)
-        if description
-          puts "  #{@pastel.dim(description)}"
-        end
+        puts "  #{@pastel.dim(description)}" if description
         puts "  #{@pastel.cyan("$ #{command}")}"
         puts ""
       end

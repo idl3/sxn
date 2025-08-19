@@ -1,250 +1,59 @@
-# {{ project.name | default: session.name }} - JavaScript Development Session
-
-## Session Overview
-- **Session Name**: {{ session.name }}
-- **Created**: {{ session.created_at }}
-- **Project Type**: {{ project.type | capitalize }}
-{% if session.linear_task %}
-- **Linear Task**: [{{ session.linear_task }}](https://linear.app/team/issue/{{ session.linear_task }})
-{% endif %}
+# {{project.name}} - JavaScript Development Session
 
 ## Project Information
-- **Project Path**: `{{ project.path }}`
-- **Package Manager**: {{ project.package_manager | default: "npm" }}
-{% if environment.node %}
-- **Node.js Version**: {{ environment.node.version }}
-{% endif %}
-
-{% if git.branch %}
-## Git Context
-- **Current Branch**: `{{ git.branch }}`
-{% if git.upstream %}
-- **Upstream**: `{{ git.upstream }}`
-{% endif %}
-{% if git.last_commit %}
-- **Last Commit**: {{ git.last_commit.sha | truncate: 8 }} - {{ git.last_commit.message }}
-{% endif %}
-{% if git.has_changes %}
-- **Status**: Has uncommitted changes
-{% else %}
-- **Status**: Working directory clean
-{% endif %}
-{% endif %}
-
-## Development Setup
-
-### Prerequisites
-```bash
-# Ensure correct Node.js version
-nvm use {% if environment.node %}{{ environment.node.version }}{% else %}lts{% endif %}
-
-# Verify Node.js and npm versions
-node --version
-npm --version
-```
-
-### Installation
-```bash
-# Navigate to project
-cd {{ project.path }}
-
-# Install dependencies
-{% if project.package_manager == "yarn" %}
-yarn install
-{% elsif project.package_manager == "pnpm" %}
-pnpm install
-{% else %}
-npm install
-{% endif %}
-```
+- **Session Name**: {{session.name}}
+- **Project Type**: {{project.type | capitalize}}
+- **Package Manager**: {{project.package_manager | default: 'npm'}}
+- **Node.js Version**: {{environment.node.version | default: 'Not detected'}}
 
 ## Available Scripts
+
 {% if project.scripts %}
 {% for script in project.scripts %}
-### {{ script[0] }}
-```bash
-{% if project.package_manager == "yarn" %}
-yarn {{ script[0] }}
-{% elsif project.package_manager == "pnpm" %}
-pnpm {{ script[0] }}
-{% else %}
-npm run {{ script[0] }}
-{% endif %}
-```
+- `{{script[0]}}`: {{script[1]}}
 {% endfor %}
 {% else %}
-No scripts defined in package.json.
+No scripts found in package.json
 {% endif %}
-
-## Common Development Commands
-
-### Development Server
-```bash
-# Start development server
-{% if project.package_manager == "yarn" %}
-yarn dev
-# or
-yarn start
-{% elsif project.package_manager == "pnpm" %}
-pnpm dev
-# or
-pnpm start
-{% else %}
-npm run dev
-# or
-npm start
-{% endif %}
-```
-
-### Building
-```bash
-# Build for production
-{% if project.package_manager == "yarn" %}
-yarn build
-{% elsif project.package_manager == "pnpm" %}
-pnpm build
-{% else %}
-npm run build
-{% endif %}
-```
-
-### Testing
-```bash
-# Run tests
-{% if project.package_manager == "yarn" %}
-yarn test
-{% elsif project.package_manager == "pnpm" %}
-pnpm test
-{% else %}
-npm test
-{% endif %}
-
-# Run tests in watch mode
-{% if project.package_manager == "yarn" %}
-yarn test:watch
-{% elsif project.package_manager == "pnpm" %}
-pnpm test:watch
-{% else %}
-npm run test:watch
-{% endif %}
-```
-
-### Code Quality
-```bash
-# Lint code
-{% if project.package_manager == "yarn" %}
-yarn lint
-{% elsif project.package_manager == "pnpm" %}
-pnpm lint
-{% else %}
-npm run lint
-{% endif %}
-
-# Format code
-{% if project.package_manager == "yarn" %}
-yarn format
-{% elsif project.package_manager == "pnpm" %}
-pnpm format
-{% else %}
-npm run format
-{% endif %}
-```
 
 ## Dependencies
+
 {% if project.dependencies %}
 ### Production Dependencies
 {% for dep in project.dependencies %}
-- {{ dep }}
+- {{dep}}
 {% endfor %}
 {% endif %}
 
 {% if project.dev_dependencies %}
 ### Development Dependencies
 {% for dep in project.dev_dependencies %}
-- {{ dep }}
+- {{dep}}
 {% endfor %}
 {% endif %}
 
-## Environment Configuration
-Create a `.env.local` file for local environment variables:
+## Getting Started
 
 ```bash
-# Copy example environment file
-cp .env.example .env.local
+# Use the correct Node.js version
+nvm use {{environment.node.version | default: '18.0.0'}}
 
-# Edit environment variables
-{{ user.editor | default: "code" }} .env.local
-```
+# Install dependencies
+{{project.package_manager | default: 'npm'}} install
 
-## Session-Based Development
-
-This is a session-based development environment:
-- **Session Path**: `{{ session.path }}`
-- **Project Isolation**: Each session maintains its own environment
-- **Git Worktrees**: Projects are isolated using git worktrees
-
-### Session Commands
-```bash
-# Navigate to session
-cd {{ session.path }}
-
-# List session projects
-sxn worktree list
-
-# Add another project to this session
-sxn worktree add <project-name> <branch-name>
+# Start development server
+{{project.package_manager | default: 'npm'}} run dev
 ```
 
 ## Cursor Rules Integration
 
-**IMPORTANT: Always use the Cursor Rules MCP server before making changes.**
+This project uses cursor rules for enhanced development:
 
-### Required Actions
-1. **Before any frontend changes**, load frontend rules:
-   ```
-   mcp__cursor_rules__get_contextual_rules(context: "frontend_internationalization")
-   ```
-
-2. **Before git commits**, load git rules:
-   ```
-   mcp__cursor_rules__get_contextual_rules(context: "git_commit")
-   ```
-
-3. **For CLI development**, load CLI rules:
-   ```
-   mcp__cursor_rules__get_contextual_rules(context: "cli_development")
-   ```
-
-### Key Development Rules
-- **ALWAYS use internationalization** for user-facing copy
-- **Follow conventional commit format**
-- **Use TypeScript strict mode** - no `any` types
-- **Test both interactive and headless modes**
-
-## File Structure
+```javascript
+mcp__cursor_rules__get_contextual_rules({ context: "frontend_internationalization" })
+mcp__cursor_rules__get_contextual_rules({ context: "cli_development" })
 ```
-{{ session.path }}/
-{% if session.worktrees %}
-{% for worktree in session.worktrees %}
-├── {{ worktree.name }}/           # {{ worktree.branch }}
-{% endfor %}
-{% endif %}
-├── README.md                      # This file
-└── session-info.md               # Session metadata
-```
-
-## Troubleshooting
-
-### Common Issues
-1. **Node version mismatch**: Use `nvm use` to switch to correct version
-2. **Permission errors**: Use `npm config set prefix ~/.npm-global`
-3. **Cache issues**: Clear cache with `{{ project.package_manager | default: "npm" }} cache clean --force`
-4. **Dependencies not found**: Delete `node_modules` and reinstall
-
-### Performance Tips
-- Use `{{ project.package_manager | default: "npm" }} ci` for faster installs in CI
-- Enable package manager caching
-- Consider using pnpm for better disk usage
 
 ---
-*Session created on {{ timestamp.now }} • Node.js {{ environment.node.version | default: "unknown" }}*
+
+*Session: {{session.name}} | Created: {{session.created_at | date: "%Y-%m-%d %H:%M:%S"}}*

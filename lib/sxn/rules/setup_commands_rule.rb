@@ -60,8 +60,8 @@ module Sxn
       MAX_TIMEOUT = 1800 # 30 minutes
 
       # Initialize the setup commands rule
-      def initialize(name, config, project_path, session_path, dependencies: [])
-        super(name, config, project_path, session_path, dependencies: dependencies)
+      def initialize(arg1 = nil, arg2 = nil, arg3 = nil, arg4 = nil, dependencies: [])
+        super(arg1, arg2, arg3, arg4, dependencies: dependencies)
         @command_executor = Security::SecureCommandExecutor.new(@session_path, logger: logger)
         @executed_commands = []
       end
@@ -72,19 +72,19 @@ module Sxn
       end
 
       # Apply the command execution operations
-      def apply
+      def apply(context = {})
         change_state!(APPLYING)
         continue_on_failure = @config.fetch("continue_on_failure", false)
-        
+
         begin
           @config["commands"].each_with_index do |command_config, index|
             apply_command(command_config, index, continue_on_failure)
           end
-          
+
           change_state!(APPLIED)
           log(:info, "Successfully executed #{@executed_commands.size} commands")
           true
-        rescue => e
+        rescue StandardError => e
           @errors << e
           change_state!(FAILED)
           raise ApplicationError, "Failed to execute setup commands: #{e.message}"
@@ -107,37 +107,28 @@ module Sxn
 
       # Validate rule-specific configuration
       def validate_rule_specific!
-        unless @config.key?("commands")
-          raise ValidationError, "SetupCommandsRule requires 'commands' configuration"
-        end
+        raise ValidationError, "SetupCommandsRule requires 'commands' configuration" unless @config.key?("commands")
 
-        unless @config["commands"].is_a?(Array)
-          raise ValidationError, "SetupCommandsRule 'commands' must be an array"
-        end
+        raise ValidationError, "SetupCommandsRule 'commands' must be an array" unless @config["commands"].is_a?(Array)
 
-        if @config["commands"].empty?
-          raise ValidationError, "SetupCommandsRule 'commands' cannot be empty"
-        end
+        raise ValidationError, "SetupCommandsRule 'commands' cannot be empty" if @config["commands"].empty?
 
         @config["commands"].each_with_index do |command_config, index|
           validate_command_config!(command_config, index)
         end
 
         # Validate global options
-        if @config.key?("continue_on_failure")
-          unless [true, false].include?(@config["continue_on_failure"])
-            raise ValidationError, "continue_on_failure must be true or false"
-          end
-        end
+        return unless @config.key?("continue_on_failure")
+        return if [true, false].include?(@config["continue_on_failure"])
+
+        raise ValidationError, "continue_on_failure must be true or false"
       end
 
       private
 
       # Validate individual command configuration
       def validate_command_config!(command_config, index)
-        unless command_config.is_a?(Hash)
-          raise ValidationError, "Command config #{index} must be a hash"
-        end
+        raise ValidationError, "Command config #{index} must be a hash" unless command_config.is_a?(Hash)
 
         unless command_config.key?("command")
           raise ValidationError, "Command config #{index} must have a 'command' field"
@@ -164,10 +155,8 @@ module Sxn
         # Validate environment variables
         if command_config.key?("env")
           env = command_config["env"]
-          unless env.is_a?(Hash)
-            raise ValidationError, "Command config #{index}: env must be a hash"
-          end
-          
+          raise ValidationError, "Command config #{index}: env must be a hash" unless env.is_a?(Hash)
+
           env.each do |key, value|
             unless key.is_a?(String) && value.is_a?(String)
               raise ValidationError, "Command config #{index}: env keys and values must be strings"
@@ -184,23 +173,23 @@ module Sxn
         end
 
         # Validate working directory
-        if command_config.key?("working_directory")
-          working_dir = command_config["working_directory"]
-          unless working_dir.is_a?(String)
-            raise ValidationError, "Command config #{index}: working_directory must be a string"
-          end
-          
-          full_path = File.expand_path(working_dir, @session_path)
-          unless full_path.start_with?(@session_path)
-            raise ValidationError, "Command config #{index}: working_directory must be within session path"
-          end
+        return unless command_config.key?("working_directory")
+
+        working_dir = command_config["working_directory"]
+        unless working_dir.is_a?(String)
+          raise ValidationError, "Command config #{index}: working_directory must be a string"
         end
+
+        full_path = File.expand_path(working_dir, @session_path)
+        return if full_path.start_with?(@session_path)
+
+        raise ValidationError, "Command config #{index}: working_directory must be within session path"
       end
 
       # Check if condition format is valid
       def valid_condition?(condition)
         return true if condition.nil? || condition == "always"
-        
+
         condition.is_a?(String) && condition.include?(":") &&
           CONDITION_TYPES.key?(condition.split(":", 2).first)
       end
@@ -209,7 +198,7 @@ module Sxn
       def apply_command(command_config, index, continue_on_failure)
         command = command_config["command"]
         description = command_config.fetch("description", command.join(" "))
-        
+
         log(:debug, "Evaluating command #{index}: #{description}")
 
         # Check condition
@@ -222,7 +211,7 @@ module Sxn
 
         begin
           result = execute_command_safely(command_config)
-          
+
           @executed_commands << {
             index: index,
             command: command,
@@ -231,39 +220,33 @@ module Sxn
           }
 
           track_change(:command_executed, command.join(" "), {
-            working_directory: determine_working_directory(command_config),
-            env: command_config.fetch("env", {}),
-            exit_status: result.exit_status,
-            duration: result.duration
-          })
+                         working_directory: determine_working_directory(command_config),
+                         env: command_config.fetch("env", {}),
+                         exit_status: result.exit_status,
+                         duration: result.duration
+                       })
 
           if result.failure?
             error_msg = "Command failed: #{description} (exit status: #{result.exit_status})"
-            
-            if result.stderr && !result.stderr.empty?
-              error_msg += "\nSTDERR: #{result.stderr}"
-            end
 
-            if continue_on_failure
-              log(:warn, error_msg)
-            else
-              raise ApplicationError, error_msg
-            end
+            error_msg += "\nSTDERR: #{result.stderr}" if result.stderr && !result.stderr.empty?
+
+            raise ApplicationError, error_msg unless continue_on_failure
+
+            log(:warn, error_msg)
+
           else
             log(:debug, "Command completed successfully", {
-              exit_status: result.exit_status,
-              duration: result.duration
-            })
+                  exit_status: result.exit_status,
+                  duration: result.duration
+                })
           end
-
-        rescue => e
+        rescue StandardError => e
           error_msg = "Failed to execute command: #{description} - #{e.message}"
-          
-          if continue_on_failure
-            log(:error, error_msg)
-          else
-            raise ApplicationError, error_msg
-          end
+
+          raise ApplicationError, error_msg unless continue_on_failure
+
+          log(:error, error_msg)
         end
       end
 
@@ -298,7 +281,7 @@ module Sxn
 
         condition_type, condition_arg = condition.split(":", 2)
         method_name = CONDITION_TYPES[condition_type]
-        
+
         return true unless method_name
 
         send(method_name, condition_arg)

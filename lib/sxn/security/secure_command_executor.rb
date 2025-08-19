@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "English"
 require "open3"
 require "ostruct"
 require "timeout"
@@ -31,7 +32,7 @@ module Sxn
         end
 
         def success?
-          @exit_status == 0
+          @exit_status.zero?
         end
 
         def failure?
@@ -87,7 +88,7 @@ module Sxn
         "bin/dev" => :project_executable,
         "bin/test" => :project_executable,
         "./bin/rails" => :project_executable,
-        "./bin/setup" => :project_executable,
+        "./bin/setup" => :project_executable
       }.freeze
 
       # Environment variables that are safe to preserve
@@ -147,21 +148,21 @@ module Sxn
         begin
           result = execute_with_timeout(validated_command, safe_env, work_dir, timeout)
           duration = Time.now - start_time
-          
+
           audit_log("EXEC_COMPLETE", validated_command, work_dir, {
-            exit_status: result.exit_status,
-            duration: duration,
-            success: result.success?
-          })
+                      exit_status: result.exit_status,
+                      duration: duration,
+                      success: result.success?
+                    })
 
           CommandResult.new(result.exit_status, result.stdout, result.stderr, validated_command, duration)
-        rescue => e
+        rescue StandardError => e
           duration = Time.now - start_time
           audit_log("EXEC_ERROR", validated_command, work_dir, {
-            error: e.class.name,
-            message: e.message,
-            duration: duration
-          })
+                      error: e.class.name,
+                      message: e.message,
+                      duration: duration
+                    })
           raise CommandExecutionError, "Command execution failed: #{e.message}"
         end
       end
@@ -172,7 +173,7 @@ module Sxn
       # @return [Boolean] true if the command is whitelisted
       def command_allowed?(command)
         return false unless command.is_a?(Array) && !command.empty?
-        
+
         begin
           validate_and_resolve_command(command)
           true
@@ -193,26 +194,26 @@ module Sxn
       # Validates that a command is whitelisted and resolves its path
       def validate_and_resolve_command(command)
         command_name = command.first
-        
+
         unless @command_whitelist.key?(command_name)
           raise CommandExecutionError, "Command not whitelisted: #{command_name}"
         end
 
         executable_path = @command_whitelist[command_name]
-        
+
         # Validate that the executable exists and is executable
         unless File.exist?(executable_path) && File.executable?(executable_path)
           raise CommandExecutionError, "Command executable not found or not executable: #{executable_path}"
         end
 
         # Return command with resolved executable path
-        [executable_path] + command[1..-1]
+        [executable_path] + command[1..]
       end
 
       # Builds the command whitelist by resolving paths
       def build_command_whitelist
         whitelist = {}
-        
+
         ALLOWED_COMMANDS.each do |cmd_name, path_spec|
           resolved_path = case path_spec
                           when String
@@ -224,10 +225,10 @@ module Sxn
                           when :project_executable
                             resolve_project_executable(cmd_name)
                           end
-          
+
           whitelist[cmd_name] = resolved_path if resolved_path
         end
-        
+
         whitelist
       end
 
@@ -235,7 +236,7 @@ module Sxn
       def resolve_rails_command
         bin_rails = File.join(@project_root, "bin", "rails")
         return bin_rails if File.exist?(bin_rails) && File.executable?(bin_rails)
-        
+
         # Fall back to global rails command
         %w[rails /usr/local/bin/rails /opt/homebrew/bin/rails].find do |path|
           File.exist?(path) && File.executable?(path)
@@ -247,39 +248,39 @@ module Sxn
         # Remove leading ./ if present
         clean_cmd = cmd_name.sub(%r{\A\./}, "")
         executable_path = File.join(@project_root, clean_cmd)
-        
+
         return executable_path if File.exist?(executable_path) && File.executable?(executable_path)
-        
+
         nil
       end
 
       # Builds a safe environment by filtering and cleaning variables
       def build_safe_environment(user_env)
         safe_env = {}
-        
+
         # Start with safe environment variables from current environment
         SAFE_ENV_VARS.each do |var|
           safe_env[var] = ENV[var] if ENV.key?(var)
         end
-        
+
         # Add user-provided environment variables (with validation)
         user_env.each do |key, value|
           key_str = key.to_s
           value_str = value.to_s
-          
+
           # Validate environment variable names (only alphanumeric and underscore)
           unless key_str.match?(/\A[A-Z_][A-Z0-9_]*\z/)
             raise CommandExecutionError, "Invalid environment variable name: #{key_str}"
           end
-          
+
           # Validate environment variable values (no null bytes)
           if value_str.include?("\x00")
             raise CommandExecutionError, "Environment variable contains null bytes: #{key_str}"
           end
-          
+
           safe_env[key_str] = value_str
         end
-        
+
         safe_env
       end
 
@@ -287,11 +288,9 @@ module Sxn
       def validate_work_directory(chdir)
         path_validator = SecurePathValidator.new(@project_root)
         validated_path = path_validator.validate_path(chdir)
-        
-        unless File.directory?(validated_path)
-          raise CommandExecutionError, "Working directory does not exist: #{chdir}"
-        end
-        
+
+        raise CommandExecutionError, "Working directory does not exist: #{chdir}" unless File.directory?(validated_path)
+
         validated_path
       end
 
@@ -299,7 +298,7 @@ module Sxn
       def execute_with_timeout(command, env, chdir, timeout)
         stdout_r, stdout_w = IO.pipe
         stderr_r, stderr_w = IO.pipe
-        
+
         begin
           pid = Process.spawn(
             env,
@@ -310,10 +309,10 @@ module Sxn
             unsetenv_others: true, # Clear all other environment variables
             close_others: true     # Close other file descriptors
           )
-          
+
           stdout_w.close
           stderr_w.close
-          
+
           # Wait for process with timeout
           begin
             Timeout.timeout(timeout) do
@@ -322,18 +321,30 @@ module Sxn
           rescue Timeout::Error
             Process.kill("TERM", pid)
             sleep(1)
-            Process.kill("KILL", pid) rescue nil
-            Process.wait(pid) rescue nil
+            begin
+              Process.kill("KILL", pid)
+            rescue StandardError
+              nil
+            end
+            begin
+              Process.wait(pid)
+            rescue StandardError
+              nil
+            end
             raise CommandExecutionError, "Command timed out after #{timeout} seconds"
           end
-          
-          exit_status = $?.exitstatus
+
+          exit_status = $CHILD_STATUS.exitstatus
           stdout = stdout_r.read
           stderr = stderr_r.read
-          
+
           OpenStruct.new(exit_status: exit_status, stdout: stdout, stderr: stderr)
         ensure
-          [stdout_r, stdout_w, stderr_r, stderr_w].each { |io| io.close rescue nil }
+          [stdout_r, stdout_w, stderr_r, stderr_w].each do |io|
+            io.close
+          rescue StandardError
+            nil
+          end
         end
       end
 

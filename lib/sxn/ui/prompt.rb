@@ -10,19 +10,19 @@ module Sxn
         @prompt = TTY::Prompt.new(interrupt: :exit)
       end
 
-      def ask(message, **options)
-        @prompt.ask(message, **options)
+      def ask(message, options = {}, &block)
+        @prompt.ask(message, **options, &block)
       end
 
       def ask_yes_no(message, default: false)
         @prompt.yes?(message, default: default)
       end
 
-      def select(message, choices, **options)
+      def select(message, choices, options = {})
         @prompt.select(message, choices, **options)
       end
 
-      def multi_select(message, choices, **options)
+      def multi_select(message, choices, options = {})
         @prompt.multi_select(message, choices, **options)
       end
 
@@ -57,27 +57,28 @@ module Sxn
             File.directory?(expanded) && File.readable?(expanded)
           }, "Path must be a readable directory")
           q.modify :strip
-          q.convert lambda { |path| File.expand_path(path) }
+          q.convert ->(path) { File.expand_path(path) }
         end
       end
 
       def branch_name(message = "Enter branch name:", default: nil)
         ask(message, default: default) do |q|
-          q.validate(/\A[a-zA-Z0-9_\/-]+\z/, "Branch name must be a valid git branch name")
+          q.validate(%r{\A[a-zA-Z0-9_/-]+\z}, "Branch name must be a valid git branch name")
           q.modify :strip
         end
       end
 
       def confirm_deletion(item_name, item_type = "item")
-        ask_yes_no("Are you sure you want to delete #{item_type} '#{item_name}'? This action cannot be undone.", default: false)
+        ask_yes_no("Are you sure you want to delete #{item_type} '#{item_name}'? This action cannot be undone.",
+                   default: false)
       end
 
       def rule_type
         select("Select rule type:", [
-          { name: "Copy Files", value: "copy_files" },
-          { name: "Setup Commands", value: "setup_commands" },
-          { name: "Template", value: "template" }
-        ])
+                 { name: "Copy Files", value: "copy_files" },
+                 { name: "Setup Commands", value: "setup_commands" },
+                 { name: "Template", value: "template" }
+               ])
       end
 
       def sessions_folder_setup
@@ -85,11 +86,11 @@ module Sxn
         puts "This will create a folder where all your development sessions will be stored."
         puts ""
 
-        default_folder = File.basename(Dir.pwd) + "-sessions"
+        default_folder = "#{File.basename(Dir.pwd)}-sessions"
         folder = folder_name("Sessions folder name:", default: default_folder)
-        
+
         current_dir = ask_yes_no("Create sessions folder in current directory?", default: true)
-        
+
         unless current_dir
           base_path = project_path("Base path for sessions folder:")
           folder = File.join(base_path, folder)

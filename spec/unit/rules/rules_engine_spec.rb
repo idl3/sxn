@@ -6,7 +6,7 @@ RSpec.describe Sxn::Rules::RulesEngine do
   let(:project_path) { Dir.mktmpdir("project") }
   let(:session_path) { Dir.mktmpdir("session") }
   let(:engine) { described_class.new(project_path, session_path) }
-  
+
   let(:simple_rules_config) do
     {
       "rule1" => {
@@ -34,7 +34,7 @@ RSpec.describe Sxn::Rules::RulesEngine do
         "type" => "setup_commands",
         "config" => {
           "commands" => [
-            { "command" => ["bundle", "install"] }
+            { "command" => %w[bundle install] }
           ]
         },
         "dependencies" => ["copy_files"]
@@ -56,7 +56,7 @@ RSpec.describe Sxn::Rules::RulesEngine do
     FileUtils.mkdir_p(File.join(project_path, "config"))
     File.write(File.join(project_path, "config/master.key"), "secret")
     File.write(File.join(project_path, "config/test.key"), "test-secret")
-    
+
     # Mock rule classes to avoid complex setup while preserving dependency resolution
     allow_any_instance_of(Sxn::Rules::CopyFilesRule).to receive(:validate).and_return(true)
     allow_any_instance_of(Sxn::Rules::CopyFilesRule).to receive(:apply).and_return(true)
@@ -65,7 +65,7 @@ RSpec.describe Sxn::Rules::RulesEngine do
     allow_any_instance_of(Sxn::Rules::CopyFilesRule).to receive(:applied?).and_return(true)
     allow_any_instance_of(Sxn::Rules::CopyFilesRule).to receive(:changes).and_return([])
     # Don't mock can_execute? - let it use the real implementation for dependency resolution
-    
+
     allow_any_instance_of(Sxn::Rules::SetupCommandsRule).to receive(:validate).and_return(true)
     allow_any_instance_of(Sxn::Rules::SetupCommandsRule).to receive(:apply).and_return(true)
     allow_any_instance_of(Sxn::Rules::SetupCommandsRule).to receive(:rollback).and_return(true)
@@ -73,7 +73,7 @@ RSpec.describe Sxn::Rules::RulesEngine do
     allow_any_instance_of(Sxn::Rules::SetupCommandsRule).to receive(:applied?).and_return(true)
     allow_any_instance_of(Sxn::Rules::SetupCommandsRule).to receive(:changes).and_return([])
     # Don't mock can_execute? - let it use the real implementation for dependency resolution
-    
+
     allow_any_instance_of(Sxn::Rules::TemplateRule).to receive(:validate).and_return(true)
     allow_any_instance_of(Sxn::Rules::TemplateRule).to receive(:apply).and_return(true)
     allow_any_instance_of(Sxn::Rules::TemplateRule).to receive(:rollback).and_return(true)
@@ -95,32 +95,32 @@ RSpec.describe Sxn::Rules::RulesEngine do
     end
 
     it "raises error for non-existent project path" do
-      expect {
+      expect do
         described_class.new("/non/existent", session_path)
-      }.to raise_error(ArgumentError, /Invalid path provided/)
+      end.to raise_error(ArgumentError, /Invalid path provided/)
     end
 
     it "raises error for non-existent session path" do
-      expect {
+      expect do
         described_class.new(project_path, "/non/existent")
-      }.to raise_error(ArgumentError, /Invalid path provided/)
+      end.to raise_error(ArgumentError, /Invalid path provided/)
     end
 
     it "raises error for non-directory project path" do
       file_path = File.join(project_path, "file.txt")
       File.write(file_path, "test")
-      
-      expect {
+
+      expect do
         described_class.new(file_path, session_path)
-      }.to raise_error(ArgumentError, /Project path is not a directory/)
+      end.to raise_error(ArgumentError, /Project path is not a directory/)
     end
 
     it "raises error for non-writable session path" do
       File.chmod(0o444, session_path)
-      
-      expect {
+
+      expect do
         described_class.new(project_path, session_path)
-      }.to raise_error(ArgumentError, /Session path is not writable/)
+      end.to raise_error(ArgumentError, /Session path is not writable/)
     ensure
       File.chmod(0o755, session_path)
     end
@@ -130,7 +130,7 @@ RSpec.describe Sxn::Rules::RulesEngine do
     context "with simple rule configuration" do
       it "applies rules successfully" do
         result = engine.apply_rules(simple_rules_config)
-        
+
         expect(result.success?).to be true
         expect(result.applied_rules.size).to eq(1)
         expect(result.failed_rules).to be_empty
@@ -139,7 +139,7 @@ RSpec.describe Sxn::Rules::RulesEngine do
 
       it "returns execution result with timing" do
         result = engine.apply_rules(simple_rules_config)
-        
+
         expect(result.total_duration).to be > 0
         expect(result.to_h).to include(
           success: true,
@@ -154,7 +154,7 @@ RSpec.describe Sxn::Rules::RulesEngine do
     context "with complex rule configuration with dependencies" do
       it "resolves dependencies and applies rules in correct order" do
         result = engine.apply_rules(complex_rules_config)
-        
+
         expect(result.success?).to be true
         expect(result.applied_rules.size).to eq(3)
         expect(result.failed_rules).to be_empty
@@ -162,24 +162,24 @@ RSpec.describe Sxn::Rules::RulesEngine do
 
       it "executes rules in dependency order" do
         applied_order = []
-        
+
         allow_any_instance_of(Sxn::Rules::CopyFilesRule).to receive(:apply) do
           applied_order << "copy_files"
           true
         end
-        
+
         allow_any_instance_of(Sxn::Rules::SetupCommandsRule).to receive(:apply) do
           applied_order << "setup_commands"
           true
         end
-        
+
         allow_any_instance_of(Sxn::Rules::TemplateRule).to receive(:apply) do
           applied_order << "generate_docs"
           true
         end
-        
+
         engine.apply_rules(complex_rules_config)
-        
+
         expect(applied_order.index("copy_files")).to be < applied_order.index("setup_commands")
         expect(applied_order.index("setup_commands")).to be < applied_order.index("generate_docs")
       end
@@ -188,7 +188,7 @@ RSpec.describe Sxn::Rules::RulesEngine do
     context "with validation-only option" do
       it "validates without executing rules" do
         result = engine.apply_rules(simple_rules_config, validate_only: true)
-        
+
         expect(result.success?).to be true
         expect(result.applied_rules).to be_empty
         expect(result.total_rules).to eq(0)
@@ -198,7 +198,7 @@ RSpec.describe Sxn::Rules::RulesEngine do
     context "with parallel execution disabled" do
       it "executes rules sequentially" do
         result = engine.apply_rules(simple_rules_config, parallel: false)
-        
+
         expect(result.success?).to be true
         expect(result.applied_rules.size).to eq(1)
       end
@@ -220,13 +220,14 @@ RSpec.describe Sxn::Rules::RulesEngine do
 
       before do
         # Make first rule fail
-        allow_any_instance_of(Sxn::Rules::CopyFilesRule).to receive(:apply).and_raise(Sxn::Rules::ApplicationError, "Simulated failure")
+        allow_any_instance_of(Sxn::Rules::CopyFilesRule).to receive(:apply).and_raise(Sxn::Rules::ApplicationError,
+                                                                                      "Simulated failure")
         allow_any_instance_of(Sxn::Rules::CopyFilesRule).to receive(:name).and_return("failing_rule")
       end
 
       it "continues execution after failures" do
         result = engine.apply_rules(failing_rules_config, continue_on_failure: true)
-        
+
         expect(result.success?).to be false
         expect(result.failed_rules.size).to eq(2) # Both rules will fail with the mock
         expect(result.errors).not_to be_empty
@@ -238,11 +239,9 @@ RSpec.describe Sxn::Rules::RulesEngine do
         call_count = 0
         allow_any_instance_of(Sxn::Rules::CopyFilesRule).to receive(:apply) do
           call_count += 1
-          if call_count == 1
-            true # First rule succeeds
-          else
-            raise Sxn::Rules::ApplicationError, "Second rule failed"
-          end
+          raise Sxn::Rules::ApplicationError, "Second rule failed" unless call_count == 1
+
+          true # First rule succeeds
         end
       end
 
@@ -253,13 +252,13 @@ RSpec.describe Sxn::Rules::RulesEngine do
             "config" => { "files" => [{ "source" => "config/test.key", "strategy" => "copy", "required" => false }] }
           },
           "rule2" => {
-            "type" => "copy_files", 
+            "type" => "copy_files",
             "config" => { "files" => [{ "source" => "config/test.key", "strategy" => "copy", "required" => false }] }
           }
         }
-        
+
         expect_any_instance_of(Sxn::Rules::CopyFilesRule).to receive(:rollback)
-        
+
         result = engine.apply_rules(failing_config)
         expect(result.success?).to be false
       end
@@ -291,7 +290,8 @@ RSpec.describe Sxn::Rules::RulesEngine do
     context "with rollback failures" do
       before do
         engine.apply_rules(simple_rules_config)
-        allow_any_instance_of(Sxn::Rules::CopyFilesRule).to receive(:rollback).and_raise(StandardError, "Rollback failed")
+        allow_any_instance_of(Sxn::Rules::CopyFilesRule).to receive(:rollback).and_raise(StandardError,
+                                                                                         "Rollback failed")
       end
 
       it "continues rollback despite individual failures" do
@@ -304,7 +304,7 @@ RSpec.describe Sxn::Rules::RulesEngine do
     context "with valid configuration" do
       it "validates and returns rules" do
         rules = engine.validate_rules_config(simple_rules_config)
-        
+
         expect(rules).to be_an(Array)
         expect(rules.size).to eq(1)
         expect(rules.first).to be_a(Sxn::Rules::CopyFilesRule)
@@ -322,9 +322,9 @@ RSpec.describe Sxn::Rules::RulesEngine do
       end
 
       it "raises validation error" do
-        expect {
+        expect do
           engine.validate_rules_config(invalid_config)
-        }.to raise_error(ArgumentError, /Invalid rule type/)
+        end.to raise_error(Sxn::Rules::ValidationError, /Unknown rule type/)
       end
     end
 
@@ -338,9 +338,9 @@ RSpec.describe Sxn::Rules::RulesEngine do
       end
 
       it "raises validation error" do
-        expect {
+        expect do
           engine.validate_rules_config(invalid_config)
-        }.to raise_error(ArgumentError, /Invalid rule type/)
+        end.to raise_error(Sxn::Rules::ValidationError, /Unknown rule type/)
       end
     end
 
@@ -352,9 +352,9 @@ RSpec.describe Sxn::Rules::RulesEngine do
       end
 
       it "raises validation error" do
-        expect {
+        expect do
           engine.validate_rules_config(invalid_config)
-        }.to raise_error(ArgumentError, /Rule spec.*must be a hash/)
+        end.to raise_error(ArgumentError, /Rule spec.*must be a hash/)
       end
     end
 
@@ -370,9 +370,9 @@ RSpec.describe Sxn::Rules::RulesEngine do
       end
 
       it "raises validation error" do
-        expect {
+        expect do
           engine.validate_rules_config(invalid_deps_config)
-        }.to raise_error(Sxn::Rules::ValidationError, /depends on non-existent rule/)
+        end.to raise_error(Sxn::Rules::ValidationError, /depends on non-existent rule/)
       end
     end
 
@@ -393,21 +393,22 @@ RSpec.describe Sxn::Rules::RulesEngine do
       end
 
       it "raises validation error" do
-        expect {
+        expect do
           engine.validate_rules_config(circular_deps_config)
-        }.to raise_error(Sxn::Rules::ValidationError, /Circular dependency detected/)
+        end.to raise_error(Sxn::Rules::ValidationError, /Circular dependency detected/)
       end
     end
 
     context "with rule validation failure" do
       before do
-        allow_any_instance_of(Sxn::Rules::CopyFilesRule).to receive(:validate).and_raise(Sxn::Rules::ValidationError, "Rule validation failed")
+        allow_any_instance_of(Sxn::Rules::CopyFilesRule).to receive(:validate).and_raise(Sxn::Rules::ValidationError,
+                                                                                         "Rule validation failed")
       end
 
       it "raises validation error with rule context" do
-        expect {
+        expect do
           engine.validate_rules_config(simple_rules_config)
-        }.to raise_error(Sxn::Rules::ValidationError, /Rule 'rule1' validation failed/)
+        end.to raise_error(Sxn::Rules::ValidationError, /Rule 'rule1' validation failed/)
       end
     end
   end
@@ -415,7 +416,7 @@ RSpec.describe Sxn::Rules::RulesEngine do
   describe "#available_rule_types" do
     it "returns available rule types" do
       types = engine.available_rule_types
-      
+
       expect(types).to include("copy_files", "setup_commands", "template")
       expect(types).to be_an(Array)
     end
@@ -427,7 +428,7 @@ RSpec.describe Sxn::Rules::RulesEngine do
         "d" => {
           "type" => "copy_files",
           "config" => { "files" => [{ "source" => "config/test.key", "strategy" => "copy", "required" => false }] },
-          "dependencies" => ["b", "c"]
+          "dependencies" => %w[b c]
         },
         "c" => {
           "type" => "copy_files",
@@ -448,7 +449,7 @@ RSpec.describe Sxn::Rules::RulesEngine do
 
     it "resolves complex dependency chains" do
       result = engine.apply_rules(complex_dependency_config)
-      
+
       expect(result.success?).to be true
       expect(result.applied_rules.size).to eq(4)
     end
@@ -456,15 +457,15 @@ RSpec.describe Sxn::Rules::RulesEngine do
     it "executes rules in topologically sorted order" do
       rules = engine.validate_rules_config(complex_dependency_config)
       execution_order = engine.send(:resolve_execution_order, rules)
-      
+
       # 'a' should be in first phase
       first_phase_names = execution_order[0].map(&:name)
       expect(first_phase_names).to include("a")
-      
+
       # 'b' and 'c' should be in second phase (can run in parallel)
       second_phase_names = execution_order[1].map(&:name)
       expect(second_phase_names).to include("b", "c")
-      
+
       # 'd' should be in third phase
       third_phase_names = execution_order[2].map(&:name)
       expect(third_phase_names).to include("d")
@@ -491,7 +492,7 @@ RSpec.describe Sxn::Rules::RulesEngine do
 
     it "executes independent rules in parallel" do
       result = engine.apply_rules(parallel_rules_config, parallel: true, max_parallelism: 2)
-      
+
       expect(result.success?).to be true
       expect(result.applied_rules.size).to eq(3)
     end
@@ -500,7 +501,7 @@ RSpec.describe Sxn::Rules::RulesEngine do
       # This is difficult to test without complex threading scenarios
       # but we can verify the option is accepted and doesn't break execution
       result = engine.apply_rules(parallel_rules_config, max_parallelism: 1)
-      
+
       expect(result.success?).to be true
     end
   end
@@ -523,7 +524,7 @@ RSpec.describe Sxn::Rules::RulesEngine do
         result.start!
         sleep(0.01) # Small delay to ensure measurable duration
         result.finish!
-        
+
         expect(result.total_duration).to be > 0
       end
     end
@@ -537,7 +538,7 @@ RSpec.describe Sxn::Rules::RulesEngine do
         mock_rule = double("rule", name: "failed_rule")
         mock_error = StandardError.new("Test error")
         result.add_failed_rule(mock_rule, mock_error)
-        
+
         expect(result.success?).to be false
       end
     end
@@ -545,7 +546,7 @@ RSpec.describe Sxn::Rules::RulesEngine do
     describe "#to_h" do
       it "returns hash representation" do
         hash = result.to_h
-        
+
         expect(hash).to include(
           success: true,
           total_rules: 0,
@@ -559,13 +560,180 @@ RSpec.describe Sxn::Rules::RulesEngine do
     end
   end
 
+  describe "edge cases and error handling" do
+    it "handles missing rule class gracefully" do
+      bad_config = {
+        "rule1" => {
+          "type" => "nonexistent_rule",
+          "config" => {}
+        }
+      }
+      
+      expect do
+        engine.apply_rules(bad_config)
+      end.to raise_error(Sxn::Rules::ValidationError, /Unknown rule type/)
+    end
+
+    it "handles rule instantiation errors" do
+      allow(Sxn::Rules::CopyFilesRule).to receive(:new).and_raise(ArgumentError, "Bad initialization")
+      
+      config = {
+        "rule1" => {
+          "type" => "copy_files",
+          "config" => { "files" => [] }
+        }
+      }
+      
+      result = engine.apply_rules(config)
+      expect(result.success?).to be false
+      expect(result.errors).not_to be_empty
+    end
+
+    it "skips rules that fail validation" do
+      config = {
+        "valid_rule" => {
+          "type" => "copy_files",
+          "config" => { "files" => [{ "source" => "config/test.key", "strategy" => "copy", "required" => false }] }
+        },
+        "invalid_rule" => {
+          "type" => "copy_files",
+          "config" => { "files" => [] } # Invalid empty files
+        }
+      }
+      
+      allow_any_instance_of(Sxn::Rules::CopyFilesRule).to receive(:validate) do |rule|
+        raise Sxn::Rules::ValidationError, "Invalid config" if rule.name == "invalid_rule"
+      end
+      
+      result = engine.apply_rules(config)
+      expect(result.applied_rules.map(&:name)).to include("valid_rule")
+      expect(result.skipped_rules.map(&:name)).to include("invalid_rule")
+    end
+
+    it "handles circular dependencies" do
+      circular_config = {
+        "rule1" => {
+          "type" => "copy_files",
+          "config" => { "files" => [{ "source" => "test1", "strategy" => "copy", "required" => false }] },
+          "dependencies" => ["rule2"]
+        },
+        "rule2" => {
+          "type" => "copy_files",
+          "config" => { "files" => [{ "source" => "test2", "strategy" => "copy", "required" => false }] },
+          "dependencies" => ["rule1"]
+        }
+      }
+      
+      expect do
+        engine.apply_rules(circular_config)
+      end.to raise_error(Sxn::Rules::ValidationError, /circular dependency/i)
+    end
+
+    it "handles rule application failures gracefully" do
+      config = {
+        "failing_rule" => {
+          "type" => "copy_files",
+          "config" => { "files" => [{ "source" => "config/test.key", "strategy" => "copy", "required" => false }] }
+        }
+      }
+      
+      allow_any_instance_of(Sxn::Rules::CopyFilesRule).to receive(:apply).and_raise(StandardError, "Application failed")
+      
+      result = engine.apply_rules(config)
+      expect(result.success?).to be false
+      expect(result.failed_rules).not_to be_empty
+      expect(result.errors).not_to be_empty
+    end
+  end
+
+  describe "private methods" do
+    describe "#create_rule" do
+      it "creates rules with correct parameters" do
+        rule = engine.send(:create_rule, "test_rule", "copy_files", 
+                           { "files" => [{ "source" => "test", "strategy" => "copy", "required" => false }] }, 
+                           [], session_path, project_path)
+        
+        expect(rule).to be_a(Sxn::Rules::CopyFilesRule)
+        expect(rule.name).to eq("test_rule")
+      end
+
+      it "raises error for unknown rule types" do
+        expect do
+          engine.send(:create_rule, "test", "unknown_type", {}, [], session_path, project_path)
+        end.to raise_error(Sxn::Rules::ValidationError, /Unknown rule type/)
+      end
+    end
+
+    describe "#get_rule_class" do
+      it "returns correct class for valid rule types" do
+        copy_class = engine.send(:get_rule_class, "copy_files")
+        expect(copy_class).to eq(Sxn::Rules::CopyFilesRule)
+        
+        setup_class = engine.send(:get_rule_class, "setup_commands")
+        expect(setup_class).to eq(Sxn::Rules::SetupCommandsRule)
+        
+        template_class = engine.send(:get_rule_class, "template")
+        expect(template_class).to eq(Sxn::Rules::TemplateRule)
+      end
+
+      it "returns nil for unknown rule types" do
+        unknown_class = engine.send(:get_rule_class, "nonexistent_type")
+        expect(unknown_class).to be_nil
+      end
+    end
+
+    describe "#validate_dependencies" do
+      it "validates all dependencies exist" do
+        rules = [
+          double("rule", name: "rule1", dependencies: ["rule2"]),
+          double("rule", name: "rule2", dependencies: [])
+        ]
+        
+        expect { engine.send(:validate_dependencies, rules) }.not_to raise_error
+      end
+
+      it "raises error for missing dependencies" do
+        rules = [
+          double("rule", name: "rule1", dependencies: ["missing_rule"])
+        ]
+        
+        expect do
+          engine.send(:validate_dependencies, rules)
+        end.to raise_error(Sxn::Rules::ValidationError, /depends on non-existent rule 'missing_rule'/)
+      end
+    end
+
+    describe "#check_circular_dependencies" do
+      it "detects circular dependencies" do
+        rules = [
+          double("rule", name: "rule1", dependencies: ["rule2"]),
+          double("rule", name: "rule2", dependencies: ["rule1"])
+        ]
+        
+        expect do
+          engine.send(:check_circular_dependencies, rules)
+        end.to raise_error(Sxn::Rules::ValidationError, /circular dependency/i)
+      end
+
+      it "allows valid dependency chains" do
+        rules = [
+          double("rule", name: "rule1", dependencies: ["rule2"]),
+          double("rule", name: "rule2", dependencies: ["rule3"]),
+          double("rule", name: "rule3", dependencies: [])
+        ]
+        
+        expect { engine.send(:check_circular_dependencies, rules) }.not_to raise_error
+      end
+    end
+  end
+
   describe "error handling" do
     context "with engine-level errors" do
       let(:bad_config) { "not-a-hash" }
 
       it "captures engine errors in result" do
         result = engine.apply_rules(bad_config)
-        
+
         expect(result.success?).to be false
         expect(result.errors).not_to be_empty
         expect(result.errors.first[:rule]).to eq("engine")
@@ -584,9 +752,9 @@ RSpec.describe Sxn::Rules::RulesEngine do
       end
 
       it "raises appropriate error" do
-        expect {
+        expect do
           engine.apply_rules(unresolvable_config)
-        }.to raise_error(Sxn::Rules::ValidationError, /depends on non-existent rule/)
+        end.to raise_error(Sxn::Rules::ValidationError, /depends on non-existent rule/)
       end
     end
   end

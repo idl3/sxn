@@ -5,16 +5,16 @@ require "tempfile"
 # Background steps
 Given("I have a Rails project with sensitive files") do
   @project_path = Dir.mktmpdir("rules_test_project")
-  
+
   # Create Rails project structure
   FileUtils.mkdir_p(File.join(@project_path, "config"))
   FileUtils.mkdir_p(File.join(@project_path, "app/models"))
   FileUtils.mkdir_p(File.join(@project_path, ".sxn/templates"))
-  
+
   # Create Gemfile with Rails
   File.write(File.join(@project_path, "Gemfile"), 'gem "rails", "~> 7.0"')
   File.write(File.join(@project_path, "config/application.rb"), "class Application < Rails::Application; end")
-  
+
   # Create sensitive files
   File.write(File.join(@project_path, "config/master.key"), "secret-key-content")
   File.write(File.join(@project_path, ".env"), "DATABASE_URL=postgresql://localhost/test")
@@ -59,19 +59,19 @@ Given("I have a rule configuration with setup commands") do
       "config" => {
         "commands" => [
           {
-            "command" => ["bundle", "install"],
+            "command" => %w[bundle install],
             "description" => "Install Ruby dependencies"
           }
         ]
       }
     }
   }
-  
+
   # Mock command execution
   mock_executor = instance_double("Sxn::Security::SecureCommandExecutor")
   allow(Sxn::Security::SecureCommandExecutor).to receive(:new).and_return(mock_executor)
   allow(mock_executor).to receive(:command_allowed?).and_return(true)
-  
+
   mock_result = instance_double("Sxn::Security::SecureCommandExecutor::CommandResult")
   allow(mock_result).to receive(:success?).and_return(true)
   allow(mock_result).to receive(:failure?).and_return(false)
@@ -80,7 +80,7 @@ Given("I have a rule configuration with setup commands") do
   allow(mock_result).to receive(:stderr).and_return("")
   allow(mock_result).to receive(:duration).and_return(2.5)
   allow(mock_executor).to receive(:execute).and_return(mock_result)
-  
+
   @mock_executor = mock_executor
   @mock_result = mock_result
 end
@@ -99,7 +99,7 @@ Given("I have a rule configuration with template processing") do
       }
     }
   }
-  
+
   # Mock template processing
   mock_processor = instance_double("Sxn::Templates::TemplateProcessor")
   allow(Sxn::Templates::TemplateProcessor).to receive(:new).and_return(mock_processor)
@@ -110,20 +110,20 @@ Given("I have a rule configuration with template processing") do
   mock_variables = instance_double("Sxn::Templates::TemplateVariables")
   allow(Sxn::Templates::TemplateVariables).to receive(:new).and_return(mock_variables)
   allow(mock_variables).to receive(:build_variables).and_return({
-    session: { name: "test-session" },
-    project: { name: "test-project" }
-  })
+                                                                  session: { name: "test-session" },
+                                                                  project: { name: "test-project" }
+                                                                })
 end
 
 Given("I have a session info template") do
   template_content = <<~LIQUID
     # Session Information
-    
+
     - **Name**: {{session.name}}
     - **Project**: {{project.name}}
     - **Created**: {{session.created_at}}
   LIQUID
-  
+
   File.write(File.join(@project_path, ".sxn/templates/session-info.md.liquid"), template_content)
 end
 
@@ -141,7 +141,7 @@ Given("I have a rule configuration with dependencies") do
       "type" => "setup_commands",
       "config" => {
         "commands" => [
-          { "command" => ["bundle", "install"] }
+          { "command" => %w[bundle install] }
         ]
       },
       "dependencies" => ["copy_files"]
@@ -156,7 +156,7 @@ Given("I have a rule configuration with dependencies") do
       "dependencies" => ["setup_commands"]
     }
   }
-  
+
   # Mock all the dependencies
   setup_mocks_for_all_rules
 end
@@ -175,18 +175,18 @@ Given("I have a rule configuration with a failing rule") do
       "type" => "setup_commands",
       "config" => {
         "commands" => [
-          { "command" => ["bundle", "install"] }
+          { "command" => %w[bundle install] }
         ]
       },
       "dependencies" => ["copy_files"]
     }
   }
-  
+
   # Mock successful copy, failing command
   mock_executor = instance_double("Sxn::Security::SecureCommandExecutor")
   allow(Sxn::Security::SecureCommandExecutor).to receive(:new).and_return(mock_executor)
   allow(mock_executor).to receive(:command_allowed?).and_return(true)
-  
+
   mock_result = instance_double("Sxn::Security::SecureCommandExecutor::CommandResult")
   allow(mock_result).to receive(:success?).and_return(false)
   allow(mock_result).to receive(:failure?).and_return(true)
@@ -240,7 +240,7 @@ Given("I have a rule configuration with continue on failure") do
       "type" => "setup_commands",
       "config" => {
         "commands" => [
-          { "command" => ["bundle", "install"] }
+          { "command" => %w[bundle install] }
         ],
         "continue_on_failure" => true
       },
@@ -256,7 +256,7 @@ Given("I have a rule configuration with continue on failure") do
       "dependencies" => ["failing_command"]
     }
   }
-  
+
   # Setup mocks with one failing command
   setup_failing_command_mock
 end
@@ -286,19 +286,19 @@ end
 Given("I have a rule configuration with conditional commands") do
   # Create a test file for condition checking
   File.write(File.join(@session_path, "Gemfile.lock"), "GEM content")
-  
+
   @rules_config = {
     "conditional_commands" => {
       "type" => "setup_commands",
       "config" => {
         "commands" => [
           {
-            "command" => ["bundle", "install"],
+            "command" => %w[bundle install],
             "condition" => "file_exists:Gemfile.lock",
             "description" => "Install gems if lockfile exists"
           },
           {
-            "command" => ["bundle", "update"],
+            "command" => %w[bundle update],
             "condition" => "file_missing:nonexistent.file",
             "description" => "This should be skipped"
           }
@@ -306,7 +306,7 @@ Given("I have a rule configuration with conditional commands") do
       }
     }
   }
-  
+
   setup_command_execution_mock
 end
 
@@ -350,7 +350,7 @@ end
 
 Then("the commands should be executed in the session directory") do
   expect(@mock_executor).to have_received(:execute).with(
-    ["bundle", "install"],
+    %w[bundle install],
     hash_including(chdir: @session_path)
   )
 end
@@ -363,7 +363,7 @@ end
 Then("the template should be processed with session variables") do
   output_file = File.join(@session_path, "SESSION_INFO.md")
   expect(File.exist?(output_file)).to be true
-  
+
   content = File.read(output_file)
   expect(content).to include("Session Information")
 end
@@ -374,11 +374,11 @@ end
 
 Then("the rules should execute in dependency order") do
   expect(@result.success?).to be true
-  
+
   # Verify all rules were applied
   applied_rule_names = @result.applied_rules.map(&:name)
   expect(applied_rule_names).to include("copy_files", "setup_commands", "generate_docs")
-  
+
   # The specific order verification would require more complex mocking
   # For now, we verify that dependent rules were applied
   expect(@result.applied_rules.size).to eq(3)
@@ -396,8 +396,8 @@ end
 
 Then("successful rules should be rolled back") do
   # Verify that the first rule (copy_files) was applied but then rolled back
-  master_key_path = File.join(@session_path, "config/master.key")
-  
+  File.join(@session_path, "config/master.key")
+
   # The file might still exist if rollback hasn't been called explicitly
   # In a real implementation, the engine would handle rollback automatically
   expect(@result.applied_rules.size).to be >= 1 # At least one rule was applied before failure
@@ -418,28 +418,28 @@ end
 Then("it should suggest Rails-specific rules") do
   expect(@suggested_rules).to have_key("copy_files")
   expect(@suggested_rules).to have_key("setup_commands")
-  
+
   # Check for Rails-specific file suggestions
   copy_files = @suggested_rules["copy_files"]["config"]["files"]
   sources = copy_files.map { |f| f["source"] }
   expect(sources).to include("config/master.key")
-  
+
   # Check for Rails-specific commands
   setup_commands = @suggested_rules["setup_commands"]["config"]["commands"]
   commands = setup_commands.map { |c| c["command"] }
-  expect(commands).to include(["bundle", "install"])
+  expect(commands).to include(%w[bundle install])
 end
 
 Then("the suggested rules should be valid") do
-  expect {
+  expect do
     @rules_engine.validate_rules_config(@suggested_rules)
-  }.not_to raise_error
+  end.not_to raise_error
 end
 
 Then("the rules should execute concurrently") do
   expect(@result.success?).to be true
   expect(@result.applied_rules.size).to eq(3)
-  
+
   # All three independent copy operations should complete
   expect(File.exist?(File.join(@session_path, "config/master.key"))).to be true
   expect(File.exist?(File.join(@session_path, ".env"))).to be true
@@ -476,11 +476,11 @@ end
 Then("the sensitive files should be encrypted") do
   master_key_path = File.join(@session_path, "config/master.key")
   expect(File.exist?(master_key_path)).to be true
-  
+
   # Check that the rule tracked encryption
   copy_rule = @result.applied_rules.find { |r| r.name == "copy_encrypted_files" }
   expect(copy_rule).not_to be_nil
-  
+
   # The specific encryption verification would depend on the mock setup
   # For now, we verify the rule was applied successfully
   expect(copy_rule).to be_applied
@@ -489,7 +489,7 @@ end
 Then("the encryption metadata should be tracked") do
   copy_rule = @result.applied_rules.find { |r| r.name == "copy_encrypted_files" }
   expect(copy_rule.changes).not_to be_empty
-  
+
   # Verify encryption was tracked in the changes
   file_change = copy_rule.changes.first
   expect(file_change.type).to eq(:file_created)
@@ -504,14 +504,13 @@ end
 Then("skipped commands should be logged") do
   # Verify that only one command was executed
   expect(@result.success?).to be true
-  
+
   # The rule should track that conditions were evaluated
   command_rule = @result.applied_rules.find { |r| r.name == "conditional_commands" }
   expect(command_rule).not_to be_nil
 end
 
 # Helper methods
-private
 
 def setup_mocks_for_all_rules
   setup_command_execution_mock
@@ -522,7 +521,7 @@ def setup_command_execution_mock
   mock_executor = instance_double("Sxn::Security::SecureCommandExecutor")
   allow(Sxn::Security::SecureCommandExecutor).to receive(:new).and_return(mock_executor)
   allow(mock_executor).to receive(:command_allowed?).and_return(true)
-  
+
   mock_result = instance_double("Sxn::Security::SecureCommandExecutor::CommandResult")
   allow(mock_result).to receive(:success?).and_return(true)
   allow(mock_result).to receive(:failure?).and_return(false)
@@ -531,7 +530,7 @@ def setup_command_execution_mock
   allow(mock_result).to receive(:stderr).and_return("")
   allow(mock_result).to receive(:duration).and_return(1.5)
   allow(mock_executor).to receive(:execute).and_return(mock_result)
-  
+
   @mock_executor = mock_executor
   @mock_result = mock_result
 end
@@ -546,16 +545,16 @@ def setup_template_processing_mock
   mock_variables = instance_double("Sxn::Templates::TemplateVariables")
   allow(Sxn::Templates::TemplateVariables).to receive(:new).and_return(mock_variables)
   allow(mock_variables).to receive(:build_variables).and_return({
-    session: { name: "test-session" },
-    project: { name: "test-project" }
-  })
+                                                                  session: { name: "test-session" },
+                                                                  project: { name: "test-project" }
+                                                                })
 end
 
 def setup_failing_command_mock
   mock_executor = instance_double("Sxn::Security::SecureCommandExecutor")
   allow(Sxn::Security::SecureCommandExecutor).to receive(:new).and_return(mock_executor)
   allow(mock_executor).to receive(:command_allowed?).and_return(true)
-  
+
   mock_result = instance_double("Sxn::Security::SecureCommandExecutor::CommandResult")
   allow(mock_result).to receive(:success?).and_return(false)
   allow(mock_result).to receive(:failure?).and_return(true)

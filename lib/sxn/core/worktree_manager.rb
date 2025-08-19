@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "English"
 require "shellwords"
 require "fileutils"
 
@@ -30,7 +31,7 @@ module Sxn
         # Check if worktree already exists in this session
         existing_worktrees = @session_manager.get_session_worktrees(session_name)
         if existing_worktrees[project_name]
-          raise Sxn::WorktreeExistsError, 
+          raise Sxn::WorktreeExistsError,
                 "Worktree for '#{project_name}' already exists in session '#{session_name}'"
         end
 
@@ -40,19 +41,19 @@ module Sxn
         begin
           # Create the worktree
           create_git_worktree(project[:path], worktree_path, branch)
-          
+
           # Register worktree with session
           @session_manager.add_worktree_to_session(session_name, project_name, worktree_path, branch)
-          
+
           {
             project: project_name,
             branch: branch,
             path: worktree_path,
             session: session_name
           }
-        rescue => e
+        rescue StandardError => e
           # Clean up on failure
-          FileUtils.rm_rf(worktree_path) if File.exist?(worktree_path)
+          FileUtils.rm_rf(worktree_path)
           raise Sxn::WorktreeCreationError, "Failed to create worktree: #{e.message}"
         end
       end
@@ -67,7 +68,10 @@ module Sxn
 
         worktrees = @session_manager.get_session_worktrees(session_name)
         worktree_info = worktrees[project_name]
-        raise Sxn::WorktreeNotFoundError, "Worktree for '#{project_name}' not found in session '#{session_name}'" unless worktree_info
+        unless worktree_info
+          raise Sxn::WorktreeNotFoundError,
+                "Worktree for '#{project_name}' not found in session '#{session_name}'"
+        end
 
         worktree_path = worktree_info[:path] || worktree_info["path"]
 
@@ -80,12 +84,12 @@ module Sxn
             # Project might have been removed, try to find parent repo
             remove_git_worktree_by_path(worktree_path)
           end
-          
+
           # Remove from session
           @session_manager.remove_worktree_from_session(session_name, project_name)
-          
+
           true
-        rescue => e
+        rescue StandardError => e
           raise Sxn::WorktreeRemovalError, "Failed to remove worktree: #{e.message}"
         end
       end
@@ -99,7 +103,7 @@ module Sxn
         return [] unless session
 
         worktrees_data = @session_manager.get_session_worktrees(session_name)
-        
+
         worktrees_data.map do |project_name, worktree_info|
           {
             project: project_name,
@@ -117,26 +121,45 @@ module Sxn
         worktrees.find { |w| w[:project] == project_name }
       end
 
+      # Check if a worktree exists for a project
+      def worktree_exists?(project_name, session_name: nil)
+        get_worktree(project_name, session_name: session_name) != nil
+      end
+
+      # Get the path to a worktree for a project
+      def worktree_path(project_name, session_name: nil)
+        worktree = get_worktree(project_name, session_name: session_name)
+        worktree&.fetch(:path, nil)
+      end
+
+      # Validate worktree name (expected by tests)
+      def validate_worktree_name(name)
+        return true if name.match?(/\A[a-zA-Z0-9_-]+\z/)
+
+        raise Sxn::WorktreeError, "Invalid worktree name: #{name}"
+      end
+
+      # Execute git command (mock point for tests)
+      def execute_git_command(*)
+        system(*)
+      end
+
       def validate_worktree(project_name, session_name: nil)
         worktree = get_worktree(project_name, session_name: session_name)
         return { valid: false, issues: ["Worktree not found"] } unless worktree
 
         issues = []
-        
+
         # Check if directory exists
-        unless File.directory?(worktree[:path])
-          issues << "Worktree directory does not exist: #{worktree[:path]}"
-        end
-        
+        issues << "Worktree directory does not exist: #{worktree[:path]}" unless File.directory?(worktree[:path])
+
         # Check if it's a valid git worktree
-        unless valid_git_worktree?(worktree[:path])
-          issues << "Directory is not a valid git worktree"
-        end
-        
+        issues << "Directory is not a valid git worktree" unless valid_git_worktree?(worktree[:path])
+
         # Check for git issues
         git_issues = check_git_status(worktree[:path])
         issues.concat(git_issues)
-        
+
         {
           valid: issues.empty?,
           issues: issues,
@@ -149,17 +172,17 @@ module Sxn
       def create_git_worktree(project_path, worktree_path, branch)
         Dir.chdir(project_path) do
           # Check if branch exists
-          branch_exists = system("git show-ref --verify --quiet refs/heads/#{Shellwords.escape(branch)}", 
+          branch_exists = system("git show-ref --verify --quiet refs/heads/#{Shellwords.escape(branch)}",
                                  out: File::NULL, err: File::NULL)
-          
-          if branch_exists
-            # Branch exists, create worktree from existing branch
-            cmd = ["git", "worktree", "add", worktree_path, branch]
-          else
-            # Branch doesn't exist, create new branch
-            cmd = ["git", "worktree", "add", "-b", branch, worktree_path]
-          end
-          
+
+          cmd = if branch_exists
+                  # Branch exists, create worktree from existing branch
+                  ["git", "worktree", "add", worktree_path, branch]
+                else
+                  # Branch doesn't exist, create new branch
+                  ["git", "worktree", "add", "-b", branch, worktree_path]
+                end
+
           success = system(*cmd, out: File::NULL, err: File::NULL)
           raise "Git worktree command failed" unless success
         end
@@ -171,9 +194,9 @@ module Sxn
           cmd = ["git", "worktree", "remove", "--force", worktree_path]
           system(*cmd, out: File::NULL, err: File::NULL)
         end
-        
+
         # Clean up directory if it still exists
-        FileUtils.rm_rf(worktree_path) if File.exist?(worktree_path)
+        FileUtils.rm_rf(worktree_path)
       end
 
       def remove_git_worktree_by_path(worktree_path)
@@ -184,40 +207,45 @@ module Sxn
           if content.start_with?("gitdir:")
             git_dir = content.sub(/^gitdir:\s*/, "")
             parent_repo = git_dir.split("/worktrees/").first if git_dir.include?("/worktrees/")
-            
-            if parent_repo && File.directory?(parent_repo)
-              Dir.chdir(parent_repo) do
-                cmd = ["git", "worktree", "remove", "--force", worktree_path]
-                system(*cmd, out: File::NULL, err: File::NULL)
+
+            # Ensure parent_repo is a valid absolute path and the directory exists
+            if parent_repo && File.absolute_path?(parent_repo) && File.directory?(parent_repo)
+              begin
+                Dir.chdir(parent_repo) do
+                  cmd = ["git", "worktree", "remove", "--force", worktree_path]
+                  system(*cmd, out: File::NULL, err: File::NULL)
+                end
+              rescue Errno::ENOENT
+                # Directory doesn't exist or can't be accessed, skip git command
               end
             end
           end
         end
-        
+
         # Clean up directory
-        FileUtils.rm_rf(worktree_path) if File.exist?(worktree_path)
+        FileUtils.rm_rf(worktree_path)
       end
 
       def get_worktree_status(path)
         return "missing" unless File.directory?(path)
         return "invalid" unless valid_git_worktree?(path)
-        
+
         Dir.chdir(path) do
           # Check for staged changes
           staged = !system("git diff-index --quiet --cached HEAD", out: File::NULL, err: File::NULL)
           return "staged" if staged
-          
+
           # Check for unstaged changes
           unstaged = !system("git diff-files --quiet", out: File::NULL, err: File::NULL)
           return "modified" if unstaged
-          
+
           # Check for untracked files
           untracked = !system("git ls-files --others --exclude-standard --quiet", out: File::NULL, err: File::NULL)
           return "untracked" if untracked
-          
+
           "clean"
         end
-      rescue
+      rescue StandardError
         "error"
       end
 
@@ -228,26 +256,24 @@ module Sxn
       def check_git_status(path)
         return ["Directory does not exist"] unless File.directory?(path)
         return ["Not a git repository"] unless valid_git_worktree?(path)
-        
+
         issues = []
-        
+
         begin
           Dir.chdir(path) do
             # Check if we can access git status
             unless system("git status --porcelain", out: File::NULL, err: File::NULL)
               issues << "Cannot access git status (possible repository corruption)"
             end
-            
+
             # Check for detached HEAD
-            result = `git symbolic-ref -q HEAD 2>/dev/null`
-            if $?.exitstatus != 0
-              issues << "Repository is in detached HEAD state"
-            end
+            `git symbolic-ref -q HEAD 2>/dev/null`
+            issues << "Repository is in detached HEAD state" if $CHILD_STATUS.exitstatus != 0
           end
-        rescue => e
+        rescue StandardError => e
           issues << "Error checking git status: #{e.message}"
         end
-        
+
         issues
       end
     end

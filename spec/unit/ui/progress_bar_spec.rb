@@ -3,7 +3,7 @@
 require "spec_helper"
 
 RSpec.describe Sxn::UI::ProgressBar do
-  let(:mock_tty_progress) { instance_double(TTY::ProgressBar) }
+  let(:mock_tty_progress) { double("TTY::ProgressBar") }
 
   before do
     allow(TTY::ProgressBar).to receive(:new).and_return(mock_tty_progress)
@@ -137,7 +137,7 @@ RSpec.describe Sxn::UI::ProgressBar do
   end
 
   describe ".with_progress" do
-    let(:items) { ["item1", "item2", "item3"] }
+    let(:items) { %w[item1 item2 item3] }
     let(:progress_bar_instance) { instance_double(described_class) }
 
     before do
@@ -153,25 +153,25 @@ RSpec.describe Sxn::UI::ProgressBar do
         format: :classic
       )
 
-      described_class.with_progress("Processing items", items) { |item, progress| item.upcase }
+      described_class.with_progress("Processing items", items) { |item, _progress| item.upcase }
     end
 
     it "processes each item and collects results" do
-      results = described_class.with_progress("Processing", items) do |item, progress|
+      results = described_class.with_progress("Processing", items) do |item, _progress|
         item.upcase
       end
 
-      expect(results).to eq(["ITEM1", "ITEM2", "ITEM3"])
+      expect(results).to eq(%w[ITEM1 ITEM2 ITEM3])
     end
 
     it "advances progress bar for each item" do
-      described_class.with_progress("Processing", items) { |item, progress| item }
+      described_class.with_progress("Processing", items) { |item, _progress| item }
 
       expect(progress_bar_instance).to have_received(:advance).exactly(3).times
     end
 
     it "finishes progress bar after processing all items" do
-      described_class.with_progress("Processing", items) { |item, progress| item }
+      described_class.with_progress("Processing", items) { |item, _progress| item }
 
       expect(progress_bar_instance).to have_received(:finish)
     end
@@ -190,11 +190,11 @@ RSpec.describe Sxn::UI::ProgressBar do
         format: :detailed
       )
 
-      described_class.with_progress("Processing", items, format: :detailed) { |item, progress| item }
+      described_class.with_progress("Processing", items, format: :detailed) { |item, _progress| item }
     end
 
     it "returns empty array for empty items" do
-      results = described_class.with_progress("Processing", []) { |item, progress| item }
+      results = described_class.with_progress("Processing", []) { |item, _progress| item }
 
       expect(results).to eq([])
       expect(described_class).not_to have_received(:new)
@@ -218,7 +218,7 @@ RSpec.describe Sxn::UI::ProgressBar do
         format: :detailed
       )
 
-      described_class.for_operation("Operation") { |stepper| "result" }
+      described_class.for_operation("Operation") { |_stepper| "result" }
     end
 
     it "accepts custom total steps" do
@@ -228,13 +228,13 @@ RSpec.describe Sxn::UI::ProgressBar do
         format: :detailed
       )
 
-      described_class.for_operation("Custom operation", total_steps: 10) { |stepper| "result" }
+      described_class.for_operation("Custom operation", total_steps: 10) { |_stepper| "result" }
     end
 
     it "creates stepper with progress bar" do
       expect(described_class::Stepper).to receive(:new).with(progress_bar_instance)
 
-      described_class.for_operation("Operation") { |stepper| "result" }
+      described_class.for_operation("Operation") { |_stepper| "result" }
     end
 
     it "passes stepper to block and returns result" do
@@ -247,15 +247,15 @@ RSpec.describe Sxn::UI::ProgressBar do
     end
 
     it "finishes progress bar after operation" do
-      described_class.for_operation("Operation") { |stepper| "result" }
+      described_class.for_operation("Operation") { |_stepper| "result" }
 
       expect(progress_bar_instance).to have_received(:finish)
     end
   end
 
   describe described_class::Stepper do
-    let(:mock_progress) { instance_double(described_class) }
-    let(:stepper) { described_class::Stepper.new(mock_progress) }
+    let(:mock_progress) { double("ProgressBar") }
+    let(:stepper) { described_class.new(mock_progress) }
 
     before do
       allow(mock_progress).to receive(:log)
@@ -264,7 +264,7 @@ RSpec.describe Sxn::UI::ProgressBar do
 
     describe "#initialize" do
       it "stores progress bar reference" do
-        stepper = described_class::Stepper.new(mock_progress)
+        stepper = described_class.new(mock_progress)
         expect(stepper.instance_variable_get(:@progress)).to eq(mock_progress)
       end
     end
@@ -298,27 +298,27 @@ RSpec.describe Sxn::UI::ProgressBar do
     it "creates functional progress bar for real operations" do
       # This test verifies the actual flow without mocking TTY::ProgressBar
       allow(TTY::ProgressBar).to receive(:new).and_call_original
-      
-      items = ["a", "b", "c"]
+
+      items = %w[a b c]
       results = []
-      
+
       # Capture output to avoid cluttering test output
-      expect {
+      expect do
         results = described_class.with_progress("Test", items) do |item, progress|
           progress.log("Processing #{item}")
           item.upcase
         end
-      }.not_to raise_error
-      
-      expect(results).to eq(["A", "B", "C"])
+      end.not_to raise_error
+
+      expect(results).to eq(%w[A B C])
     end
 
     it "creates functional stepper for operations" do
       allow(TTY::ProgressBar).to receive(:new).and_call_original
-      
+
       result = nil
-      
-      expect {
+
+      expect do
         result = described_class.for_operation("Test operation", total_steps: 3) do |stepper|
           stepper.step("Step 1")
           stepper.step("Step 2")
@@ -326,8 +326,8 @@ RSpec.describe Sxn::UI::ProgressBar do
           stepper.step("Step 3")
           "completed"
         end
-      }.not_to raise_error
-      
+      end.not_to raise_error
+
       expect(result).to eq("completed")
     end
   end

@@ -15,8 +15,8 @@ RSpec.describe Sxn::Templates do
 
   describe "autoloaded constants" do
     it "defines all expected template autoloads" do
-      expected_constants = [:TemplateEngine, :TemplateProcessor, :TemplateVariables, :TemplateSecurity, :Errors]
-      
+      expected_constants = %i[TemplateEngine TemplateProcessor TemplateVariables TemplateSecurity Errors]
+
       expected_constants.each do |const|
         expect(Sxn::Templates.const_defined?(const)).to be true
       end
@@ -53,10 +53,6 @@ RSpec.describe Sxn::Templates do
   describe "template class availability" do
     before do
       # Force autoload to trigger
-      Sxn::Templates::TemplateEngine
-      Sxn::Templates::TemplateProcessor
-      Sxn::Templates::TemplateVariables
-      Sxn::Templates::TemplateSecurity
       Sxn::Templates::Errors
     end
 
@@ -81,8 +77,8 @@ RSpec.describe Sxn::Templates do
 
     it "all template classes are properly namespaced" do
       constants = Sxn::Templates.constants
-      expected_constants = [:TemplateEngine, :TemplateProcessor, :TemplateVariables, :TemplateSecurity, :Errors]
-      
+      expected_constants = %i[TemplateEngine TemplateProcessor TemplateVariables TemplateSecurity Errors]
+
       expected_constants.each do |const|
         expect(constants).to include(const)
       end
@@ -92,14 +88,6 @@ RSpec.describe Sxn::Templates do
   describe "module features documentation" do
     it "provides comprehensive template processing features" do
       # Test that the module documentation is reflected in available classes
-      features = [
-        "Liquid-based template processing",
-        "Whitelisted variables and filters",
-        "Built-in templates for Rails, JavaScript, and common projects",
-        "Template security validation",
-        "Variable collection from session, git, project, and environment",
-        "Performance optimizations with caching"
-      ]
 
       # While we can't test the features directly from the module,
       # we can verify the module provides the necessary components
@@ -134,7 +122,7 @@ RSpec.describe Sxn::Templates do
 
     it "template engine provides core functionality" do
       engine = Sxn::Templates::TemplateEngine.new
-      
+
       # Check that the engine has the expected interface
       expect(engine).to respond_to(:process_template)
       expect(engine).to respond_to(:list_templates)
@@ -145,7 +133,7 @@ RSpec.describe Sxn::Templates do
   describe "security features" do
     it "provides template security validation" do
       security = Sxn::Templates::TemplateSecurity.new
-      
+
       # Check that security validation methods are available
       expect(security).to respond_to(:validate_template_path)
       expect(security).to respond_to(:validate_template_content)
@@ -155,7 +143,7 @@ RSpec.describe Sxn::Templates do
   describe "variable collection" do
     it "provides template variable collection" do
       variables = Sxn::Templates::TemplateVariables.new
-      
+
       # Check that variable collection methods are available
       expect(variables).to respond_to(:collect_all_variables)
       expect(variables).to respond_to(:collect_session_variables)
@@ -168,7 +156,7 @@ RSpec.describe Sxn::Templates do
   describe "template processing" do
     it "provides template processing functionality" do
       processor = Sxn::Templates::TemplateProcessor.new
-      
+
       # Check that processing methods are available
       expect(processor).to respond_to(:process)
       expect(processor).to respond_to(:validate_template)

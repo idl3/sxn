@@ -45,16 +45,43 @@ module Sxn
 
       # Initialize a new rule instance
       #
-      # @param name [String] Unique name for this rule instance
-      # @param config [Hash] Rule configuration parameters
-      # @param project_path [String] Absolute path to the project root
-      # @param session_path [String] Absolute path to the session directory
+      # @param name [String] Unique name for this rule instance (old format) or project_path (new format)
+      # @param config_or_session_path [Hash|String] Rule configuration (old) or session_path (new)
+      # @param project_path [String] Absolute path to the project root (old format)
+      # @param session_path [String] Absolute path to the session directory (old format)
       # @param dependencies [Array<String>] Names of rules this rule depends on
-      def initialize(name, config, project_path, session_path, dependencies: [])
-        @name = name
-        @config = config.dup.freeze
-        @project_path = File.realpath(project_path)
-        @session_path = File.realpath(session_path)
+      def initialize(arg1 = nil, arg2 = nil, arg3 = nil, arg4 = nil, dependencies: [])
+        # Handle both old and new initialization formats
+        if (arg1.is_a?(String) || arg1.nil?) && arg2.is_a?(Hash) && arg3.is_a?(String) && arg4.is_a?(String)
+          # Old format: (name, config, project_path, session_path, dependencies: [])
+          @name = arg1 || "base_rule"
+          @config = arg2.dup.freeze
+          @project_path = File.realpath(arg3)
+          @session_path = File.realpath(arg4)
+        elsif arg1.is_a?(Hash) && arg2.is_a?(String) && arg3.is_a?(String)
+          # Special format: (config, project_path, session_path, name)
+          @name = arg4 || "base_rule"  
+          @config = arg1.dup.freeze
+          @project_path = File.realpath(arg2)
+          @session_path = File.realpath(arg3)
+        elsif arg1.is_a?(String) && arg2.is_a?(String)
+          # New format: (project_path, session_path, config = {}, dependencies: [])
+          @name = "base_rule"
+          # Store the config as-is for validation, only freeze if it's a Hash
+          if arg3.nil?
+            @config = {}.freeze
+          elsif arg3.is_a?(Hash)
+            @config = arg3.dup.freeze
+          else
+            # Store non-hash config as-is for validation to catch
+            @config = arg3
+          end
+          @project_path = File.realpath(arg1)
+          @session_path = File.realpath(arg2)
+        else
+          raise ArgumentError, "Invalid arguments. Expected (name, config, project_path, session_path) or (project_path, session_path, config={})"
+        end
+        
         @dependencies = dependencies.freeze
         @state = PENDING
         @changes = []
@@ -74,15 +101,15 @@ module Sxn
       # @raise [ValidationError] if validation fails
       def validate
         change_state!(VALIDATING)
-        
+
         begin
           validate_config!
           validate_dependencies!
           validate_rule_specific!
-          
+
           change_state!(VALIDATED)
           true
-        rescue => e
+        rescue StandardError => e
           @errors << e
           change_state!(FAILED)
           raise
@@ -92,9 +119,10 @@ module Sxn
       # Apply the rule's action
       # This method must be overridden by subclasses to implement the actual rule logic
       #
+      # @param context [Hash] Optional execution context
       # @return [Boolean] true if application succeeds
       # @raise [ApplicationError] if application fails
-      def apply
+      def apply(context = {})
         raise NotImplementedError, "#{self.class} must implement #apply"
       end
 
@@ -107,15 +135,15 @@ module Sxn
         return true if @state == PENDING || @state == FAILED
 
         change_state!(ROLLING_BACK)
-        
+
         begin
           rollback_changes!
           change_state!(ROLLED_BACK)
           true
-        rescue => e
+        rescue StandardError => e
           @errors << e
           change_state!(FAILED)
-          raise RollbackError, "Failed to rollback rule #{@name}: #{e.message}"
+          raise Sxn::Rules::RollbackError, "Failed to rollback rule #{@name}: #{e.message}"
         end
       end
 
@@ -132,7 +160,39 @@ module Sxn
       # @return [Float, nil] Execution duration or nil if not completed
       def duration
         return nil unless @start_time && @end_time
+
         @end_time - @start_time
+      end
+
+      # Get rule type
+      #
+      # @return [String] Rule type based on class name
+      def type
+        self.class.name.split("::").last.downcase.gsub(/rule$/, "")
+      end
+
+      # Check if rule is required
+      #
+      # @return [Boolean] true if rule is required
+      def required?
+        true
+      end
+
+      # Validate rule configuration (public method expected by tests)
+      #
+      # @param config [Hash] Configuration to validate
+      # @return [Boolean] true if valid
+      def validate_config_hash(config = @config)
+        return true if config.nil? || config.empty?
+
+        config.is_a?(Hash)
+      end
+
+      # Get rule description
+      #
+      # @return [String] Description of the rule
+      def description
+        "Base rule for #{type} operations"
       end
 
       # Check if rule has been successfully applied
@@ -162,7 +222,7 @@ module Sxn
       def to_h
         {
           name: @name,
-          type: self.class.name.split('::').last,
+          type: self.class.name.split("::").last,
           state: @state,
           config: @config,
           dependencies: @dependencies,
@@ -210,7 +270,7 @@ module Sxn
       def change_state!(new_state)
         old_state = @state
         @state = new_state
-        
+
         case new_state
         when APPLYING
           @start_time = Time.now
@@ -223,24 +283,20 @@ module Sxn
 
       # Validate that required paths exist and are accessible
       def validate_paths!
-        unless File.directory?(@project_path)
-          raise ArgumentError, "Project path is not a directory: #{@project_path}"
-        end
+        raise ArgumentError, "Project path is not a directory: #{@project_path}" unless File.directory?(@project_path)
 
-        unless File.directory?(@session_path)
-          raise ArgumentError, "Session path is not a directory: #{@session_path}"
-        end
+        raise ArgumentError, "Session path is not a directory: #{@session_path}" unless File.directory?(@session_path)
 
         # Ensure session path is writable
-        unless File.writable?(@session_path)
-          raise ArgumentError, "Session path is not writable: #{@session_path}"
-        end
+        return if File.writable?(@session_path)
+
+        raise ArgumentError, "Session path is not writable: #{@session_path}"
       end
 
       # Validate basic rule configuration
       def validate_config!
         raise ValidationError, "Config must be a Hash" unless @config.is_a?(Hash)
-        
+
         # Subclasses should override this method for specific validation
         validate_rule_specific!
       end
@@ -248,9 +304,7 @@ module Sxn
       # Validate rule dependencies
       def validate_dependencies!
         @dependencies.each do |dep|
-          unless dep.is_a?(String) && !dep.empty?
-            raise ValidationError, "Invalid dependency: #{dep.inspect}"
-          end
+          raise ValidationError, "Invalid dependency: #{dep.inspect}" unless dep.is_a?(String) && !dep.empty?
         end
       end
 
@@ -263,10 +317,9 @@ module Sxn
 
       # Rollback all tracked changes in reverse order
       def rollback_changes!
-        @changes.reverse_each do |change|
-          change.rollback
-        end
+        @changes.reverse_each(&:rollback)
         @changes.clear
+        true
       end
 
       # Represents a single change made by a rule
@@ -284,7 +337,7 @@ module Sxn
         def rollback
           case @type
           when :file_created
-            File.unlink(@target) if File.exist?(@target)
+            FileUtils.rm_f(@target)
           when :file_modified
             if @metadata[:backup_path] && File.exist?(@metadata[:backup_path])
               FileUtils.mv(@metadata[:backup_path], @target)
@@ -297,7 +350,7 @@ module Sxn
             # Command execution cannot be rolled back
             # This is logged for audit purposes only
           else
-            raise RollbackError, "Unknown change type for rollback: #{@type}"
+            raise Sxn::Rules::RollbackError, "Unknown change type for rollback: #{@type}"
           end
         end
 

@@ -6,19 +6,19 @@ RSpec.describe Sxn::Rules::SetupCommandsRule do
   let(:project_path) { Dir.mktmpdir("project") }
   let(:session_path) { Dir.mktmpdir("session") }
   let(:rule_name) { "setup_commands_test" }
-  
+
   let(:basic_config) do
     {
       "commands" => [
         {
-          "command" => ["bundle", "install"],
+          "command" => %w[bundle install],
           "description" => "Install Ruby dependencies"
         }
       ]
     }
   end
 
-  let(:rule) { described_class.new(rule_name, basic_config, project_path, session_path) }
+  let(:rule) { described_class.new(project_path, session_path, basic_config) }
   let(:mock_executor) { instance_double("Sxn::Security::SecureCommandExecutor") }
   let(:mock_result) { instance_double("Sxn::Security::SecureCommandExecutor::CommandResult") }
 
@@ -27,7 +27,7 @@ RSpec.describe Sxn::Rules::SetupCommandsRule do
     allow(Sxn::Security::SecureCommandExecutor).to receive(:new).and_return(mock_executor)
     allow(mock_executor).to receive(:command_allowed?).and_return(true)
     allow(mock_executor).to receive(:execute).and_return(mock_result)
-    
+
     # Mock successful command result
     allow(mock_result).to receive(:success?).and_return(true)
     allow(mock_result).to receive(:failure?).and_return(false)
@@ -59,34 +59,34 @@ RSpec.describe Sxn::Rules::SetupCommandsRule do
 
     context "with missing commands configuration" do
       let(:invalid_config) { {} }
-      let(:invalid_rule) { described_class.new(rule_name, invalid_config, project_path, session_path) }
+      let(:invalid_rule) { described_class.new(project_path, session_path, invalid_config) }
 
       it "fails validation" do
-        expect {
+        expect do
           invalid_rule.validate
-        }.to raise_error(Sxn::Rules::ValidationError, /requires 'commands' configuration/)
+        end.to raise_error(Sxn::Rules::ValidationError, /requires 'commands' configuration/)
       end
     end
 
     context "with non-array commands configuration" do
       let(:invalid_config) { { "commands" => "not-an-array" } }
-      let(:invalid_rule) { described_class.new(rule_name, invalid_config, project_path, session_path) }
+      let(:invalid_rule) { described_class.new(project_path, session_path, invalid_config) }
 
       it "fails validation" do
-        expect {
+        expect do
           invalid_rule.validate
-        }.to raise_error(Sxn::Rules::ValidationError, /'commands' must be an array/)
+        end.to raise_error(Sxn::Rules::ValidationError, /'commands' must be an array/)
       end
     end
 
     context "with empty commands array" do
       let(:invalid_config) { { "commands" => [] } }
-      let(:invalid_rule) { described_class.new(rule_name, invalid_config, project_path, session_path) }
+      let(:invalid_rule) { described_class.new(project_path, session_path, invalid_config) }
 
       it "fails validation" do
-        expect {
+        expect do
           invalid_rule.validate
-        }.to raise_error(Sxn::Rules::ValidationError, /'commands' cannot be empty/)
+        end.to raise_error(Sxn::Rules::ValidationError, /'commands' cannot be empty/)
       end
     end
 
@@ -98,12 +98,12 @@ RSpec.describe Sxn::Rules::SetupCommandsRule do
           ]
         }
       end
-      let(:invalid_rule) { described_class.new(rule_name, invalid_config, project_path, session_path) }
+      let(:invalid_rule) { described_class.new(project_path, session_path, invalid_config) }
 
       it "fails validation" do
-        expect {
+        expect do
           invalid_rule.validate
-        }.to raise_error(Sxn::Rules::ValidationError, /must have a 'command' field/)
+        end.to raise_error(Sxn::Rules::ValidationError, /must have a 'command' field/)
       end
     end
 
@@ -115,12 +115,12 @@ RSpec.describe Sxn::Rules::SetupCommandsRule do
           ]
         }
       end
-      let(:invalid_rule) { described_class.new(rule_name, invalid_config, project_path, session_path) }
+      let(:invalid_rule) { described_class.new(project_path, session_path, invalid_config) }
 
       it "fails validation" do
-        expect {
+        expect do
           invalid_rule.validate
-        }.to raise_error(Sxn::Rules::ValidationError, /'command' must be a non-empty array/)
+        end.to raise_error(Sxn::Rules::ValidationError, /'command' must be a non-empty array/)
       end
     end
 
@@ -132,16 +132,16 @@ RSpec.describe Sxn::Rules::SetupCommandsRule do
           ]
         }
       end
-      let(:invalid_rule) { described_class.new(rule_name, invalid_config, project_path, session_path) }
+      let(:invalid_rule) { described_class.new(project_path, session_path, invalid_config) }
 
       before do
         allow(mock_executor).to receive(:command_allowed?).with(["disallowed-command"]).and_return(false)
       end
 
       it "fails validation" do
-        expect {
+        expect do
           invalid_rule.validate
-        }.to raise_error(Sxn::Rules::ValidationError, /command not whitelisted/)
+        end.to raise_error(Sxn::Rules::ValidationError, /command not whitelisted/)
       end
     end
 
@@ -150,18 +150,18 @@ RSpec.describe Sxn::Rules::SetupCommandsRule do
         {
           "commands" => [
             {
-              "command" => ["bundle", "install"],
+              "command" => %w[bundle install],
               "timeout" => -1
             }
           ]
         }
       end
-      let(:invalid_rule) { described_class.new(rule_name, invalid_config, project_path, session_path) }
+      let(:invalid_rule) { described_class.new(project_path, session_path, invalid_config) }
 
       it "fails validation" do
-        expect {
+        expect do
           invalid_rule.validate
-        }.to raise_error(Sxn::Rules::ValidationError, /timeout must be positive integer/)
+        end.to raise_error(Sxn::Rules::ValidationError, /timeout must be positive integer/)
       end
     end
 
@@ -170,18 +170,18 @@ RSpec.describe Sxn::Rules::SetupCommandsRule do
         {
           "commands" => [
             {
-              "command" => ["bundle", "install"],
+              "command" => %w[bundle install],
               "timeout" => 2000
             }
           ]
         }
       end
-      let(:invalid_rule) { described_class.new(rule_name, invalid_config, project_path, session_path) }
+      let(:invalid_rule) { described_class.new(project_path, session_path, invalid_config) }
 
       it "fails validation" do
-        expect {
+        expect do
           invalid_rule.validate
-        }.to raise_error(Sxn::Rules::ValidationError, /timeout must be positive integer <= 1800/)
+        end.to raise_error(Sxn::Rules::ValidationError, /timeout must be positive integer <= 1800/)
       end
     end
 
@@ -190,18 +190,18 @@ RSpec.describe Sxn::Rules::SetupCommandsRule do
         {
           "commands" => [
             {
-              "command" => ["bundle", "install"],
+              "command" => %w[bundle install],
               "env" => "not-a-hash"
             }
           ]
         }
       end
-      let(:invalid_rule) { described_class.new(rule_name, invalid_config, project_path, session_path) }
+      let(:invalid_rule) { described_class.new(project_path, session_path, invalid_config) }
 
       it "fails validation" do
-        expect {
+        expect do
           invalid_rule.validate
-        }.to raise_error(Sxn::Rules::ValidationError, /env must be a hash/)
+        end.to raise_error(Sxn::Rules::ValidationError, /env must be a hash/)
       end
     end
 
@@ -210,18 +210,18 @@ RSpec.describe Sxn::Rules::SetupCommandsRule do
         {
           "commands" => [
             {
-              "command" => ["bundle", "install"],
+              "command" => %w[bundle install],
               "condition" => "invalid_condition"
             }
           ]
         }
       end
-      let(:invalid_rule) { described_class.new(rule_name, invalid_config, project_path, session_path) }
+      let(:invalid_rule) { described_class.new(project_path, session_path, invalid_config) }
 
       it "fails validation" do
-        expect {
+        expect do
           invalid_rule.validate
-        }.to raise_error(Sxn::Rules::ValidationError, /invalid condition format/)
+        end.to raise_error(Sxn::Rules::ValidationError, /invalid condition format/)
       end
     end
 
@@ -230,18 +230,18 @@ RSpec.describe Sxn::Rules::SetupCommandsRule do
         {
           "commands" => [
             {
-              "command" => ["bundle", "install"],
+              "command" => %w[bundle install],
               "working_directory" => "../outside-session"
             }
           ]
         }
       end
-      let(:invalid_rule) { described_class.new(rule_name, invalid_config, project_path, session_path) }
+      let(:invalid_rule) { described_class.new(project_path, session_path, invalid_config) }
 
       it "fails validation" do
-        expect {
+        expect do
           invalid_rule.validate
-        }.to raise_error(Sxn::Rules::ValidationError, /working_directory must be within session path/)
+        end.to raise_error(Sxn::Rules::ValidationError, /working_directory must be within session path/)
       end
     end
   end
@@ -258,16 +258,16 @@ RSpec.describe Sxn::Rules::SetupCommandsRule do
 
       it "calls command executor with correct parameters" do
         expect(mock_executor).to receive(:execute).with(
-          ["bundle", "install"],
+          %w[bundle install],
           { chdir: File.realpath(session_path), env: {}, timeout: 60 }
         )
-        
+
         rule.apply
       end
 
       it "tracks command execution" do
         rule.apply
-        
+
         expect(rule.changes.size).to eq(1)
         change = rule.changes.first
         expect(change.type).to eq(:command_executed)
@@ -280,22 +280,22 @@ RSpec.describe Sxn::Rules::SetupCommandsRule do
         {
           "commands" => [
             {
-              "command" => ["bundle", "install"],
+              "command" => %w[bundle install],
               "env" => { "RAILS_ENV" => "development", "BUNDLE_WITHOUT" => "production" }
             }
           ]
         }
       end
-      let(:env_rule) { described_class.new(rule_name, env_config, project_path, session_path) }
+      let(:env_rule) { described_class.new(project_path, session_path, env_config) }
 
       before { env_rule.validate }
 
       it "passes environment variables to executor" do
         expect(mock_executor).to receive(:execute).with(
-          ["bundle", "install"],
+          %w[bundle install],
           hash_including(env: { "RAILS_ENV" => "development", "BUNDLE_WITHOUT" => "production" })
         )
-        
+
         env_rule.apply
       end
     end
@@ -305,22 +305,22 @@ RSpec.describe Sxn::Rules::SetupCommandsRule do
         {
           "commands" => [
             {
-              "command" => ["bundle", "install"],
+              "command" => %w[bundle install],
               "timeout" => 120
             }
           ]
         }
       end
-      let(:timeout_rule) { described_class.new(rule_name, timeout_config, project_path, session_path) }
+      let(:timeout_rule) { described_class.new(project_path, session_path, timeout_config) }
 
       before { timeout_rule.validate }
 
       it "passes timeout to executor" do
         expect(mock_executor).to receive(:execute).with(
-          ["bundle", "install"],
+          %w[bundle install],
           hash_including(timeout: 120)
         )
-        
+
         timeout_rule.apply
       end
     end
@@ -330,13 +330,13 @@ RSpec.describe Sxn::Rules::SetupCommandsRule do
         {
           "commands" => [
             {
-              "command" => ["bundle", "install"],
+              "command" => %w[bundle install],
               "working_directory" => "subdir"
             }
           ]
         }
       end
-      let(:workdir_rule) { described_class.new(rule_name, workdir_config, project_path, session_path) }
+      let(:workdir_rule) { described_class.new(project_path, session_path, workdir_config) }
 
       before do
         FileUtils.mkdir_p(File.join(session_path, "subdir"))
@@ -346,10 +346,10 @@ RSpec.describe Sxn::Rules::SetupCommandsRule do
       it "passes working directory to executor" do
         expected_chdir = File.expand_path("subdir", File.realpath(session_path))
         expect(mock_executor).to receive(:execute).with(
-          ["bundle", "install"],
+          %w[bundle install],
           { chdir: expected_chdir, env: {}, timeout: 60 }
         )
-        
+
         workdir_rule.apply
       end
     end
@@ -365,13 +365,13 @@ RSpec.describe Sxn::Rules::SetupCommandsRule do
           {
             "commands" => [
               {
-                "command" => ["bundle", "install"],
+                "command" => %w[bundle install],
                 "condition" => "file_exists:Gemfile.lock"
               }
             ]
           }
         end
-        let(:condition_rule) { described_class.new(rule_name, condition_config, project_path, session_path) }
+        let(:condition_rule) { described_class.new(project_path, session_path, condition_config) }
 
         before { condition_rule.validate }
 
@@ -386,13 +386,13 @@ RSpec.describe Sxn::Rules::SetupCommandsRule do
           {
             "commands" => [
               {
-                "command" => ["bundle", "install"],
+                "command" => %w[bundle install],
                 "condition" => "file_missing:nonexistent.file"
               }
             ]
           }
         end
-        let(:condition_rule) { described_class.new(rule_name, condition_config, project_path, session_path) }
+        let(:condition_rule) { described_class.new(project_path, session_path, condition_config) }
 
         before { condition_rule.validate }
 
@@ -407,13 +407,13 @@ RSpec.describe Sxn::Rules::SetupCommandsRule do
           {
             "commands" => [
               {
-                "command" => ["bundle", "install"],
+                "command" => %w[bundle install],
                 "condition" => "file_exists:nonexistent.file"
               }
             ]
           }
         end
-        let(:condition_rule) { described_class.new(rule_name, condition_config, project_path, session_path) }
+        let(:condition_rule) { described_class.new(project_path, session_path, condition_config) }
 
         before { condition_rule.validate }
 
@@ -428,19 +428,19 @@ RSpec.describe Sxn::Rules::SetupCommandsRule do
       let(:multi_config) do
         {
           "commands" => [
-            { "command" => ["bundle", "install"] },
+            { "command" => %w[bundle install] },
             { "command" => ["bundle", "exec", "rails", "db:create"] }
           ]
         }
       end
-      let(:multi_rule) { described_class.new(rule_name, multi_config, project_path, session_path) }
+      let(:multi_rule) { described_class.new(project_path, session_path, multi_config) }
 
       before { multi_rule.validate }
 
       it "executes all commands in order" do
         expect(mock_executor).to receive(:execute).twice
         multi_rule.apply
-        
+
         expect(multi_rule.changes.size).to eq(2)
       end
     end
@@ -454,10 +454,10 @@ RSpec.describe Sxn::Rules::SetupCommandsRule do
       end
 
       it "fails with appropriate error" do
-        expect {
+        expect do
           rule.apply
-        }.to raise_error(Sxn::Rules::ApplicationError, /Command failed/)
-        
+        end.to raise_error(Sxn::Rules::ApplicationError, /Command failed/)
+
         expect(rule.state).to eq(:failed)
       end
     end
@@ -466,13 +466,13 @@ RSpec.describe Sxn::Rules::SetupCommandsRule do
       let(:continue_config) do
         {
           "commands" => [
-            { "command" => ["bundle", "install"] },
+            { "command" => %w[bundle install] },
             { "command" => ["bundle", "exec", "rails", "db:create"] }
           ],
           "continue_on_failure" => true
         }
       end
-      let(:continue_rule) { described_class.new(rule_name, continue_config, project_path, session_path) }
+      let(:continue_rule) { described_class.new(project_path, session_path, continue_config) }
 
       before do
         continue_rule.validate
@@ -484,7 +484,7 @@ RSpec.describe Sxn::Rules::SetupCommandsRule do
 
       it "continues execution despite failures" do
         expect(mock_executor).to receive(:execute).twice
-        
+
         # Should not raise error
         expect { continue_rule.apply }.not_to raise_error
         expect(continue_rule.state).to eq(:applied)
@@ -497,9 +497,9 @@ RSpec.describe Sxn::Rules::SetupCommandsRule do
       end
 
       it "handles exceptions gracefully" do
-        expect {
+        expect do
           rule.apply
-        }.to raise_error(Sxn::Rules::ApplicationError, /Failed to execute command/)
+        end.to raise_error(Sxn::Rules::ApplicationError, /Failed to execute command/)
       end
     end
   end
@@ -512,13 +512,13 @@ RSpec.describe Sxn::Rules::SetupCommandsRule do
 
     it "provides execution summary" do
       summary = rule.execution_summary
-      
+
       expect(summary).to be_an(Array)
       expect(summary.size).to eq(1)
-      
+
       command_summary = summary.first
       expect(command_summary).to include(
-        command: ["bundle", "install"],
+        command: %w[bundle install],
         success: true,
         duration: 1.5,
         exit_status: 0
@@ -567,7 +567,7 @@ RSpec.describe Sxn::Rules::SetupCommandsRule do
       it "evaluates command_available condition correctly" do
         allow(mock_executor).to receive(:command_allowed?).with(["bundle"]).and_return(true)
         expect(rule_instance.send(:command_available?, "bundle")).to be true
-        
+
         allow(mock_executor).to receive(:command_allowed?).with(["nonexistent-command"]).and_return(false)
         expect(rule_instance.send(:command_available?, "nonexistent-command")).to be false
       end
@@ -577,7 +577,7 @@ RSpec.describe Sxn::Rules::SetupCommandsRule do
       it "evaluates env_var_set condition correctly" do
         ENV["TEST_VAR"] = "value"
         expect(rule_instance.send(:env_var_set?, "TEST_VAR")).to be true
-        
+
         ENV.delete("NONEXISTENT_VAR")
         expect(rule_instance.send(:env_var_set?, "NONEXISTENT_VAR")).to be false
       ensure
@@ -601,7 +601,7 @@ RSpec.describe Sxn::Rules::SetupCommandsRule do
           "commands" => [
             {
               "name" => "test_command",
-              "command" => ["echo", "test"],
+              "command" => %w[echo test],
               "working_directory" => valid_workdir
             }
           ]
@@ -613,7 +613,7 @@ RSpec.describe Sxn::Rules::SetupCommandsRule do
       end
 
       it "validates working directory correctly" do
-        rule_instance = described_class.new(rule_name, valid_config, project_path, session_path)
+        rule_instance = described_class.new(project_path, session_path, valid_config)
         expect { rule_instance.validate }.not_to raise_error
       end
     end
@@ -625,7 +625,7 @@ RSpec.describe Sxn::Rules::SetupCommandsRule do
           "commands" => [
             {
               "name" => "test_command",
-              "command" => ["echo", "test"],
+              "command" => %w[echo test],
               "working_directory" => invalid_workdir
             }
           ]
@@ -633,10 +633,10 @@ RSpec.describe Sxn::Rules::SetupCommandsRule do
       end
 
       it "rejects directory outside session path" do
-        rule_instance = described_class.new(rule_name, invalid_config, project_path, session_path)
-        expect {
+        rule_instance = described_class.new(project_path, session_path, invalid_config)
+        expect do
           rule_instance.validate
-        }.to raise_error(Sxn::Rules::ValidationError, /working_directory must be within session path/)
+        end.to raise_error(Sxn::Rules::ValidationError, /working_directory must be within session path/)
       end
     end
   end

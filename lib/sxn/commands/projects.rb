@@ -8,7 +8,7 @@ module Sxn
     class Projects < Thor
       include Thor::Actions
 
-      def initialize(*)
+      def initialize(args = ARGV, local_options = {}, config = {})
         super
         @ui = Sxn::UI::Output.new
         @prompt = Sxn::UI::Prompt.new
@@ -33,29 +33,26 @@ module Sxn
 
         begin
           @ui.progress_start("Adding project '#{name}'")
-          
+
           project = @project_manager.add_project(
             name,
             path,
             type: options[:type],
             default_branch: options[:default_branch]
           )
-          
+
           @ui.progress_done
           @ui.success("Added project '#{name}'")
-          
-          display_project_info(project)
 
+          display_project_info(project)
         rescue Sxn::Error => e
           @ui.progress_failed
           @ui.error(e.message)
           exit(e.exit_code)
-        rescue => e
+        rescue StandardError => e
           @ui.progress_failed
           @ui.error("Unexpected error: #{e.message}")
-          if ENV["SXN_DEBUG"]
-            @ui.debug(e.backtrace.join("\n"))
-          end
+          @ui.debug(e.backtrace.join("\n")) if ENV["SXN_DEBUG"]
           exit(1)
         end
       end
@@ -89,7 +86,6 @@ module Sxn
           @project_manager.remove_project(name)
           @ui.progress_done
           @ui.success("Removed project '#{name}'")
-
         rescue Sxn::ProjectInUseError => e
           @ui.progress_failed
           @ui.error(e.message)
@@ -112,20 +108,17 @@ module Sxn
           projects = @project_manager.list_projects
 
           @ui.section("Registered Projects")
-          
+
           if projects.empty?
             @ui.empty_state("No projects configured")
             suggest_add_project
+          elsif options[:validate]
+            list_with_validation(projects)
           else
-            if options[:validate]
-              list_with_validation(projects)
-            else
-              @table.projects(projects)
-              @ui.newline
-              @ui.info("Total: #{projects.size} projects")
-            end
+            @table.projects(projects)
+            @ui.newline
+            @ui.info("Total: #{projects.size} projects")
           end
-
         rescue Sxn::Error => e
           @ui.error(e.message)
           exit(e.exit_code)
@@ -158,13 +151,10 @@ module Sxn
           if options[:register]
             register_projects(detected)
           elsif options[:interactive]
-            if @prompt.ask_yes_no("Register detected projects?", default: true)
-              register_projects(detected)
-            end
+            register_projects(detected) if @prompt.ask_yes_no("Register detected projects?", default: true)
           else
             @ui.info("Use --register to add these projects automatically")
           end
-
         rescue Sxn::Error => e
           @ui.error(e.message)
           exit(e.exit_code)
@@ -188,9 +178,9 @@ module Sxn
 
         begin
           result = @project_manager.validate_project(name)
-          
+
           @ui.section("Project Validation: #{name}")
-          
+
           if result[:valid]
             @ui.success("Project is valid")
           else
@@ -199,7 +189,6 @@ module Sxn
           end
 
           display_project_info(result[:project])
-
         rescue Sxn::Error => e
           @ui.error(e.message)
           exit(e.exit_code)
@@ -238,10 +227,9 @@ module Sxn
             else
               @ui.info("No rules configured for this project")
             end
-          rescue => e
+          rescue StandardError => e
             @ui.debug("Could not load rules: #{e.message}")
           end
-
         rescue Sxn::Error => e
           @ui.error(e.message)
           exit(e.exit_code)
@@ -251,11 +239,11 @@ module Sxn
       private
 
       def ensure_initialized!
-        unless @config_manager.initialized?
-          @ui.error("Project not initialized")
-          @ui.recovery_suggestion("Run 'sxn init' to initialize sxn in this project")
-          exit(1)
-        end
+        return if @config_manager.initialized?
+
+        @ui.error("Project not initialized")
+        @ui.recovery_suggestion("Run 'sxn init' to initialize sxn in this project")
+        exit(1)
       end
 
       def display_project_info(project, detailed: false)
@@ -283,17 +271,17 @@ module Sxn
 
       def display_project_commands(project_name)
         @ui.subsection("Available Commands")
-        
+
         @ui.command_example(
           "sxn worktree add #{project_name} [branch]",
           "Create worktree for this project"
         )
-        
+
         @ui.command_example(
           "sxn rules add #{project_name} <type> <config>",
           "Add setup rules for this project"
         )
-        
+
         @ui.command_example(
           "sxn projects validate #{project_name}",
           "Validate project configuration"
@@ -312,9 +300,9 @@ module Sxn
         return if projects.empty?
 
         @ui.subsection("Registering Projects")
-        
+
         results = @project_manager.auto_register_projects(projects)
-        
+
         success_count = results.count { |r| r[:status] == :success }
         error_count = results.count { |r| r[:status] == :error }
 
@@ -328,24 +316,24 @@ module Sxn
 
         @ui.newline
         @ui.info("Registered #{success_count} projects successfully")
-        @ui.warning("#{error_count} projects failed") if error_count > 0
+        @ui.warning("#{error_count} projects failed") if error_count.positive?
       end
 
       def list_with_validation(projects)
         @ui.subsection("Project Validation")
-        
+
         Sxn::UI::ProgressBar.with_progress("Validating projects", projects) do |project, progress|
           validation = @project_manager.validate_project(project[:name])
-          
+
           status = validation[:valid] ? "✅" : "❌"
           progress.log("#{status} #{project[:name]}")
-          
+
           unless validation[:valid]
             validation[:issues].each do |issue|
               progress.log("   - #{issue}")
             end
           end
-          
+
           validation
         end
 

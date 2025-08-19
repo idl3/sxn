@@ -15,8 +15,8 @@ RSpec.describe Sxn::UI do
 
   describe "autoloaded constants" do
     it "defines all expected UI autoloads" do
-      expected_constants = [:Prompt, :Output, :Table, :ProgressBar]
-      
+      expected_constants = %i[Prompt Output Table ProgressBar]
+
       expected_constants.each do |const|
         expect(Sxn::UI.const_defined?(const)).to be true
       end
@@ -48,9 +48,6 @@ RSpec.describe Sxn::UI do
   describe "UI class availability" do
     before do
       # Force autoload to trigger
-      Sxn::UI::Prompt
-      Sxn::UI::Output
-      Sxn::UI::Table
       Sxn::UI::ProgressBar
     end
 
@@ -70,8 +67,8 @@ RSpec.describe Sxn::UI do
 
     it "all UI classes are properly namespaced" do
       constants = Sxn::UI.constants
-      expected_constants = [:Prompt, :Output, :Table, :ProgressBar]
-      
+      expected_constants = %i[Prompt Output Table ProgressBar]
+
       expected_constants.each do |const|
         expect(constants).to include(const)
       end
@@ -81,7 +78,7 @@ RSpec.describe Sxn::UI do
   describe "UI component functionality" do
     it "provides interactive prompting capabilities" do
       prompt = Sxn::UI::Prompt.new
-      
+
       # Check that prompt has expected interface
       expect(prompt).to respond_to(:ask)
       expect(prompt).to respond_to(:ask_yes_no)
@@ -91,7 +88,7 @@ RSpec.describe Sxn::UI do
 
     it "provides formatted output capabilities" do
       output = Sxn::UI::Output.new
-      
+
       # Check that output has expected interface
       expect(output).to respond_to(:success)
       expect(output).to respond_to(:error)
@@ -104,8 +101,8 @@ RSpec.describe Sxn::UI do
 
     it "provides table display capabilities" do
       table = Sxn::UI::Table.new
-      
-      # Check that table has expected interface  
+
+      # Check that table has expected interface
       expect(table).to respond_to(:sessions)
       expect(table).to respond_to(:projects)
       expect(table).to respond_to(:worktrees)
@@ -114,7 +111,7 @@ RSpec.describe Sxn::UI do
 
     it "provides progress indication capabilities" do
       progress = Sxn::UI::ProgressBar.new("Test progress", total: 100)
-      
+
       # Check that progress bar has expected interface
       expect(progress).to respond_to(:advance)
       expect(progress).to respond_to(:finish)
@@ -144,7 +141,7 @@ RSpec.describe Sxn::UI do
   describe "UI integration patterns" do
     it "output supports various message types" do
       output = Sxn::UI::Output.new
-      
+
       # Test that we can call different output methods without error
       expect { output.success("Test success") }.not_to raise_error
       expect { output.error("Test error") }.not_to raise_error
@@ -154,7 +151,7 @@ RSpec.describe Sxn::UI do
 
     it "table supports data display" do
       table = Sxn::UI::Table.new
-      
+
       # Test actual table methods that exist
       expect { table.sessions([]) }.not_to raise_error
       expect { table.projects([]) }.not_to raise_error
@@ -163,7 +160,7 @@ RSpec.describe Sxn::UI do
 
     it "progress bar supports progress tracking" do
       progress = Sxn::UI::ProgressBar.new("Test Progress", total: 5)
-      
+
       # Test progress bar operations
       expect { progress.advance }.not_to raise_error
       expect { progress.advance(2) }.not_to raise_error
@@ -175,7 +172,7 @@ RSpec.describe Sxn::UI do
     it "follows consistent instantiation patterns" do
       # All UI classes should be instantiable with new
       ui_classes = [Sxn::UI::Prompt, Sxn::UI::Output, Sxn::UI::Table]
-      
+
       ui_classes.each do |ui_class|
         expect(ui_class).to respond_to(:new)
         instance = ui_class.new
@@ -192,7 +189,7 @@ RSpec.describe Sxn::UI do
         progress: Sxn::UI::ProgressBar
       }
 
-      components.each do |name, component_class|
+      components.each_value do |component_class|
         expect(component_class).to be_a(Class)
         expect(component_class.name).to include("Sxn::UI")
       end

@@ -16,32 +16,50 @@ RSpec.describe Sxn::Rules::ProjectDetector do
     end
 
     it "raises error for non-existent project path" do
-      expect {
+      expect do
         described_class.new("/non/existent")
-      }.to raise_error(ArgumentError, /Project path does not exist/)
+      end.to raise_error(ArgumentError, /Project path does not exist/)
     end
 
     it "raises error for non-directory path" do
       file_path = File.join(project_path, "file.txt")
       File.write(file_path, "test")
-      
-      expect {
+
+      expect do
         described_class.new(file_path)
-      }.to raise_error(ArgumentError, /Project path is not a directory/)
+      end.to raise_error(ArgumentError, /Project path is not a directory/)
     end
 
     it "raises error for unreadable directory" do
       File.chmod(0o000, project_path)
-      
-      expect {
+
+      expect do
         described_class.new(project_path)
-      }.to raise_error(ArgumentError, /Project path is not readable/)
+      end.to raise_error(ArgumentError, /Project path is not readable/)
     ensure
       File.chmod(0o755, project_path)
     end
   end
 
+  describe "#detect_type" do
+    it "returns :unknown for non-existent path" do
+      result = detector.detect_type("/non/existent/path")
+      expect(result).to eq(:unknown)
+    end
+
+    it "detects project type for valid path" do
+      File.write(File.join(project_path, "package.json"), '{"name": "test", "dependencies": {"react": "^18.0.0"}}')
+      result = detector.detect_type(project_path)
+      expect(result).to eq(:react)
+    end
+  end
+
   describe "#detect_project_type" do
+    it "returns :unknown when no files match" do
+      result = detector.detect_project_type
+      expect(result).to eq(:unknown)
+    end
+
     context "with Rails project" do
       before do
         File.write(File.join(project_path, "Gemfile"), 'gem "rails", "~> 7.0"')
@@ -305,7 +323,7 @@ RSpec.describe Sxn::Rules::ProjectDetector do
 
     it "returns comprehensive project information" do
       info = detector.detect_project_info
-      
+
       expect(info).to include(
         type: :rails,
         language: :ruby,
@@ -322,6 +340,12 @@ RSpec.describe Sxn::Rules::ProjectDetector do
   end
 
   describe "#suggest_default_rules" do
+    it "returns rules even for unknown project type" do
+      rules = detector.suggest_default_rules
+      # Even unknown project types get template rules
+      expect(rules).to be_a(Hash)
+      expect(rules.keys).to include("templates")
+    end
     context "for Rails project" do
       before do
         File.write(File.join(project_path, "Gemfile"), 'gem "rails", "~> 7.0"')
@@ -333,18 +357,18 @@ RSpec.describe Sxn::Rules::ProjectDetector do
 
       it "suggests Rails-specific rules" do
         rules = detector.suggest_default_rules
-        
+
         expect(rules).to have_key("copy_files")
         expect(rules).to have_key("setup_commands")
         expect(rules).to have_key("templates")
-        
+
         # Check copy_files suggestions
         copy_files = rules["copy_files"]["config"]["files"]
         expect(copy_files.map { |f| f["source"] }).to include("config/master.key", ".env")
-        
+
         # Check setup_commands suggestions
         setup_commands = rules["setup_commands"]["config"]["commands"]
-        expect(setup_commands.map { |c| c["command"] }).to include(["bundle", "install"])
+        expect(setup_commands.map { |c| c["command"] }).to include(%w[bundle install])
       end
     end
 
@@ -362,19 +386,19 @@ RSpec.describe Sxn::Rules::ProjectDetector do
 
       it "suggests Node.js-specific rules" do
         rules = detector.suggest_default_rules
-        
+
         expect(rules).to have_key("copy_files")
         expect(rules).to have_key("setup_commands")
-        
+
         # Check copy_files suggestions
         copy_files = rules["copy_files"]["config"]["files"]
         source_files = copy_files.map { |f| f["source"] }
         expect(source_files).to include(".env", ".npmrc")
-        
+
         # Check setup_commands suggestions
         setup_commands = rules["setup_commands"]["config"]["commands"]
         commands = setup_commands.map { |c| c["command"] }
-        expect(commands).to include(["npm", "install"])
+        expect(commands).to include(%w[npm install])
       end
     end
 
@@ -386,10 +410,10 @@ RSpec.describe Sxn::Rules::ProjectDetector do
 
       it "suggests Python-specific rules" do
         rules = detector.suggest_default_rules
-        
+
         expect(rules).to have_key("copy_files")
         expect(rules).to have_key("setup_commands")
-        
+
         # Check setup_commands suggestions
         setup_commands = rules["setup_commands"]["config"]["commands"]
         commands = setup_commands.map { |c| c["command"] }
@@ -404,18 +428,14 @@ RSpec.describe Sxn::Rules::ProjectDetector do
 
       it "suggests minimal default rules" do
         rules = detector.suggest_default_rules
-        
+
         # Should still suggest templates
         expect(rules).to have_key("templates")
-        
+
         # But copy_files and setup_commands should be empty or minimal
-        if rules.key?("copy_files")
-          expect(rules["copy_files"]["config"]["files"]).to be_empty
-        end
-        
-        if rules.key?("setup_commands")
-          expect(rules["setup_commands"]["config"]["commands"]).to be_empty
-        end
+        expect(rules["copy_files"]["config"]["files"]).to be_empty if rules.key?("copy_files")
+
+        expect(rules["setup_commands"]["config"]["commands"]).to be_empty if rules.key?("setup_commands")
       end
     end
   end
@@ -427,14 +447,14 @@ RSpec.describe Sxn::Rules::ProjectDetector do
       FileUtils.mkdir_p(File.join(project_path, "lib"))
       FileUtils.mkdir_p(File.join(project_path, "test"))
       FileUtils.mkdir_p(File.join(project_path, "docs"))
-      
+
       File.write(File.join(project_path, "README.md"), "# Project")
       File.write(File.join(project_path, "LICENSE"), "MIT License")
       File.write(File.join(project_path, "Makefile"), "all: build")
       File.write(File.join(project_path, ".gitignore"), "*.log")
       File.write(File.join(project_path, "config.yml"), "setting: value")
       File.write(File.join(project_path, "docs/guide.md"), "# Guide")
-      
+
       package_json = {
         "name" => "my-app",
         "scripts" => {
@@ -444,7 +464,7 @@ RSpec.describe Sxn::Rules::ProjectDetector do
         }
       }
       File.write(File.join(project_path, "package.json"), JSON.pretty_generate(package_json))
-      
+
       FileUtils.mkdir_p(File.join(project_path, "bin"))
       File.write(File.join(project_path, "bin/setup"), "#!/bin/bash\necho 'Setup'")
       File.chmod(0o755, File.join(project_path, "bin/setup"))
@@ -452,22 +472,22 @@ RSpec.describe Sxn::Rules::ProjectDetector do
 
     it "analyzes project structure comprehensively" do
       analysis = detector.analyze_project_structure
-      
+
       expect(analysis).to include(:files, :directories, :dependencies, :configuration, :scripts, :documentation)
-      
+
       # Check important files
       expect(analysis[:files]).to include("README.md", "LICENSE", "Makefile", ".gitignore")
-      
+
       # Check directories
       expect(analysis[:directories]).to include("src", "lib", "test", "docs")
-      
+
       # Check configuration files
       expect(analysis[:configuration]).to include("config.yml", "package.json")
-      
+
       # Check scripts
       expect(analysis[:scripts][:npm]).to include("build", "test", "dev")
       expect(analysis[:scripts][:executables]).to include("setup")
-      
+
       # Check documentation
       expect(analysis[:documentation]).to include("README.md", "docs/guide.md")
     end
@@ -642,7 +662,7 @@ RSpec.describe Sxn::Rules::ProjectDetector do
 
     it "detects sensitive files" do
       info = detector.detect_project_info
-      
+
       expect(info[:sensitive_files]).to include(
         "config/master.key",
         ".env",
@@ -661,7 +681,7 @@ RSpec.describe Sxn::Rules::ProjectDetector do
         File.write(File.join(project_path, "main.rb"), "puts 'Hello'")
         File.write(File.join(project_path, "script.py"), "print('Hello')")
         File.write(File.join(project_path, "index.js"), "console.log('Hello')")
-        
+
         # Create many Ruby files
         FileUtils.mkdir_p(File.join(project_path, "lib"))
         5.times do |i|
@@ -736,6 +756,174 @@ RSpec.describe Sxn::Rules::ProjectDetector do
       it "detects test configuration" do
         info = detector.detect_project_info
         expect(info[:has_tests]).to be true
+      end
+    end
+  end
+
+  describe "private methods" do
+    describe "#calculate_type_confidence" do
+      it "calculates confidence based on file existence" do
+        File.write(File.join(project_path, "package.json"), '{"name": "test"}')
+        confidence = detector.send(:calculate_type_confidence, :nodejs, 
+          { files: ["package.json"], patterns: {}, confidence: :medium })
+        expect(confidence).to be > 0
+      end
+
+      it "applies confidence modifiers" do
+        File.write(File.join(project_path, "package.json"), '{"name": "test"}')
+        
+        # Test high confidence modifier
+        high_confidence = detector.send(:calculate_type_confidence, :nextjs,
+          { files: ["package.json"], patterns: {}, confidence: :high })
+        
+        # Test medium confidence (no modifier)
+        medium_confidence = detector.send(:calculate_type_confidence, :nodejs,
+          { files: ["package.json"], patterns: {}, confidence: :medium })
+        
+        # Test low confidence modifier  
+        low_confidence = detector.send(:calculate_type_confidence, :unknown,
+          { files: ["package.json"], patterns: {}, confidence: :low })
+        
+        expect(high_confidence).to be > medium_confidence
+        expect(medium_confidence).to be > low_confidence
+      end
+    end
+
+    describe "#file_exists_in_project?" do
+      it "detects existing files" do
+        File.write(File.join(project_path, "test.txt"), "content")
+        exists = detector.send(:file_exists_in_project?, "test.txt")
+        expect(exists).to be true
+      end
+
+      it "handles glob patterns" do
+        File.write(File.join(project_path, "test.gemspec"), "content")
+        exists = detector.send(:file_exists_in_project?, "*.gemspec")
+        expect(exists).to be true
+      end
+
+      it "returns false for non-existent files" do
+        exists = detector.send(:file_exists_in_project?, "nonexistent.txt")
+        expect(exists).to be false
+      end
+    end
+
+    describe "pattern matching methods" do
+      describe "#gemfile_contains?" do
+        it "detects gems in Gemfile" do
+          File.write(File.join(project_path, "Gemfile"), 
+            'gem "rails", "~> 7.0"\ngem "rspec"')
+          
+          contains_rails = detector.send(:gemfile_contains?, "rails")
+          contains_sinatra = detector.send(:gemfile_contains?, "sinatra")
+          
+          expect(contains_rails).to be true
+          expect(contains_sinatra).to be false
+        end
+
+        it "returns false when Gemfile doesn't exist" do
+          contains = detector.send(:gemfile_contains?, "rails")
+          expect(contains).to be false
+        end
+      end
+
+      describe "#package_json_has_dependency?" do
+        it "detects dependencies in package.json" do
+          File.write(File.join(project_path, "package.json"), 
+            '{"dependencies": {"react": "^18.0.0"}, "devDependencies": {"jest": "^29.0.0"}}')
+          
+          has_react = detector.send(:package_json_has_dependency?, "react")
+          has_jest = detector.send(:package_json_has_dependency?, "jest")
+          has_angular = detector.send(:package_json_has_dependency?, "angular")
+          
+          expect(has_react).to be true
+          expect(has_jest).to be true
+          expect(has_angular).to be false
+        end
+
+        it "returns false when package.json doesn't exist" do
+          has_dep = detector.send(:package_json_has_dependency?, "react")
+          expect(has_dep).to be false
+        end
+
+        it "handles malformed JSON gracefully" do
+          File.write(File.join(project_path, "package.json"), "invalid json")
+          has_dep = detector.send(:package_json_has_dependency?, "react")
+          expect(has_dep).to be false
+        end
+      end
+
+      describe "#requirements_contains?" do
+        it "detects requirements in requirements.txt" do
+          File.write(File.join(project_path, "requirements.txt"), 
+            "django==4.0\nflask>=2.0")
+          
+          contains_django = detector.send(:requirements_contains?, "django")
+          contains_fastapi = detector.send(:requirements_contains?, "fastapi")
+          
+          expect(contains_django).to be true
+          expect(contains_fastapi).to be false
+        end
+
+        it "returns false when requirements.txt doesn't exist" do
+          contains = detector.send(:requirements_contains?, "django")
+          expect(contains).to be false
+        end
+      end
+    end
+
+    describe "suggestion methods" do
+      describe "#suggest_copy_files_rules" do
+        it "suggests files based on project type" do
+          project_info = { type: :rails, package_manager: :bundler, sensitive_files: [] }
+          rules = detector.send(:suggest_copy_files_rules, project_info)
+          
+          expect(rules).to have_key("config")
+          expect(rules["config"]).to have_key("files")
+          expect(rules["config"]["files"]).to be_an(Array)
+          expect(rules["config"]["files"]).not_to be_empty
+        end
+
+        it "handles unknown project types" do
+          project_info = { type: :unknown, package_manager: nil, sensitive_files: [] }
+          rules = detector.send(:suggest_copy_files_rules, project_info)
+          
+          expect(rules).to have_key("config")
+          expect(rules["config"]).to have_key("files")
+          expect(rules["config"]["files"]).to be_an(Array)
+        end
+      end
+
+      describe "#suggest_setup_commands_rules" do
+        it "suggests commands based on package manager" do
+          project_info = { type: :rails, package_manager: :bundler }
+          rules = detector.send(:suggest_setup_commands_rules, project_info)
+          
+          expect(rules).to have_key("config")
+          expect(rules["config"]).to have_key("commands")
+          expect(rules["config"]["commands"]).to be_an(Array)
+          expect(rules["config"]["commands"].first["command"]).to include("bundle", "install")
+        end
+
+        it "handles npm package manager" do
+          project_info = { type: :nodejs, package_manager: :npm }
+          rules = detector.send(:suggest_setup_commands_rules, project_info)
+          
+          expect(rules).to have_key("config")
+          expect(rules["config"]).to have_key("commands")
+          expect(rules["config"]["commands"].first["command"]).to include("npm", "install")
+        end
+      end
+
+      describe "#suggest_template_rules" do
+        it "suggests templates based on project type" do
+          project_info = { type: :rails, package_manager: :bundler }
+          rules = detector.send(:suggest_template_rules, project_info)
+          
+          expect(rules).to be_a(Hash)
+          expect(rules).to have_key("config")
+          expect(rules["config"]).to have_key("templates")
+        end
       end
     end
   end

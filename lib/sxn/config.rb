@@ -1,8 +1,8 @@
 # frozen_string_literal: true
 
-require_relative 'config/config_discovery'
-require_relative 'config/config_cache'
-require_relative 'config/config_validator'
+require_relative "config/config_discovery"
+require_relative "config/config_cache"
+require_relative "config/config_validator"
 
 module Sxn
   module Config
@@ -39,7 +39,7 @@ module Sxn
               @current_config = nil # Invalidate memory cache
             end
           end
-          
+
           return @current_config if @current_config && !force_reload
 
           @current_config = load_and_validate_config(cli_options, force_reload)
@@ -59,10 +59,11 @@ module Sxn
       # @return [Object] Configuration value
       def get(key_path, default: nil)
         current_config = config
-        keys = key_path.split('.')
-        
+        keys = key_path.split(".")
+
         keys.reduce(current_config) do |current, key|
           break default unless current.is_a?(Hash) && current.key?(key)
+
           current[key]
         end
       end
@@ -76,9 +77,9 @@ module Sxn
           # Don't call config() here as it would cause deadlock
           # Get the current config directly if it exists
           current_config = @current_config || load_and_validate_config({}, false)
-          keys = key_path.split('.')
+          keys = key_path.split(".")
           target = keys[0..-2].reduce(current_config) do |current, key|
-            current[key] ||= {}
+            current[key] ||= {} # : Hash[String, untyped]
           end
           target[keys.last] = value
           value
@@ -89,36 +90,32 @@ module Sxn
       # @param cli_options [Hash] Command-line options to override
       # @return [Boolean] True if configuration is valid
       def valid?(cli_options: {})
-        begin
-          config(cli_options: cli_options)
-          true
-        rescue ConfigurationError
-          false
-        end
+        config(cli_options: cli_options)
+        true
+      rescue ConfigurationError
+        false
       end
 
       # Get validation errors for current configuration
       # @param cli_options [Hash] Command-line options to override
       # @return [Array<String>] List of validation errors
       def errors(cli_options: {})
-        begin
-          # Try to load the actual configuration that would be used
-          config(cli_options: cli_options)
-          [] # If config() succeeds, there are no errors
-        rescue ConfigurationError => e
-          # Parse the validation errors from the exception message
-          error_message = e.message
-          if error_message.include?("Configuration validation failed:")
-            # Extract the numbered error list
-            lines = error_message.split("\n")
-            errors = lines[1..-1].map { |line| line.strip.sub(/^\d+\.\s*/, '') }
-            errors.reject(&:empty?)
-          else
-            [e.message]
-          end
-        rescue => e
+        # Try to load the actual configuration that would be used
+        config(cli_options: cli_options)
+        [] # : Array[String] # If config() succeeds, there are no errors
+      rescue ConfigurationError => e
+        # Parse the validation errors from the exception message
+        error_message = e.message
+        if error_message.include?("Configuration validation failed:")
+          # Extract the numbered error list
+          lines = error_message.split("\n")
+          errors = lines[1..].map { |line| line.strip.sub(/^\d+\.\s*/, "") }
+          errors.reject(&:empty?)
+        else
           [e.message]
         end
+      rescue StandardError => e
+        [e.message]
       end
 
       # Get cache statistics
@@ -150,7 +147,7 @@ module Sxn
       # @return [Hash] Configuration debug information
       def debug_info
         config_files = discovery.find_config_files
-        
+
         {
           start_directory: discovery.start_directory.to_s,
           config_files: config_files,
@@ -169,7 +166,7 @@ module Sxn
       # @return [Hash] Validated configuration
       def load_and_validate_config(cli_options, force_reload)
         config_files = discovery.find_config_files
-        
+
         # Try to load from cache first
         unless force_reload
           cached_config = cache.get(config_files)
@@ -183,11 +180,11 @@ module Sxn
         # Load fresh configuration
         raw_config = discovery.discover_config(cli_options)
         validated_config = validator.validate_and_migrate(raw_config)
-        
+
         # Cache the configuration (without CLI options)
         cache_config = discovery.discover_config({})
         cache.set(cache_config, config_files)
-        
+
         validated_config
       end
 
@@ -197,7 +194,7 @@ module Sxn
         start_time = Time.now
         discovery.discover_config({})
         Time.now - start_time
-      rescue
+      rescue StandardError
         -1.0 # Indicate error
       end
     end

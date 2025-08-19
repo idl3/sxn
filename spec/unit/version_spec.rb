@@ -20,7 +20,7 @@ RSpec.describe Sxn::VERSION do
   end
 
   it "has a valid version value" do
-    expect(Sxn::VERSION).to eq("0.1.0")
+    expect(Sxn::VERSION).to eq("0.2.0")
   end
 end
 
@@ -31,9 +31,10 @@ RSpec.describe "Version module" do
 
   it "defines expected Sxn module methods" do
     # The Sxn module defines some utility methods for configuration and logging
-    expected_methods = [:config, :version, :logger, :logger=, :setup_logger, :load_config, :config=, :root, :lib_root]
-    sxn_methods = Sxn.methods - Object.methods
-    
+    expected_methods = %i[config version logger logger= setup_logger load_config config= root lib_root]
+    Sxn.methods
+    Object.methods
+
     # Check that expected methods are present
     expected_methods.each do |method|
       expect(Sxn).to respond_to(method)

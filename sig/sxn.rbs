@@ -1,4 +1,29 @@
+# Main Sxn module providing session management for multi-repository development
 module Sxn
   VERSION: String
-  # See the writing guide of rbs: https://github.com/ruby/rbs#guides
+  
+  # Type aliases for common patterns
+  type config_hash = Hash[String, untyped]
+  type logger_level = :debug | :info | :warn | :error | Symbol
+  
+  # Module singleton methods
+  def self.logger: () -> ::Logger?
+  def self.logger=: (::Logger new_logger) -> ::Logger
+  
+  def self.config: () -> config_hash?
+  def self.config=: (config_hash new_config) -> config_hash
+  
+  def self.root: () -> String
+  def self.lib_root: () -> String
+  def self.version: () -> String
+  
+  def self.load_config: () -> config_hash?
+  def self.setup_logger: (?level: logger_level) -> ::Logger
+  
+  # Module instance variables
+  @logger: ::Logger?
+  @config: config_hash?
 end
+
+# Global variable declarations
+$CHILD_STATUS: Process::Status

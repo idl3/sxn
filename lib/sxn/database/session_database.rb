@@ -46,7 +46,7 @@ module Sxn
         @db_path = resolve_db_path(db_path)
         @config = default_config.merge(config)
         @prepared_statements = {}
-        
+
         ensure_directory_exists
         initialize_connection
         setup_database
@@ -66,18 +66,19 @@ module Sxn
       # @raise [Sxn::Database::DuplicateSessionError] If session name already exists
       def create_session(session_data)
         validate_session_data!(session_data)
-        
-        session_id = generate_session_id
-        timestamp = Time.now.utc.iso8601(6)  # 6 decimal places for microseconds
-        
+
+        # Use provided session ID if available, otherwise generate one
+        session_id = session_data[:id] || generate_session_id
+        timestamp = Time.now.utc.iso8601(6) # 6 decimal places for microseconds
+
         with_transaction do
           stmt = prepare_statement(:create_session, <<~SQL)
             INSERT INTO sessions (
-              id, name, created_at, updated_at, status, 
+              id, name, created_at, updated_at, status,#{" "}
               linear_task, description, tags, metadata, worktrees, projects
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           SQL
-          
+
           stmt.execute(
             session_id,
             session_data[:name],
@@ -92,11 +93,11 @@ module Sxn
             serialize_tags(session_data[:projects] || [])
           )
         end
-        
+
         session_id
       rescue SQLite3::ConstraintException => e
         if e.message.include?("name")
-          raise Sxn::Database::DuplicateSessionError, 
+          raise Sxn::Database::DuplicateSessionError,
                 "Session with name '#{session_data[:name]}' already exists"
         end
         raise
@@ -117,24 +118,26 @@ module Sxn
       # @param offset [Integer] Results offset for pagination (default: 0)
       # @return [Array<Hash>] Array of session hashes
       def list_sessions(filters: {}, sort: {}, limit: 100, offset: 0)
+        # Ensure filters is a Hash
+        filters ||= {}
         query_parts = ["SELECT * FROM sessions"]
         params = []
-        
+
         # Build WHERE clause from filters
         where_conditions = build_where_conditions(filters, params)
-        query_parts << "WHERE #{where_conditions.join(' AND ')}" unless where_conditions.empty?
-        
+        query_parts << "WHERE #{where_conditions.join(" AND ")}" unless where_conditions.empty?
+
         # Build ORDER BY clause
         sort_field = sort[:by] || :updated_at
         sort_order = sort[:order] || :desc
         query_parts << "ORDER BY #{sort_field} #{sort_order.to_s.upcase}"
-        
+
         # Add pagination
         query_parts << "LIMIT ? OFFSET ?"
-        params.concat([limit, offset])
-        
+        params.push(limit, offset)
+
         sql = query_parts.join(" ")
-        
+
         execute_query(sql, params).map do |row|
           deserialize_session_row(row)
         end
@@ -148,27 +151,30 @@ module Sxn
       # @return [Boolean] True if update succeeded
       # @raise [Sxn::Database::SessionNotFoundError] If session doesn't exist
       # @raise [Sxn::Database::ConflictError] If version mismatch (concurrent update)
-      def update_session(session_id, updates, expected_version: nil)
+      def update_session(session_id, updates = {}, expected_version: nil)
         validate_session_updates!(updates)
-        
+
         # Use higher precision timestamp to ensure updates are detectable
-        timestamp = Time.now.utc.iso8601(6)  # 6 decimal places for microseconds
-        updates = updates.merge(updated_at: timestamp)
-        
+        # Only set updated_at if not explicitly provided
+        unless updates.key?(:updated_at)
+          timestamp = Time.now.utc.iso8601(6) # 6 decimal places for microseconds
+          updates = updates.merge(updated_at: timestamp)
+        end
+
         with_transaction do
           # Check current version if optimistic locking requested
           if expected_version
             current = get_session(session_id)
             if current[:updated_at] != expected_version
-              raise Sxn::Database::ConflictError, 
+              raise Sxn::Database::ConflictError,
                     "Session was modified by another process"
             end
           end
-          
+
           # Build dynamic UPDATE statement
           set_clauses = []
           params = []
-          
+
           updates.each do |field, value|
             case field
             when :tags
@@ -188,17 +194,17 @@ module Sxn
               params << value
             end
           end
-          
+
           params << session_id
-          
-          sql = "UPDATE sessions SET #{set_clauses.join(', ')} WHERE id = ?"
+
+          sql = "UPDATE sessions SET #{set_clauses.join(", ")} WHERE id = ?"
           connection.execute(sql, params)
-          
-          if connection.changes == 0
-            raise Sxn::Database::SessionNotFoundError, 
+
+          if connection.changes.zero?
+            raise Sxn::Database::SessionNotFoundError,
                   "Session with ID '#{session_id}' not found"
           end
-          
+
           true
         end
       end
@@ -212,18 +218,18 @@ module Sxn
       def delete_session(session_id, cascade: true)
         with_transaction do
           # Check if session exists
-          existing = get_session(session_id)
-          
+          get_session(session_id)
+
           # Delete related records if cascade requested
           if cascade
             delete_session_worktrees(session_id)
             delete_session_files(session_id)
           end
-          
+
           # Delete the session
           stmt = prepare_statement(:delete_session, "DELETE FROM sessions WHERE id = ?")
           stmt.execute(session_id)
-          
+
           true
         end
       rescue Sxn::Database::SessionNotFoundError
@@ -238,12 +244,12 @@ module Sxn
       # @return [Array<Hash>] Matching sessions with relevance scoring
       def search_sessions(query, filters: {}, limit: 50)
         return list_sessions(filters: filters, limit: limit) if query.nil? || query.strip.empty?
-        
+
         search_terms = query.strip.split(/\s+/).map { |term| "%#{term}%" }
-        
+
         query_parts = [<<~SQL]
-          SELECT *, 
-                 (CASE 
+          SELECT *,#{" "}
+                 (CASE#{" "}
                    WHEN name LIKE ? THEN 100
                    WHEN description LIKE ? THEN 50
                    WHEN tags LIKE ? THEN 25
@@ -251,29 +257,29 @@ module Sxn
                  END) as relevance_score
           FROM sessions
         SQL
-        
-        params = search_terms * 3  # Each term checked against name, description, tags
-        
+
+        params = search_terms * 3 # Each term checked against name, description, tags
+
         # Build search conditions
         search_conditions = []
         search_terms.each do |term|
           search_conditions << "(name LIKE ? OR description LIKE ? OR tags LIKE ?)"
-          params.concat([term, term, term])
+          params.push(term, term, term)
         end
-        
-        where_conditions = ["(#{search_conditions.join(' AND ')})"]
-        
+
+        where_conditions = ["(#{search_conditions.join(" AND ")})"]
+
         # Add additional filters
         filter_conditions = build_where_conditions(filters, params)
         where_conditions.concat(filter_conditions)
-        
-        query_parts << "WHERE #{where_conditions.join(' AND ')}"
+
+        query_parts << "WHERE #{where_conditions.join(" AND ")}"
         query_parts << "ORDER BY relevance_score DESC, updated_at DESC"
         query_parts << "LIMIT ?"
         params << limit
-        
+
         sql = query_parts.join(" ")
-        
+
         execute_query(sql, params).map do |row|
           session = deserialize_session_row(row)
           session[:relevance_score] = row["relevance_score"]
@@ -289,10 +295,12 @@ module Sxn
       def get_session(session_id)
         stmt = prepare_statement(:get_session, "SELECT * FROM sessions WHERE id = ?")
         row = stmt.execute(session_id).first
-        
-        raise Sxn::Database::SessionNotFoundError, 
-              "Session with ID '#{session_id}' not found" unless row
-        
+
+        unless row
+          raise Sxn::Database::SessionNotFoundError,
+                "Session with ID '#{session_id}' not found"
+        end
+
         deserialize_session_row(row)
       end
 
@@ -303,14 +311,14 @@ module Sxn
       def get_session_by_name(name)
         stmt = prepare_statement(:get_session_by_name, "SELECT * FROM sessions WHERE name = ?")
         row = stmt.execute(name).first
-        
+
         return nil unless row
-        
+
         deserialize_session_row(row)
       end
 
       # Alias for get_session for compatibility
-      alias_method :get_session_by_id, :get_session
+      alias get_session_by_id get_session
 
       # Get session statistics
       #
@@ -328,9 +336,9 @@ module Sxn
       #
       # @param tasks [Array<Symbol>] Tasks to perform (:vacuum, :analyze, :integrity_check)
       # @return [Hash] Results of maintenance tasks
-      def maintenance(tasks = [:vacuum, :analyze])
+      def maintenance(tasks = %i[vacuum analyze])
         results = {}
-        
+
         tasks.each do |task|
           case task
           when :vacuum
@@ -344,7 +352,7 @@ module Sxn
             results[:integrity_check] = integrity_result[0]
           end
         end
-        
+
         results
       end
 
@@ -362,10 +370,10 @@ module Sxn
       def default_config
         {
           readonly: false,
-          timeout: 30_000,  # 30 seconds
+          timeout: 30_000, # 30 seconds
           auto_vacuum: true,
-          journal_mode: "WAL",  # Write-Ahead Logging for better concurrency
-          synchronous: "NORMAL",  # Balance between safety and performance
+          journal_mode: "WAL", # Write-Ahead Logging for better concurrency
+          synchronous: "NORMAL", # Balance between safety and performance
           foreign_keys: true
         }
       end
@@ -389,7 +397,7 @@ module Sxn
       def initialize_connection
         @connection = SQLite3::Database.new(@db_path.to_s, @config)
         @connection.results_as_hash = true
-        
+
         # Configure SQLite for optimal performance and concurrency
         configure_sqlite_pragmas
       end
@@ -398,18 +406,18 @@ module Sxn
       def configure_sqlite_pragmas
         connection.execute("PRAGMA journal_mode = #{@config[:journal_mode]}")
         connection.execute("PRAGMA synchronous = #{@config[:synchronous]}")
-        connection.execute("PRAGMA foreign_keys = #{@config[:foreign_keys] ? 'ON' : 'OFF'}")
-        connection.execute("PRAGMA auto_vacuum = #{@config[:auto_vacuum] ? 'FULL' : 'NONE'}")
+        connection.execute("PRAGMA foreign_keys = #{@config[:foreign_keys] ? "ON" : "OFF"}")
+        connection.execute("PRAGMA auto_vacuum = #{@config[:auto_vacuum] ? "FULL" : "NONE"}")
         connection.execute("PRAGMA temp_store = MEMORY")
-        connection.execute("PRAGMA mmap_size = 268435456")  # 256MB memory mapping
+        connection.execute("PRAGMA mmap_size = 268435456") # 256MB memory mapping
         connection.busy_timeout = @config[:timeout]
       end
 
       # Setup database schema and run migrations
       def setup_database
         current_version = get_schema_version
-        
-        if current_version == 0
+
+        if current_version.zero?
           create_initial_schema
           set_schema_version(SCHEMA_VERSION)
         elsif current_version < SCHEMA_VERSION
@@ -426,6 +434,11 @@ module Sxn
       # Set schema version in database
       def set_schema_version(version)
         connection.execute("PRAGMA user_version = #{version}")
+      end
+
+      # Public method to create database tables (expected by tests)
+      def create_tables
+        create_initial_schema
       end
 
       # Create initial database schema with optimized indexes
@@ -452,7 +465,7 @@ module Sxn
           CREATE INDEX idx_sessions_updated_at ON sessions(updated_at);
           CREATE INDEX idx_sessions_name ON sessions(name);
           CREATE INDEX idx_sessions_linear_task ON sessions(linear_task) WHERE linear_task IS NOT NULL;
-          
+
           -- Composite indexes for common filter combinations
           CREATE INDEX idx_sessions_status_updated ON sessions(status, updated_at);
           CREATE INDEX idx_sessions_status_created ON sessions(status, created_at);
@@ -485,7 +498,7 @@ module Sxn
       end
 
       # Run database migrations from old version to current
-      def run_migrations(from_version)
+      def run_migrations(_from_version)
         # Future migrations will be implemented here
         # For now, we only have version 1
         set_schema_version(SCHEMA_VERSION)
@@ -493,44 +506,56 @@ module Sxn
 
       # Generate secure, unique session ID
       def generate_session_id
-        SecureRandom.hex(16)  # 32 character hex string
+        SecureRandom.hex(16) # 32 character hex string
       end
 
       # Validate session data before creation
       def validate_session_data!(data)
         raise ArgumentError, "Session name is required" unless data[:name]
         raise ArgumentError, "Session name cannot be empty" if data[:name].to_s.strip.empty?
-        
+
         if data[:status] && !VALID_STATUSES.include?(data[:status])
-          raise ArgumentError, "Invalid status. Must be one of: #{VALID_STATUSES.join(', ')}"
+          raise ArgumentError, "Invalid status. Must be one of: #{VALID_STATUSES.join(", ")}"
         end
-        
+
         # Validate name format (alphanumeric, dashes, underscores only)
-        unless data[:name].match?(/\A[a-zA-Z0-9_-]+\z/)
-          raise ArgumentError, "Session name must contain only letters, numbers, dashes, and underscores"
-        end
+        return if data[:name].match?(/\A[a-zA-Z0-9_-]+\z/)
+
+        raise ArgumentError, "Session name must contain only letters, numbers, dashes, and underscores"
       end
 
       # Validate session update data
       def validate_session_updates!(updates)
+        # Allow unknown keys but validate known ones
+        valid_fields = %i[status name description linear_task tags metadata
+                          projects worktrees updated_at last_accessed]
+
         if updates[:status] && !VALID_STATUSES.include?(updates[:status])
-          raise ArgumentError, "Invalid status. Must be one of: #{VALID_STATUSES.join(', ')}"
+          raise ArgumentError, "Invalid status. Must be one of: #{VALID_STATUSES.join(", ")}"
         end
-        
+
         if updates[:name] && !updates[:name].match?(/\A[a-zA-Z0-9_-]+\z/)
           raise ArgumentError, "Session name must contain only letters, numbers, dashes, and underscores"
         end
+
+        # Check for unknown fields in database updates
+        unknown_fields = updates.keys.reject { |k| valid_fields.include?(k.to_sym) }
+        return unless unknown_fields.any?
+
+        raise ArgumentError, "Unknown keywords: #{unknown_fields.map(&:to_s).join(", ")}"
       end
 
       # Serialize tags array to JSON string
       def serialize_tags(tags)
         return nil unless tags
+
         JSON.generate(Array(tags))
       end
 
       # Serialize metadata hash to JSON string
       def serialize_metadata(metadata)
         return nil unless metadata
+
         JSON.generate(metadata)
       end
 
@@ -561,27 +586,27 @@ module Sxn
       # Build WHERE conditions for filtering
       def build_where_conditions(filters, params)
         conditions = []
-        
+
         if filters[:status]
           conditions << "status = ?"
           params << filters[:status]
         end
-        
+
         if filters[:linear_task]
           conditions << "linear_task = ?"
           params << filters[:linear_task]
         end
-        
+
         if filters[:created_after]
           conditions << "created_at >= ?"
           params << filters[:created_after].iso8601
         end
-        
+
         if filters[:created_before]
           conditions << "created_at <= ?"
           params << filters[:created_before].iso8601
         end
-        
+
         if filters[:tags] && !filters[:tags].empty?
           # AND logic for tags - session must have all specified tags
           filters[:tags].each do |tag|
@@ -589,7 +614,7 @@ module Sxn
             params << "%\"#{tag}\"%"
           end
         end
-        
+
         conditions
       end
 
@@ -629,9 +654,9 @@ module Sxn
 
       # Get recent session activity (last 7 days)
       def recent_session_activity
-        week_ago = (Time.now - 7 * 24 * 60 * 60).utc.iso8601
+        week_ago = (Time.now - (7 * 24 * 60 * 60)).utc.iso8601
         connection.execute(<<~SQL, week_ago).first[0]
-          SELECT COUNT(*) FROM sessions 
+          SELECT COUNT(*) FROM sessions#{" "}
           WHERE updated_at >= ?
         SQL
       end
@@ -639,6 +664,7 @@ module Sxn
       # Get database file size in MB
       def database_size_mb
         return 0 unless @db_path.exist?
+
         (@db_path.size.to_f / (1024 * 1024)).round(2)
       end
 
@@ -650,6 +676,15 @@ module Sxn
       # Delete session files (for cascade deletion)
       def delete_session_files(session_id)
         connection.execute("DELETE FROM session_files WHERE session_id = ?", session_id)
+      end
+
+      # Update session status
+      #
+      # @param name [String] Session name
+      # @param status [String] New status
+      # @return [Boolean] true on success
+      def update_session_status(name, status)
+        update_session(name, { status: status })
       end
     end
   end

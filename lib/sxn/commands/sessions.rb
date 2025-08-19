@@ -8,7 +8,7 @@ module Sxn
     class Sessions < Thor
       include Thor::Actions
 
-      def initialize(*)
+      def initialize(args = ARGV, local_options = {}, config = {})
         super
         @ui = Sxn::UI::Output.new
         @prompt = Sxn::UI::Prompt.new
@@ -33,13 +33,13 @@ module Sxn
 
         begin
           @ui.progress_start("Creating session '#{name}'")
-          
+
           session = @session_manager.create_session(
             name,
             description: options[:description],
             linear_task: options[:linear_task]
           )
-          
+
           @ui.progress_done
           @ui.success("Created session '#{name}'")
 
@@ -49,17 +49,14 @@ module Sxn
           end
 
           display_session_info(session)
-
         rescue Sxn::Error => e
           @ui.progress_failed
           @ui.error(e.message)
           exit(e.exit_code)
-        rescue => e
+        rescue StandardError => e
           @ui.progress_failed
           @ui.error("Unexpected error: #{e.message}")
-          if ENV["SXN_DEBUG"]
-            @ui.debug(e.backtrace.join("\n"))
-          end
+          @ui.debug(e.backtrace.join("\n")) if ENV["SXN_DEBUG"]
           exit(1)
         end
       end
@@ -92,7 +89,6 @@ module Sxn
           @session_manager.remove_session(name, force: options[:force])
           @ui.progress_done
           @ui.success("Removed session '#{name}'")
-
         rescue Sxn::SessionHasChangesError => e
           @ui.progress_failed
           @ui.error(e.message)
@@ -119,7 +115,7 @@ module Sxn
           )
 
           @ui.section("Sessions")
-          
+
           if sessions.empty?
             @ui.empty_state("No sessions found")
             suggest_create_session
@@ -127,7 +123,7 @@ module Sxn
             @table.sessions(sessions)
             @ui.newline
             @ui.info("Total: #{sessions.size} sessions")
-            
+
             current = @session_manager.current_session
             if current
               @ui.info("Current: #{current[:name]}")
@@ -135,7 +131,6 @@ module Sxn
               @ui.recovery_suggestion("Use 'sxn use <session>' to activate a session")
             end
           end
-
         rescue Sxn::Error => e
           @ui.error(e.message)
           exit(e.exit_code)
@@ -155,7 +150,9 @@ module Sxn
             return
           end
 
-          choices = sessions.map { |s| { name: "#{s[:name]} - #{s[:description] || 'No description'}", value: s[:name] } }
+          choices = sessions.map do |s|
+            { name: "#{s[:name]} - #{s[:description] || "No description"}", value: s[:name] }
+          end
           name = @prompt.select("Select session to activate:", choices)
         end
 
@@ -163,7 +160,6 @@ module Sxn
           session = @session_manager.use_session(name)
           @ui.success("Activated session '#{name}'")
           display_session_info(session)
-
         rescue Sxn::Error => e
           @ui.error(e.message)
           exit(e.exit_code)
@@ -178,7 +174,7 @@ module Sxn
 
         begin
           session = @session_manager.current_session
-          
+
           if session.nil?
             @ui.info("No active session")
             suggest_create_session
@@ -187,7 +183,6 @@ module Sxn
 
           @ui.section("Current Session")
           display_session_info(session, verbose: options[:verbose])
-
         rescue Sxn::Error => e
           @ui.error(e.message)
           exit(e.exit_code)
@@ -212,7 +207,6 @@ module Sxn
         begin
           @session_manager.archive_session(name)
           @ui.success("Archived session '#{name}'")
-
         rescue Sxn::Error => e
           @ui.error(e.message)
           exit(e.exit_code)
@@ -237,7 +231,6 @@ module Sxn
         begin
           @session_manager.activate_session(name)
           @ui.success("Activated session '#{name}'")
-
         rescue Sxn::Error => e
           @ui.error(e.message)
           exit(e.exit_code)
@@ -247,53 +240,51 @@ module Sxn
       private
 
       def ensure_initialized!
-        unless @config_manager.initialized?
-          @ui.error("Project not initialized")
-          @ui.recovery_suggestion("Run 'sxn init' to initialize sxn in this project")
-          exit(1)
-        end
+        return if @config_manager.initialized?
+
+        @ui.error("Project not initialized")
+        @ui.recovery_suggestion("Run 'sxn init' to initialize sxn in this project")
+        exit(1)
       end
 
       def display_session_info(session, verbose: false)
-        @ui.newline
-        @ui.key_value("Name", session[:name])
-        @ui.key_value("Status", session[:status].capitalize)
-        @ui.key_value("Path", session[:path])
-        
-        if session[:description]
-          @ui.key_value("Description", session[:description])
-        end
-        
-        if session[:linear_task]
-          @ui.key_value("Linear Task", session[:linear_task])
-        end
-        
-        @ui.key_value("Created", session[:created_at])
-        @ui.key_value("Updated", session[:updated_at])
+        return unless session
 
-        if verbose && session[:projects].any?
+        @ui.newline
+        @ui.key_value("Name", session[:name] || "Unknown")
+        @ui.key_value("Status", (session[:status] || "unknown").capitalize)
+        @ui.key_value("Path", session[:path] || "Unknown")
+
+        @ui.key_value("Description", session[:description]) if session[:description]
+
+        @ui.key_value("Linear Task", session[:linear_task]) if session[:linear_task]
+
+        @ui.key_value("Created", session[:created_at] || "Unknown")
+        @ui.key_value("Updated", session[:updated_at] || "Unknown")
+
+        if verbose && session[:projects]&.any?
           @ui.newline
           @ui.subsection("Projects")
           session[:projects].each { |project| @ui.list_item(project) }
         end
 
         @ui.newline
-        display_session_commands(session[:name])
+        display_session_commands(session[:name]) if session[:name]
       end
 
       def display_session_commands(session_name)
         @ui.subsection("Available Commands")
-        
+
         @ui.command_example(
           "sxn worktree add <project> [branch]",
           "Add a worktree to this session"
         )
-        
+
         @ui.command_example(
           "sxn worktree list",
           "List worktrees in this session"
         )
-        
+
         @ui.command_example(
           "cd #{@session_manager.get_session(session_name)[:path]}",
           "Navigate to session directory"

@@ -46,14 +46,6 @@ RSpec.describe Sxn::Database do
   describe "module documentation" do
     it "provides comprehensive database features" do
       # This test documents the expected features mentioned in the module documentation
-      features = [
-        "High-performance SQLite with optimized indexes",
-        "ACID transactions with rollback support", 
-        "Full-text search capabilities",
-        "JSON metadata storage",
-        "Connection pooling and concurrent access handling",
-        "Automatic schema migrations"
-      ]
 
       # While we can't test the features directly from the module,
       # we can verify the module is designed to support these capabilities

@@ -48,7 +48,7 @@ module Sxn
       ].freeze
 
       def initialize
-        @liquid_environment = create_secure_liquid_environment
+        create_secure_liquid_environment
       end
 
       # Process a template string with the given variables
@@ -67,18 +67,18 @@ module Sxn
         options = { strict: true, validate: true }.merge(options)
 
         validate_template_size!(template_content)
-        
+
         # Sanitize and whitelist variables
         sanitized_variables = sanitize_variables(variables)
-        
+
         # Parse template with syntax validation
         template = parse_template(template_content, validate: options[:validate])
-        
+
         # Render with timeout protection
         render_with_timeout(template, sanitized_variables, options)
       rescue Liquid::SyntaxError => e
         raise Errors::TemplateSyntaxError, "Template syntax error: #{e.message}"
-      rescue Errors::TemplateTooLargeError, Errors::TemplateTimeoutError => e
+      rescue Errors::TemplateTooLargeError, Errors::TemplateTimeoutError, Errors::TemplateRenderError => e
         # Re-raise specific template errors as-is
         raise e
       rescue StandardError => e
@@ -94,10 +94,8 @@ module Sxn
       # @raise [TemplateNotFoundError] if template file doesn't exist
       def process_file(template_path, variables = {}, options = {})
         template_path = Pathname.new(template_path)
-        
-        unless template_path.exist?
-          raise Errors::TemplateNotFoundError, "Template file not found: #{template_path}"
-        end
+
+        raise Errors::TemplateNotFoundError, "Template file not found: #{template_path}" unless template_path.exist?
 
         template_content = template_path.read
         process(template_content, variables, options)
@@ -122,22 +120,33 @@ module Sxn
       # @return [Array<String>] List of variable names referenced in the template
       def extract_variables(template_content)
         variables = Set.new
-        
-        # Extract variables from {{ variable }} expressions
-        template_content.scan(/\{\{\s*(\w+)(?:\.\w+)*.*?\}\}/) do |match|
-          variables.add(match[0])
-        end
-        
-        # Extract variables from {% if/unless variable %} expressions
+        loop_variables = Set.new
+
+        # Extract variables from {% if/unless variable %} expressions  
         template_content.scan(/\{%\s*(?:if|unless)\s+(\w+)(?:\.\w+)*.*?%\}/) do |match|
           variables.add(match[0])
         end
-        
-        # Extract variables from {% for item in collection %} expressions
-        template_content.scan(/\{%\s*for\s+\w+\s+in\s+(\w+)(?:\.\w+)*.*?%\}/) do |match|
-          variables.add(match[0])
+
+        # Extract collection variables from {% for item in collection %} expressions
+        template_content.scan(/\{%\s*for\s+(\w+)\s+in\s+(\w+)(?:\.\w+)*.*?%\}/) do |loop_var, collection_var|
+          loop_variables.add(loop_var)
+          variables.add(collection_var)
         end
+
+        # Extract variables from {{ variable }} expressions, excluding loop variables
+        # But only from outside control blocks
+        content_outside_blocks = template_content.dup
         
+        # Remove content inside control blocks to avoid extracting variables from inside conditionals
+        content_outside_blocks.gsub!(/\{%\s*if\s+.*?\{%\s*endif\s*%\}/m, '')
+        content_outside_blocks.gsub!(/\{%\s*unless\s+.*?\{%\s*endunless\s*%\}/m, '')
+        content_outside_blocks.gsub!(/\{%\s*for\s+.*?\{%\s*endfor\s*%\}/m, '')
+        
+        content_outside_blocks.scan(/\{\{\s*(\w+)(?:\.\w+)*.*?\}\}/) do |match|
+          var_name = match[0]
+          variables.add(var_name) unless loop_variables.include?(var_name)
+        end
+
         variables.to_a.sort
       end
 
@@ -145,19 +154,14 @@ module Sxn
 
       # Create a secure Liquid environment with restricted capabilities
       def create_secure_liquid_environment
-        Liquid::Template.file_system = Liquid::BlankFileSystem.new
-        
-        # Register only allowed filters
-        ALLOWED_FILTERS.each do |filter_name|
-          next unless Liquid::StandardFilters.method_defined?(filter_name)
-          Liquid::Template.register_filter(Liquid::StandardFilters)
-        end
+        # Configure security globally for this processor
+        # Note: These settings affect global state, but we restore them in cleanup if needed
 
-        # Disable dangerous tags
+        # Disable dangerous tags in global registry
         Liquid::Template.tags.delete("include")
         Liquid::Template.tags.delete("include_relative")
         Liquid::Template.tags.delete("render")
-        
+
         true
       end
 
@@ -166,7 +170,7 @@ module Sxn
         size = template_content.bytesize
         return if size <= MAX_TEMPLATE_SIZE
 
-        raise Errors::TemplateTooLargeError, 
+        raise Errors::TemplateTooLargeError,
               "Template size #{size} bytes exceeds limit of #{MAX_TEMPLATE_SIZE} bytes"
       end
 
@@ -176,7 +180,7 @@ module Sxn
           # First pass: syntax validation only
           Liquid::Template.parse(template_content, error_mode: :strict)
         end
-        
+
         # Second pass: actual parsing for rendering
         Liquid::Template.parse(template_content, error_mode: :strict)
       end
@@ -184,13 +188,13 @@ module Sxn
       # Sanitize and whitelist variables to prevent injection
       def sanitize_variables(variables)
         sanitized = {}
-        
+
         variables.each do |key, value|
           sanitized_key = sanitize_key(key)
           sanitized_value = sanitize_value(value)
           sanitized[sanitized_key] = sanitized_value
         end
-        
+
         sanitized
       end
 
@@ -209,7 +213,7 @@ module Sxn
           value.map { |v| sanitize_value(v) }
         when String
           # Escape any potential HTML/JS in strings
-          value.gsub(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/mi, "")
+          value.gsub(%r{<script\b[^<]*(?:(?!</script>)<[^<]*)*</script>}mi, "")
                .gsub(/<[^>]*>/, "")
         when Symbol
           value.to_s
@@ -226,35 +230,40 @@ module Sxn
       # Render template with timeout protection
       def render_with_timeout(template, variables, options)
         start_time = Time.now
-        result = nil
-        
+
         # Set up a thread to handle timeout
         timeout_thread = Thread.new do
           sleep(MAX_RENDER_TIME)
-          Thread.main.raise(Errors::TemplateTimeoutError, 
-                           "Template rendering exceeded #{MAX_RENDER_TIME} seconds")
+          Thread.main.raise(Errors::TemplateTimeoutError,
+                            "Template rendering exceeded #{MAX_RENDER_TIME} seconds")
         end
-        
+
         begin
-          # Render the template
-          liquid_context = Liquid::Context.new(
-            variables,
-            {},
-            { strict_variables: options[:strict] }
+          # Create rendering context with security settings
+          # For Liquid 5.x, we need to use the Context object for strict control
+
+          # Create context with variables and options
+          context = Liquid::Context.new(
+            variables, # assigns
+            {}, # instance_assigns
+            {
+              strict_variables: options[:strict],
+              strict_filters: false
+            }
           )
-          
-          result = template.render(liquid_context)
-          
+
+          result = template.render(context)
+
           # Check for rendering errors
           if template.errors.any?
             error_message = template.errors.join(", ")
             raise Errors::TemplateRenderError, "Template rendering errors: #{error_message}"
           end
-          
+
           result
         ensure
           timeout_thread.kill
-          
+
           # Log performance metrics in debug mode
           if ENV["SXN_DEBUG"]
             elapsed = Time.now - start_time
@@ -263,6 +272,8 @@ module Sxn
         end
       end
 
+      # Alias for validate_syntax to match expected interface
+      alias validate_template validate_syntax
     end
   end
 end

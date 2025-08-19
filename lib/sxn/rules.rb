@@ -16,13 +16,13 @@ module Sxn
   # @example Basic usage
   #   engine = Rules::RulesEngine.new("/path/to/project", "/path/to/session")
   #   detector = Rules::ProjectDetector.new("/path/to/project")
-  #   
+  #
   #   # Detect project characteristics and suggest rules
   #   suggested_rules = detector.suggest_default_rules
-  #   
+  #
   #   # Apply rules to set up the session
   #   result = engine.apply_rules(suggested_rules)
-  #   
+  #
   #   if result.success?
   #     puts "Applied #{result.applied_rules.size} rules successfully"
   #   else
@@ -49,10 +49,22 @@ module Sxn
     # @return [BaseRule] Rule instance
     # @raise [ArgumentError] if rule type is invalid
     def self.create_rule(name, type, config, project_path, session_path, dependencies: [])
-      rule_class = RulesEngine::RULE_TYPES[type]
+      # Convert symbol to string for consistent lookup
+      type_key = type.to_s
+      rule_class = RulesEngine::RULE_TYPES[type_key]
       raise ArgumentError, "Invalid rule type: #{type}" unless rule_class
 
-      rule_class.new(name, config, project_path, session_path, dependencies: dependencies)
+      # Create rule instance - rule classes all follow BaseRule constructor pattern
+      case type_key
+      when "copy_files"
+        CopyFilesRule.new(name, config, project_path, session_path, dependencies: dependencies)
+      when "setup_commands"
+        SetupCommandsRule.new(name, config, project_path, session_path, dependencies: dependencies)
+      when "template"
+        TemplateRule.new(name, config, project_path, session_path, dependencies: dependencies)
+      else
+        raise ArgumentError, "Invalid rule type: #{type}"
+      end
     end
 
     # Validate a rules configuration hash
@@ -82,8 +94,9 @@ module Sxn
               description: "List of files to copy",
               items: {
                 "source" => { type: "string", required: true, description: "Source file path" },
-                "destination" => { type: "string", required: false, description: "Destination path (defaults to source)" },
-                "strategy" => { type: "string", required: false, enum: ["copy", "symlink"], default: "copy" },
+                "destination" => { type: "string", required: false,
+                                   description: "Destination path (defaults to source)" },
+                "strategy" => { type: "string", required: false, enum: %w[copy symlink], default: "copy" },
                 "permissions" => { type: "string", required: false, description: "File permissions (e.g., '0600')" },
                 "encrypt" => { type: "boolean", required: false, default: false },
                 "required" => { type: "boolean", required: false, default: true }
