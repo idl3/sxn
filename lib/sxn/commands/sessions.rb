@@ -111,7 +111,7 @@ module Sxn
         begin
           sessions = @session_manager.list_sessions(
             status: options[:status],
-            limit: options[:limit]
+            limit: options[:limit]&.to_i || 50
           )
 
           @ui.section("Sessions")

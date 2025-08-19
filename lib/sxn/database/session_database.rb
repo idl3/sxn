@@ -118,8 +118,11 @@ module Sxn
       # @param offset [Integer] Results offset for pagination (default: 0)
       # @return [Array<Hash>] Array of session hashes
       def list_sessions(filters: {}, sort: {}, limit: 100, offset: 0)
-        # Ensure filters is a Hash
+        # Ensure filters is a Hash and parameters are correct types
         filters ||= {}
+        limit = limit.to_i if limit
+        offset = offset.to_i if offset
+        
         query_parts = ["SELECT * FROM sessions"]
         params = []
 
@@ -132,9 +135,9 @@ module Sxn
         sort_order = sort[:order] || :desc
         query_parts << "ORDER BY #{sort_field} #{sort_order.to_s.upcase}"
 
-        # Add pagination
+        # Add pagination - ensure these are integers
         query_parts << "LIMIT ? OFFSET ?"
-        params.push(limit, offset)
+        params.push(limit || 100, offset || 0)
 
         sql = query_parts.join(" ")
 
@@ -620,7 +623,27 @@ module Sxn
 
       # Execute query with parameters and return results
       def execute_query(sql, params = [])
-        connection.execute(sql, params)
+        # Ensure params are properly typed for SQLite3
+        sanitized_params = params.map do |param|
+          case param
+          when Integer, Float, String, NilClass
+            param
+          when TrueClass
+            1
+          when FalseClass
+            0
+          else
+            param.to_s
+          end
+        end
+        
+        connection.execute(sql, sanitized_params)
+      rescue SQLite3::MismatchException => e
+        # Log the error with details for debugging
+        warn "SQLite3 datatype mismatch: #{e.message}"
+        warn "SQL: #{sql}"
+        warn "Params: #{sanitized_params.inspect}"
+        raise e
       end
 
       # Transaction wrapper with rollback support
