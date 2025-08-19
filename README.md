@@ -1,6 +1,6 @@
 # Sxn
 
-[![CI](https://github.com/yourusername/sxn/actions/workflows/ci.yml/badge.svg)](https://github.com/yourusername/sxn/actions/workflows/ci.yml)
+[![CI](https://github.com/idl3/sxn/actions/workflows/ci.yml/badge.svg)](https://github.com/idl3/sxn/actions/workflows/ci.yml)
 [![Ruby Version](https://img.shields.io/badge/ruby-3.2%2B-red)](https://www.ruby-lang.org)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE.txt)
 
@@ -154,11 +154,11 @@ rules:
   - type: template
     template: rails/database.yml
     destination: config/database.yml
-    
+
   - type: copy_files
     source: .env.example
     destination: .env
-    
+
   - type: setup_commands
     commands:
       - bundle install
