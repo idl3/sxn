@@ -60,7 +60,7 @@ module Sxn
           @session_path = File.realpath(arg4)
         elsif arg1.is_a?(Hash) && arg2.is_a?(String) && arg3.is_a?(String)
           # Special format: (config, project_path, session_path, name)
-          @name = arg4 || "base_rule"  
+          @name = arg4 || "base_rule"
           @config = arg1.dup.freeze
           @project_path = File.realpath(arg2)
           @session_path = File.realpath(arg3)
@@ -68,20 +68,21 @@ module Sxn
           # New format: (project_path, session_path, config = {}, dependencies: [])
           @name = "base_rule"
           # Store the config as-is for validation, only freeze if it's a Hash
-          if arg3.nil?
-            @config = {}.freeze
-          elsif arg3.is_a?(Hash)
-            @config = arg3.dup.freeze
-          else
-            # Store non-hash config as-is for validation to catch
-            @config = arg3
-          end
+          @config = if arg3.nil?
+                      {}.freeze
+                    elsif arg3.is_a?(Hash)
+                      arg3.dup.freeze
+                    else
+                      # Store non-hash config as-is for validation to catch
+                      arg3
+                    end
           @project_path = File.realpath(arg1)
           @session_path = File.realpath(arg2)
         else
-          raise ArgumentError, "Invalid arguments. Expected (name, config, project_path, session_path) or (project_path, session_path, config={})"
+          raise ArgumentError,
+                "Invalid arguments. Expected (name, config, project_path, session_path) or (project_path, session_path, config={})"
         end
-        
+
         @dependencies = dependencies.freeze
         @state = PENDING
         @changes = []
@@ -339,9 +340,7 @@ module Sxn
           when :file_created
             FileUtils.rm_f(@target)
           when :file_modified
-            if @metadata[:backup_path] && File.exist?(@metadata[:backup_path])
-              FileUtils.mv(@metadata[:backup_path], @target)
-            end
+            FileUtils.mv(@metadata[:backup_path], @target) if @metadata[:backup_path] && File.exist?(@metadata[:backup_path])
           when :directory_created
             Dir.rmdir(@target) if File.directory?(@target) && Dir.empty?(@target)
           when :symlink_created

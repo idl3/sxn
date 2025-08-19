@@ -308,23 +308,23 @@ RSpec.describe Sxn::Templates::TemplateSecurity do
         expect(security.safe_filter?(filter)).to be false
       end
     end
-    
+
     it "caches security errors for invalid templates" do
       dangerous_template = "{{ File.read('/etc/passwd') }}"
-      
+
       # Mock the validation to track calls
       allow(security).to receive(:validate_template_content).and_call_original
-      
+
       # First validation should cache the error
       expect do
         security.validate_template(dangerous_template, safe_variables)
       end.to raise_error(Sxn::Templates::Errors::TemplateSecurityError)
-      
+
       # Second validation should use cached result without calling validate_template_content again
       expect do
         security.validate_template(dangerous_template, safe_variables)
       end.to raise_error(Sxn::Templates::Errors::TemplateSecurityError)
-      
+
       # Should only call validate_template_content once due to caching
       expect(security).to have_received(:validate_template_content).once
     end
@@ -494,60 +494,60 @@ RSpec.describe Sxn::Templates::TemplateSecurity do
       end.not_to raise_error
     end
   end
-  
+
   describe "#validate_template_path" do
     let(:temp_file) { File.join(Dir.tmpdir, "test_template.liquid") }
-    
+
     before do
       File.write(temp_file, "Hello {{ user.name }}")
     end
-    
+
     after do
-      File.unlink(temp_file) if File.exist?(temp_file)
+      FileUtils.rm_f(temp_file)
     end
-    
+
     it "validates safe template paths" do
       expect do
         security.validate_template_path(temp_file)
       end.not_to raise_error
     end
-    
+
     it "rejects paths with traversal attempts" do
       dangerous_path = "../../../etc/passwd"
       expect do
         security.validate_template_path(dangerous_path)
       end.to raise_error(Sxn::Templates::Errors::TemplateSecurityError, /not accessible/)
     end
-    
+
     it "rejects paths with tilde expansion" do
       dangerous_path = "~/secret_file"
       expect do
         security.validate_template_path(dangerous_path)
       end.to raise_error(Sxn::Templates::Errors::TemplateSecurityError, /not accessible/)
     end
-    
+
     it "rejects non-existent paths" do
       non_existent = "/path/that/does/not/exist"
       expect do
         security.validate_template_path(non_existent)
       end.to raise_error(Sxn::Templates::Errors::TemplateSecurityError, /not accessible/)
     end
-    
+
     it "rejects unreadable paths" do
       # Create file and make it unreadable
       unreadable_file = File.join(Dir.tmpdir, "unreadable.liquid")
       File.write(unreadable_file, "content")
       File.chmod(0o000, unreadable_file)
-      
+
       expect do
         security.validate_template_path(unreadable_file)
       end.to raise_error(Sxn::Templates::Errors::TemplateSecurityError, /not accessible/)
     ensure
       File.chmod(0o644, unreadable_file) if File.exist?(unreadable_file)
-      File.unlink(unreadable_file) if File.exist?(unreadable_file)
+      FileUtils.rm_f(unreadable_file)
     end
   end
-  
+
   describe "template complexity validation" do
     it "handles elsif/else/when tags correctly" do
       complex_template = <<~LIQUID
@@ -558,7 +558,7 @@ RSpec.describe Sxn::Templates::TemplateSecurity do
         {% else %}
           Default content
         {% endif %}
-        
+
         {% case variable %}
         {% when 'value1' %}
           Case 1
@@ -566,12 +566,12 @@ RSpec.describe Sxn::Templates::TemplateSecurity do
           Case 2
         {% endcase %}
       LIQUID
-      
+
       expect do
         security.validate_template(complex_template, safe_variables)
       end.not_to raise_error
     end
-    
+
     it "correctly tracks nesting depth with mixed tags" do
       nested_template = <<~LIQUID
         {% if outer %}
@@ -585,44 +585,44 @@ RSpec.describe Sxn::Templates::TemplateSecurity do
           {% endfor %}
         {% endif %}
       LIQUID
-      
+
       expect do
         security.validate_template(nested_template, safe_variables)
       end.not_to raise_error
     end
   end
-  
+
   describe "sanitization edge cases" do
     it "handles Date objects in variables" do
-      require 'date'
+      require "date"
       variables_with_date = {
         user: {
           created_at: Date.today,
           updated_at: Time.now
         }
       }
-      
+
       sanitized = security.sanitize_variables(variables_with_date)
-      
+
       # Date.today gets converted to ISO8601 string format
       expect(sanitized["user"]["created_at"]).to match(/\d{4}-\d{2}-\d{2}/)
-expect(sanitized["user"]["updated_at"]).to match(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+Z]/)  # Handle both Z and timezone offset
+      expect(sanitized["user"]["updated_at"]).to match(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+Z]/) # Handle both Z and timezone offset
     end
-    
+
     it "handles variables with short keys" do
       short_key_variables = {
         "id" => 123,        # 2 chars - should pass namespace check
         "key" => "value",   # 3 chars - should pass namespace check
         "name" => "test"    # 4 chars - but may be filtered by namespace check
       }
-      
+
       sanitized = security.sanitize_variables(short_key_variables)
-      
+
       expect(sanitized).to have_key("id")
       expect(sanitized).to have_key("key")
       # 'name' has 4 chars so it might be filtered depending on namespace logic
     end
-    
+
     it "processes variables with array containing hashes" do
       complex_variables = {
         session: {
@@ -634,9 +634,9 @@ expect(sanitized["user"]["updated_at"]).to match(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:
           ]
         }
       }
-      
+
       sanitized = security.sanitize_variables(complex_variables)
-      
+
       items = sanitized["session"]["items"]
       expect(items[0]["name"]).to eq("item1")
       expect(items[1]["type"]).to eq("directory")

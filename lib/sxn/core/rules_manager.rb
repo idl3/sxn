@@ -179,9 +179,7 @@ module Sxn
       end
 
       def validate_copy_files_config!(config)
-        unless config.is_a?(Hash) && config["source"]
-          raise Sxn::InvalidRuleConfigError, "copy_files rule must have 'source' field"
-        end
+        raise Sxn::InvalidRuleConfigError, "copy_files rule must have 'source' field" unless config.is_a?(Hash) && config["source"]
 
         return unless config["strategy"] && !%w[copy symlink].include?(config["strategy"])
 
@@ -189,9 +187,7 @@ module Sxn
       end
 
       def validate_setup_commands_config!(config)
-        unless config.is_a?(Hash) && config["command"]
-          raise Sxn::InvalidRuleConfigError, "setup_commands rule must have 'command' field"
-        end
+        raise Sxn::InvalidRuleConfigError, "setup_commands rule must have 'command' field" unless config.is_a?(Hash) && config["command"]
 
         return if config["command"].is_a?(Array)
 

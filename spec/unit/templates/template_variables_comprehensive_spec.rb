@@ -191,10 +191,10 @@ RSpec.describe Sxn::Templates::TemplateVariables, "comprehensive coverage for mi
                                              status: "active")
 
       variables_non_git = described_class.new(mock_session_non_git, mock_project_non_git)
-      
+
       # Ensure git_repository? returns false for the non-git path by stubbing find_git_directory
       allow(variables_non_git).to receive(:find_git_directory).and_return(nil)
-      
+
       result = variables_non_git.send(:_collect_git_variables)
 
       expect(result).to eq({ available: false })

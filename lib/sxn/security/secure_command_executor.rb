@@ -195,9 +195,7 @@ module Sxn
       def validate_and_resolve_command(command)
         command_name = command.first
 
-        unless @command_whitelist.key?(command_name)
-          raise CommandExecutionError, "Command not whitelisted: #{command_name}"
-        end
+        raise CommandExecutionError, "Command not whitelisted: #{command_name}" unless @command_whitelist.key?(command_name)
 
         executable_path = @command_whitelist[command_name]
 
@@ -269,14 +267,10 @@ module Sxn
           value_str = value.to_s
 
           # Validate environment variable names (only alphanumeric and underscore)
-          unless key_str.match?(/\A[A-Z_][A-Z0-9_]*\z/)
-            raise CommandExecutionError, "Invalid environment variable name: #{key_str}"
-          end
+          raise CommandExecutionError, "Invalid environment variable name: #{key_str}" unless key_str.match?(/\A[A-Z_][A-Z0-9_]*\z/)
 
           # Validate environment variable values (no null bytes)
-          if value_str.include?("\x00")
-            raise CommandExecutionError, "Environment variable contains null bytes: #{key_str}"
-          end
+          raise CommandExecutionError, "Environment variable contains null bytes: #{key_str}" if value_str.include?("\x00")
 
           safe_env[key_str] = value_str
         end

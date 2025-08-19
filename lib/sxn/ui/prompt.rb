@@ -10,8 +10,8 @@ module Sxn
         @prompt = TTY::Prompt.new(interrupt: :exit)
       end
 
-      def ask(message, options = {}, &block)
-        @prompt.ask(message, **options, &block)
+      def ask(message, options = {}, &)
+        @prompt.ask(message, **options, &)
       end
 
       def ask_yes_no(message, default: false)

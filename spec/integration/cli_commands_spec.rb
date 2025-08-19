@@ -15,7 +15,7 @@ RSpec.describe "CLI Command Integration" do
     FileUtils.mkdir_p(test_project_path)
     File.write(File.join(test_project_path, "Gemfile"), "source 'https://rubygems.org'\ngem 'rails'")
     File.write(File.join(test_project_path, ".gitignore"), "node_modules/\n.env")
-    
+
     # Make it a git repository for project validation to work
     Dir.chdir(test_project_path) do
       system("git init --quiet")
@@ -25,7 +25,7 @@ RSpec.describe "CLI Command Integration" do
       system("git add .")
       system("git commit --quiet -m 'Initial commit'")
     end
-    
+
     # Ensure test isolation by resetting environment
     ENV.delete("SXN_CONFIG_PATH")
     ENV.delete("SXN_DATABASE_PATH")
@@ -35,25 +35,29 @@ RSpec.describe "CLI Command Integration" do
     # Clean up git worktrees first before removing directories
     cleanup_git_worktrees
     # Clean up temp directory
-    FileUtils.rm_rf(temp_dir) if Dir.exist?(temp_dir)
+    FileUtils.rm_rf(temp_dir)
   end
-  
+
   def cleanup_git_worktrees
     return unless Dir.exist?(git_repo_path)
-    
+
     Dir.chdir(git_repo_path) do
       # List and remove all worktrees
-      worktrees_output = `git worktree list --porcelain 2>/dev/null` rescue ""
+      worktrees_output = begin
+        `git worktree list --porcelain 2>/dev/null`
+      rescue StandardError
+        ""
+      end
       worktree_paths = worktrees_output.lines
-                                        .select { |line| line.start_with?("worktree ") }
-                                        .map { |line| line.sub(/^worktree /, "").strip }
-                                        .reject { |path| path == git_repo_path } # Skip main repo
-      
+                                       .select { |line| line.start_with?("worktree ") }
+                                       .map { |line| line.sub(/^worktree /, "").strip }
+                                       .reject { |path| path == git_repo_path } # Skip main repo
+
       worktree_paths.each do |path|
         system("git worktree remove #{path} --force 2>/dev/null")
       end
     end
-  rescue => e
+  rescue StandardError
     # Ignore cleanup errors
   end
 
@@ -62,16 +66,16 @@ RSpec.describe "CLI Command Integration" do
       # Initialize directly with ConfigManager using explicit path
       config_manager = Sxn::Core::ConfigManager.new(test_project_path)
       sessions_folder = File.join(test_project_path, "sessions")
-      
+
       # Initialize project
       result_sessions_folder = config_manager.initialize_project(sessions_folder)
-      
+
       # Verify initialization
       expect(File.exist?(File.join(test_project_path, ".sxn", "config.yml"))).to be true
       expect(File.exist?(File.join(test_project_path, ".sxn", "sessions.db"))).to be true
       expect(Dir.exist?(result_sessions_folder)).to be true
       expect(result_sessions_folder).to eq(sessions_folder)
-      
+
       # Verify config manager works
       expect(config_manager.initialized?).to be true
       expect(config_manager.sessions_folder_path).to eq(sessions_folder)
@@ -170,9 +174,7 @@ RSpec.describe "CLI Command Integration" do
         system("git commit -m 'Initial commit'", out: File::NULL, err: File::NULL)
         # Ensure we have the main branch set up properly
         current_branch = `git branch --show-current`.strip
-        if current_branch != "main"
-          system("git branch -m #{current_branch} main", out: File::NULL, err: File::NULL)
-        end
+        system("git branch -m #{current_branch} main", out: File::NULL, err: File::NULL) if current_branch != "main"
       end
 
       # Initialize sxn
@@ -221,11 +223,11 @@ RSpec.describe "CLI Command Integration" do
       # Create a new directory that is NOT initialized
       uninitialized_path = File.join(temp_dir, "uninitialized-project")
       FileUtils.mkdir_p(uninitialized_path)
-      
+
       # Change to uninitialized project directory temporarily for CLI test
       original_dir = Dir.pwd
       Dir.chdir(uninitialized_path)
-      
+
       begin
         # Try to create session without initialization
         # The Sessions constructor will fail when trying to initialize the database

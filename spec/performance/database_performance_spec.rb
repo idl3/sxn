@@ -348,9 +348,7 @@ RSpec.describe "Database Performance", type: :performance do
 
   # Get current memory usage in MB (approximate)
   def memory_usage_mb
-    if RUBY_PLATFORM.include?("darwin") # macOS
-    else # Linux
-    end
+    # Works for both macOS and Linux
     `ps -o rss= -p #{Process.pid}`.to_i / 1024.0
   rescue StandardError
     0.0 # Fallback if ps command fails

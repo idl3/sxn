@@ -175,13 +175,11 @@ module Sxn
       def cleanup_old_sessions(days_old = 30)
         cutoff_date = Time.now.utc - (days_old * 24 * 60 * 60)
         old_sessions = @database.list_sessions.select do |session|
-          begin
-            session_time = Time.parse(session[:updated_at]).utc
-            session_time < cutoff_date
-          rescue ArgumentError
-            # If we can't parse the time, err on the side of caution and don't delete
-            false
-          end
+          session_time = Time.parse(session[:updated_at]).utc
+          session_time < cutoff_date
+        rescue ArgumentError
+          # If we can't parse the time, err on the side of caution and don't delete
+          false
         end
 
         old_sessions.each do |session|
@@ -194,9 +192,7 @@ module Sxn
       private
 
       def initialize_database
-        unless @config_manager.initialized?
-          raise Sxn::ConfigurationError, "Project not initialized. Run 'sxn init' first."
-        end
+        raise Sxn::ConfigurationError, "Project not initialized. Run 'sxn init' first." unless @config_manager.initialized?
 
         db_path = File.join(File.dirname(@config_manager.config_path), "sessions.db")
         Sxn::Database::SessionDatabase.new(db_path)
@@ -236,14 +232,14 @@ module Sxn
 
       def update_session_status(session_id, status, **additional_options)
         updates = { status: status }
-        
+
         # Put additional options into metadata if provided
         if additional_options.any?
           current_session = @database.get_session(session_id)
           current_metadata = current_session[:metadata] || {}
           updates[:metadata] = current_metadata.merge(additional_options)
         end
-        
+
         @database.update_session(session_id, updates)
       end
 
@@ -252,14 +248,14 @@ module Sxn
         raise Sxn::SessionNotFoundError, "Session '#{name}' not found" unless session
 
         updates = { status: status }
-        
+
         # Put additional options into metadata if provided
         if additional_options.any?
           current_session = @database.get_session(session[:id])
           current_metadata = current_session[:metadata] || {}
           updates[:metadata] = current_metadata.merge(additional_options)
         end
-        
+
         @database.update_session(session[:id], updates)
       end
 
@@ -269,11 +265,9 @@ module Sxn
 
         worktrees.each do |project, worktree_info|
           path = worktree_info[:path] || worktree_info["path"]
-          
+
           # If directory doesn't exist, skip it (not uncommitted, just missing)
-          unless File.directory?(path)
-            next
-          end
+          next unless File.directory?(path)
 
           begin
             Dir.chdir(path) do
@@ -310,14 +304,12 @@ module Sxn
               Dir.chdir(parent_repo) do
                 success = system("git worktree remove #{Shellwords.escape(path)}",
                                  out: File::NULL, err: File::NULL)
-                unless success
-                  $stderr.puts "Warning: Could not cleanly remove git worktree for #{project}: git command failed"
-                end
+                warn "Warning: Could not cleanly remove git worktree for #{project}: git command failed" unless success
               end
             end
           rescue StandardError => e
             # Log error but continue with removal
-            $stderr.puts "Warning: Could not cleanly remove git worktree for #{project}: #{e.message}"
+            warn "Warning: Could not cleanly remove git worktree for #{project}: #{e.message}"
           end
 
           # Remove directory if it still exists

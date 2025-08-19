@@ -10,7 +10,7 @@ require_relative "../runtime_validations"
 unless Hash.method_defined?(:deep_merge)
   class Hash
     def deep_merge(other_hash)
-      self.merge(other_hash) do |key, oldval, newval|
+      merge(other_hash) do |_key, oldval, newval|
         if oldval.is_a?(Hash) && newval.is_a?(Hash)
           oldval.deep_merge(newval)
         else
@@ -78,7 +78,7 @@ module Sxn
         # steep:ignore:start - Template processing uses dynamic variable resolution
         # Liquid template processing and variable collection use dynamic features
         # that cannot be statically typed. Runtime validation provides safety.
-        
+
         # Collect variables
         variables = collect_variables(custom_variables)
 
@@ -177,12 +177,12 @@ module Sxn
       # @return [Boolean] true if template syntax is valid
       def validate_template_syntax(template_name, template_dir = nil)
         # Better detection: if it contains Liquid syntax and no path separators, treat as content
-        if template_name.is_a?(String) && 
+        if template_name.is_a?(String) &&
            (template_name.include?("{{") || template_name.include?("{%")) &&
            !template_name.include?("/") && !template_name.end_with?(".liquid")
           # It's template content with Liquid syntax
           template_content = template_name
-        elsif template_name.is_a?(String) && !template_name.include?("\n") && 
+        elsif template_name.is_a?(String) && !template_name.include?("\n") &&
               (template_name.include?("/") || template_name.match?(/\.\w+$/) || !template_name.include?("{{"))
           # It's a template name/path
           template_path = find_template(template_name, template_dir)

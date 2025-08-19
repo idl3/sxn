@@ -138,11 +138,11 @@ RSpec.describe Sxn::Commands::Projects do
         expect(mock_ui).to have_received(:progress_failed)
         expect(mock_ui).to have_received(:error).with("Project already exists")
       end
-      
+
       it "handles StandardError with debug output when SXN_DEBUG is set" do
         ENV["SXN_DEBUG"] = "true"
         error = StandardError.new("Unexpected error")
-        allow(error).to receive(:backtrace).and_return(["line1", "line2", "line3"])
+        allow(error).to receive(:backtrace).and_return(%w[line1 line2 line3])
         allow(mock_project_manager).to receive(:add_project).and_raise(error)
 
         expect { projects_command.add("test", "/path") }.to raise_error(SystemExit)
@@ -152,7 +152,7 @@ RSpec.describe Sxn::Commands::Projects do
       ensure
         ENV.delete("SXN_DEBUG")
       end
-      
+
       it "handles StandardError without debug output when SXN_DEBUG is not set" do
         error = StandardError.new("Unexpected error")
         allow(mock_project_manager).to receive(:add_project).and_raise(error)
@@ -225,7 +225,7 @@ RSpec.describe Sxn::Commands::Projects do
         expect(mock_ui).to have_received(:error).with("Project in use")
         expect(mock_ui).to have_received(:recovery_suggestion).with(/Archive or remove/)
       end
-      
+
       it "handles general Sxn::Error during removal" do
         error = Sxn::Error.new("General error")
         allow(error).to receive(:exit_code).and_return(12)
@@ -274,7 +274,7 @@ RSpec.describe Sxn::Commands::Projects do
         expect(mock_ui).to have_received(:recovery_suggestion)
       end
     end
-    
+
     context "when errors occur" do
       it "handles Sxn::Error during list" do
         error = Sxn::Error.new("List error")
@@ -368,7 +368,7 @@ RSpec.describe Sxn::Commands::Projects do
         expect(mock_ui).to have_received(:empty_state).with("No projects detected")
       end
     end
-    
+
     context "when scan encounters errors" do
       it "handles Sxn::Error during scan" do
         error = Sxn::Error.new("Scan error")
@@ -425,7 +425,7 @@ RSpec.describe Sxn::Commands::Projects do
           [{ name: "test-project (rails)", value: "test-project" }]
         )
       end
-      
+
       it "shows empty state when no projects for validation" do
         allow(mock_project_manager).to receive(:list_projects).and_return([])
 
@@ -434,7 +434,7 @@ RSpec.describe Sxn::Commands::Projects do
         expect(mock_ui).to have_received(:empty_state).with("No projects configured")
       end
     end
-    
+
     context "when validation encounters errors" do
       it "handles Sxn::Error during validate" do
         error = Sxn::Error.new("Validation error")
@@ -520,7 +520,7 @@ RSpec.describe Sxn::Commands::Projects do
           [{ name: "test-project (rails)", value: "test-project" }]
         )
       end
-      
+
       it "shows empty state when no projects for info" do
         allow(mock_project_manager).to receive(:list_projects).and_return([])
 
@@ -529,7 +529,7 @@ RSpec.describe Sxn::Commands::Projects do
         expect(mock_ui).to have_received(:empty_state).with("No projects configured")
       end
     end
-    
+
     context "when info encounters errors" do
       it "handles Sxn::Error during info" do
         error = Sxn::Error.new("Info error")

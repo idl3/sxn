@@ -584,7 +584,7 @@ RSpec.describe Sxn::Templates::TemplateVariables do
       it "returns nil when Rails detection fails" do
         allow(collector).to receive(:rails_available?).and_return(true)
         allow(collector).to receive(:collect_rails_version).and_raise(StandardError, "Rails error")
-        
+
         version = collector.send(:detect_rails_version)
         expect(version).to be_nil
       end
@@ -592,7 +592,7 @@ RSpec.describe Sxn::Templates::TemplateVariables do
       it "returns nil when Rails version result is invalid" do
         allow(collector).to receive(:rails_available?).and_return(true)
         allow(collector).to receive(:collect_rails_version).and_return("invalid")
-        
+
         version = collector.send(:detect_rails_version)
         expect(version).to be_nil
       end
@@ -604,7 +604,7 @@ RSpec.describe Sxn::Templates::TemplateVariables do
       it "detects git repository by .git directory" do
         git_path = "/tmp/test_git_repo"
         allow(File).to receive(:exist?).with("#{git_path}/.git").and_return(true)
-        
+
         is_repo = collector.send(:git_repository?, git_path)
         expect(is_repo).to be true
       end
@@ -612,20 +612,20 @@ RSpec.describe Sxn::Templates::TemplateVariables do
       it "detects git repository by git command" do
         git_path = "/tmp/test_git_repo"
         allow(File).to receive(:exist?).with("#{git_path}/.git").and_return(false)
-        
+
         # Stub execute_git_command to handle the specific call with git command
         # Use a more explicit approach
         allow(collector).to receive(:execute_git_command) do |dir, *args, &block|
           if dir.to_s == git_path && args == ["rev-parse", "--git-dir"]
             # Yield to the block with git output
-            block.call(".git") if block
+            block&.call(".git")
             ".git"
           else
             # Default behavior for other calls
             ""
           end
         end
-        
+
         is_repo = collector.send(:git_repository?, git_path)
         expect(is_repo).to be true
       end
@@ -634,7 +634,7 @@ RSpec.describe Sxn::Templates::TemplateVariables do
         git_path = "/tmp/not_git_repo"
         allow(File).to receive(:exist?).with("#{git_path}/.git").and_return(false)
         allow(collector).to receive(:execute_git_command).and_return(nil)
-        
+
         is_repo = collector.send(:git_repository?, git_path)
         expect(is_repo).to be false
       end
@@ -649,14 +649,14 @@ RSpec.describe Sxn::Templates::TemplateVariables do
       it "handles command timeout" do
         # Allow the real method to be called
         allow(collector).to receive(:execute_git_command).and_call_original
-        
+
         allow(Open3).to receive(:popen3).and_yield(
           double("stdin", close: nil),
           double("stdout", read: "output"),
           double("stderr"),
-          double("wait_thr", join: nil, pid: 12345, value: double(success?: true))
+          double("wait_thr", join: nil, pid: 12_345, value: double(success?: true))
         )
-        
+
         result = collector.send(:execute_git_command, "/tmp", "status") { |output| output }
         expect(result).to be_nil # Should return nil on timeout
       end
@@ -664,14 +664,14 @@ RSpec.describe Sxn::Templates::TemplateVariables do
       it "handles command failure" do
         # Allow the real method to be called
         allow(collector).to receive(:execute_git_command).and_call_original
-        
+
         allow(Open3).to receive(:popen3).and_yield(
           double("stdin", close: nil),
           double("stdout", read: "output"),
           double("stderr"),
-          double("wait_thr", join: true, pid: 12345, value: double(success?: false))
+          double("wait_thr", join: true, pid: 12_345, value: double(success?: false))
         )
-        
+
         result = collector.send(:execute_git_command, "/tmp", "status") { |output| output }
         expect(result).to be_nil
       end
@@ -679,14 +679,14 @@ RSpec.describe Sxn::Templates::TemplateVariables do
       it "yields output on successful command" do
         # Allow the real method to be called
         allow(collector).to receive(:execute_git_command).and_call_original
-        
+
         allow(Open3).to receive(:popen3).and_yield(
           double("stdin", close: nil),
           double("stdout", read: "success output"),
           double("stderr"),
-          double("wait_thr", join: true, pid: 12345, value: double(success?: true))
+          double("wait_thr", join: true, pid: 12_345, value: double(success?: true))
         )
-        
+
         output_received = nil
         collector.send(:execute_git_command, "/tmp", "status") { |output| output_received = output }
         expect(output_received).to eq("success output")
@@ -695,17 +695,17 @@ RSpec.describe Sxn::Templates::TemplateVariables do
       it "kills process on timeout" do
         # Allow the real method to be called
         allow(collector).to receive(:execute_git_command).and_call_original
-        
-        wait_thr = double("wait_thr", join: nil, pid: 12345)
+
+        wait_thr = double("wait_thr", join: nil, pid: 12_345)
         allow(Open3).to receive(:popen3).and_yield(
           double("stdin", close: nil),
           double("stdout", read: "output"),
           double("stderr"),
           wait_thr
         )
-        
-        expect(Process).to receive(:kill).with("TERM", 12345)
-        
+
+        expect(Process).to receive(:kill).with("TERM", 12_345)
+
         collector.send(:execute_git_command, "/tmp", "status")
       end
     end
@@ -715,17 +715,17 @@ RSpec.describe Sxn::Templates::TemplateVariables do
     it "caches variables on first collection" do
       variables1 = collector.collect
       variables2 = collector.collect
-      
+
       expect(variables1).to be(variables2) # Same object reference
     end
 
     it "returns cached variables on subsequent calls" do
       # Set up some mock data
       allow(collector).to receive(:_collect_session_variables).and_return({ name: "cached" })
-      
+
       variables1 = collector.collect
       variables2 = collector.collect
-      
+
       expect(variables1[:session]).to eq({ name: "cached" })
       expect(variables2[:session]).to eq({ name: "cached" })
       expect(variables1).to be(variables2)
@@ -736,7 +736,7 @@ RSpec.describe Sxn::Templates::TemplateVariables do
     it "handles missing environment variables gracefully" do
       allow(ENV).to receive(:[]).with("USER").and_return(nil)
       allow(Dir).to receive(:home).and_raise(ArgumentError, "user not found")
-      
+
       variables = collector.collect
       expect(variables[:user]).to be_a(Hash)
     end
@@ -744,10 +744,10 @@ RSpec.describe Sxn::Templates::TemplateVariables do
     it "handles git command failures gracefully" do
       # Override the default stub to return nil (indicating failure)
       allow(collector).to receive(:execute_git_command).and_return(nil)
-      
+
       # Also stub git_repository? to return false to simulate no git repo
       allow(collector).to receive(:git_repository?).and_return(false)
-      
+
       variables = collector.collect
       expect(variables[:git]).to be_a(Hash)
       expect(variables[:git][:available]).to be false
@@ -756,7 +756,7 @@ RSpec.describe Sxn::Templates::TemplateVariables do
     it "compacts nil values from collected variables" do
       # Mock one collector method to return nil
       allow(collector).to receive(:_collect_project_variables).and_return(nil)
-      
+
       variables = collector.collect
       expect(variables).not_to have_key(:project)
     end

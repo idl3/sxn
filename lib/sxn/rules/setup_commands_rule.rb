@@ -61,18 +61,15 @@ module Sxn
 
       # Initialize the setup commands rule
       def initialize(arg1 = nil, arg2 = nil, arg3 = nil, arg4 = nil, dependencies: [])
-        super(arg1, arg2, arg3, arg4, dependencies: dependencies)
+        super
         @command_executor = Security::SecureCommandExecutor.new(@session_path, logger: logger)
         @executed_commands = []
       end
 
       # Validate the rule configuration
-      def validate
-        super
-      end
 
       # Apply the command execution operations
-      def apply(context = {})
+      def apply(_context = {})
         change_state!(APPLYING)
         continue_on_failure = @config.fetch("continue_on_failure", false)
 
@@ -130,19 +127,13 @@ module Sxn
       def validate_command_config!(command_config, index)
         raise ValidationError, "Command config #{index} must be a hash" unless command_config.is_a?(Hash)
 
-        unless command_config.key?("command")
-          raise ValidationError, "Command config #{index} must have a 'command' field"
-        end
+        raise ValidationError, "Command config #{index} must have a 'command' field" unless command_config.key?("command")
 
         command = command_config["command"]
-        unless command.is_a?(Array) && !command.empty?
-          raise ValidationError, "Command config #{index} 'command' must be a non-empty array"
-        end
+        raise ValidationError, "Command config #{index} 'command' must be a non-empty array" unless command.is_a?(Array) && !command.empty?
 
         # Validate that command is whitelisted
-        unless @command_executor.command_allowed?(command)
-          raise ValidationError, "Command config #{index}: command not whitelisted: #{command.first}"
-        end
+        raise ValidationError, "Command config #{index}: command not whitelisted: #{command.first}" unless @command_executor.command_allowed?(command)
 
         # Validate timeout
         if command_config.key?("timeout")
@@ -158,27 +149,21 @@ module Sxn
           raise ValidationError, "Command config #{index}: env must be a hash" unless env.is_a?(Hash)
 
           env.each do |key, value|
-            unless key.is_a?(String) && value.is_a?(String)
-              raise ValidationError, "Command config #{index}: env keys and values must be strings"
-            end
+            raise ValidationError, "Command config #{index}: env keys and values must be strings" unless key.is_a?(String) && value.is_a?(String)
           end
         end
 
         # Validate condition
         if command_config.key?("condition")
           condition = command_config["condition"]
-          unless valid_condition?(condition)
-            raise ValidationError, "Command config #{index}: invalid condition format: #{condition}"
-          end
+          raise ValidationError, "Command config #{index}: invalid condition format: #{condition}" unless valid_condition?(condition)
         end
 
         # Validate working directory
         return unless command_config.key?("working_directory")
 
         working_dir = command_config["working_directory"]
-        unless working_dir.is_a?(String)
-          raise ValidationError, "Command config #{index}: working_directory must be a string"
-        end
+        raise ValidationError, "Command config #{index}: working_directory must be a string" unless working_dir.is_a?(String)
 
         full_path = File.expand_path(working_dir, @session_path)
         return if full_path.start_with?(@session_path)

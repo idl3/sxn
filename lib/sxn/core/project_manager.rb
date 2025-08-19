@@ -125,12 +125,11 @@ module Sxn
         raise Sxn::ProjectNotFoundError, "Project '#{name}' not found" unless project
 
         # Validate updates
-        if updates[:path] && !File.directory?(updates[:path])
-          raise Sxn::InvalidProjectPathError, "Path is not a directory"
-        end
+        raise Sxn::InvalidProjectPathError, "Path is not a directory" if updates[:path] && !File.directory?(updates[:path])
 
         @config_manager.update_project(name, updates)
-        @config_manager.get_project(name) || raise(Sxn::ProjectNotFoundError, "Project '#{name}' was deleted during update")
+        @config_manager.get_project(name) || raise(Sxn::ProjectNotFoundError,
+                                                   "Project '#{name}' was deleted during update")
       end
 
       def validate_projects

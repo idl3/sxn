@@ -56,14 +56,11 @@ module Sxn
 
       # Initialize the copy files rule
       def initialize(arg1 = nil, arg2 = nil, arg3 = nil, arg4 = nil, dependencies: [])
-        super(arg1, arg2, arg3, arg4, dependencies: dependencies)
+        super
         @file_copier = Sxn::Security::SecureFileCopier.new(@session_path, logger: logger)
       end
 
       # Validate the rule configuration
-      def validate
-        super
-      end
 
       # Apply the file copying operations
       def apply
@@ -117,24 +114,21 @@ module Sxn
         if file_config.key?("strategy")
           strategy = file_config["strategy"]
           unless VALID_STRATEGIES.include?(strategy)
-            raise ValidationError, "Invalid strategy '#{strategy}' for file config #{index}. Valid strategies: #{VALID_STRATEGIES.join(", ")}"
+            raise ValidationError,
+                  "Invalid strategy '#{strategy}' for file config #{index}. Valid strategies: #{VALID_STRATEGIES.join(", ")}"
           end
         end
 
         if file_config.key?("permissions")
           permissions = file_config["permissions"]
-          unless valid_permissions?(permissions)
-            raise ValidationError, "File config #{index} has invalid permissions '#{permissions}'"
-          end
+          raise ValidationError, "File config #{index} has invalid permissions '#{permissions}'" unless valid_permissions?(permissions)
         end
 
         # Validate that source file exists if required
         source_path = File.join(@project_path, file_config["source"])
         required = file_config.fetch("required", true)
 
-        if required && !File.exist?(source_path)
-          raise ValidationError, "Required source file does not exist: #{file_config["source"]}"
-        end
+        raise ValidationError, "Required source file does not exist: #{file_config["source"]}" if required && !File.exist?(source_path)
 
         # Warn about potentially dangerous operations
         return unless file_config["strategy"] == "symlink" && file_config["encrypt"]
@@ -207,7 +201,7 @@ module Sxn
       end
 
       # Apply a copy operation
-      def apply_copy_operation(source, destination, source_path, destination_path, file_config)
+      def apply_copy_operation(source, _destination, source_path, destination_path, file_config)
         options = build_copy_options(file_config)
 
         # Check if file should be encrypted
@@ -226,24 +220,22 @@ module Sxn
             # Use SecureFileCopier for encrypted copying
             relative_source = Pathname.new(source_path).relative_path_from(Pathname.new(@project_path)).to_s
             relative_destination = Pathname.new(destination_path).relative_path_from(Pathname.new(@session_path)).to_s
-            
+
             # Use file copier to handle encryption
             if @file_copier.respond_to?(:copy_file)
               # Use the file copier's copy method which handles encryption
-              result = @file_copier.copy_file(relative_source, relative_destination, 
-                permissions: options[:permissions],
-                encrypt: options[:encrypt],
-                preserve_permissions: options[:preserve_permissions],
-                create_directories: options[:create_directories])
+              result = @file_copier.copy_file(relative_source, relative_destination,
+                                              permissions: options[:permissions],
+                                              encrypt: options[:encrypt],
+                                              preserve_permissions: options[:preserve_permissions],
+                                              create_directories: options[:create_directories])
             else
               # Fallback for tests/mocked scenarios
               FileUtils.cp(source_path, destination_path)
-              
+
               # Set permissions if specified
-              if options[:permissions]
-                File.chmod(options[:permissions], destination_path)
-              end
-              
+              File.chmod(options[:permissions], destination_path) if options[:permissions]
+
               result = OpenStruct.new(
                 source_path: source_path,
                 destination_path: destination_path,
@@ -255,12 +247,10 @@ module Sxn
           else
             # Simple copy without encryption
             FileUtils.cp(source_path, destination_path)
-            
+
             # Set permissions if specified
-            if options[:permissions]
-              File.chmod(options[:permissions], destination_path)
-            end
-            
+            File.chmod(options[:permissions], destination_path) if options[:permissions]
+
             result = OpenStruct.new(
               source_path: source_path,
               destination_path: destination_path,
@@ -329,12 +319,9 @@ module Sxn
       def copy_options(file_config)
         options = build_copy_options(file_config)
         # Keep permissions as string for tests if they were specified as string
-        if file_config.key?("permissions") && file_config["permissions"].is_a?(String)
-          options[:permissions] = file_config["permissions"]
-        end
+        options[:permissions] = file_config["permissions"] if file_config.key?("permissions") && file_config["permissions"].is_a?(String)
         options
       end
-
 
       # Check if a file should be encrypted based on patterns and configuration
       def should_encrypt_file?(file_path, file_config)
@@ -349,7 +336,6 @@ module Sxn
 
         sensitive
       end
-
 
       # Convert absolute path to relative path from project root
       def relative_path(absolute_path)

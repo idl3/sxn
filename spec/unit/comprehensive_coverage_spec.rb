@@ -119,8 +119,14 @@ RSpec.describe "Comprehensive Coverage Tests", :slow do
 
       # Test error conditions - expect some kind of error for invalid operations
       expect { db.create_session({ name: nil }) }.to raise_error(ArgumentError, "Session name is required")
-      expect { db.get_session("nonexistent") }.to raise_error(Sxn::Database::SessionNotFoundError, "Session with ID 'nonexistent' not found")
-      expect { db.update_session("nonexistent", {}) }.to raise_error(Sxn::Database::SessionNotFoundError, "Session with ID 'nonexistent' not found")
+      expect do
+        db.get_session("nonexistent")
+      end.to raise_error(Sxn::Database::SessionNotFoundError,
+                         "Session with ID 'nonexistent' not found")
+      expect do
+        db.update_session("nonexistent",
+                          {})
+      end.to raise_error(Sxn::Database::SessionNotFoundError, "Session with ID 'nonexistent' not found")
 
       # Delete the session we created - this should work
       expect { db.delete_session(session_id) }.not_to raise_error
@@ -400,7 +406,10 @@ RSpec.describe "Comprehensive Coverage Tests", :slow do
           "config" => {}
         }
       }
-      expect { engine.validate_rules_config(invalid_rules) }.to raise_error(ArgumentError, "Invalid rule type 'nonexistent_type' for rule 'invalid_rule'. Available: copy_files, setup_commands, template")
+      expect do
+        engine.validate_rules_config(invalid_rules)
+      end.to raise_error(ArgumentError,
+                         "Invalid rule type 'nonexistent_type' for rule 'invalid_rule'. Available: copy_files, setup_commands, template")
     end
   end
 

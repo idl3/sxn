@@ -1,9 +1,7 @@
 # frozen_string_literal: true
 
 # Temporarily disable SimpleCov due to Ruby 3.4.5 compatibility issues
-unless ENV["ENABLE_SIMPLECOV"] == "true"
-  # Skip SimpleCov
-else
+if ENV["ENABLE_SIMPLECOV"] == "true"
   require "simplecov"
   require "simplecov-console"
 
@@ -11,10 +9,10 @@ else
   # Fix for SimpleCov formatter errors with Ruby 3.4.5
   if defined?(SimpleCov)
     SimpleCov.formatter = SimpleCov::Formatter::MultiFormatter.new([
-      SimpleCov::Formatter::HTMLFormatter,
-      SimpleCov::Formatter::Console
-    ])
-    
+                                                                     SimpleCov::Formatter::HTMLFormatter,
+                                                                     SimpleCov::Formatter::Console
+                                                                   ])
+
     SimpleCov.start do
       add_filter "/spec/"
       add_filter "/vendor/"
@@ -142,7 +140,7 @@ RSpec.configure do |config|
     test_logger.level = Logger::WARN
     allow(Sxn).to receive(:logger).and_return(test_logger)
     Sxn.instance_variable_set(:@logger, test_logger)
-    
+
     # Stub all Sxn::UI::Prompt methods
     allow_any_instance_of(Sxn::UI::Prompt).to receive(:ask).and_return("test-input")
     allow_any_instance_of(Sxn::UI::Prompt).to receive(:ask_yes_no).and_return(true)

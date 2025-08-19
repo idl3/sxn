@@ -188,14 +188,14 @@ RSpec.describe Sxn::Security::SecurePathValidator do
         result = validator.validate_path("...", allow_creation: true)
         expect(result).to eq(File.join(File.realpath(temp_dir), "..."))
       end
-      
+
       it "handles mixed path separators" do
         # Test Windows-style mixed with Unix-style
         expect do
           validator.validate_path("subdir\\../file.txt")
         end.to raise_error(Sxn::PathValidationError, /directory traversal/)
       end
-      
+
       it "handles normalize_path_manually with complex paths" do
         # Test edge cases in manual normalization
         result = validator.send(:normalize_path_manually, "/a/b/./c/../d/e")
@@ -310,15 +310,15 @@ RSpec.describe Sxn::Security::SecurePathValidator do
 
         expect { validator.validate_path("dangerous_link") }.to raise_error(Errno::ENOENT)
       end
-      
+
       it "handles nested symlink validation" do
         # Create a nested directory structure with symlinks
         nested_dir = File.join(temp_dir, "level1", "level2")
         FileUtils.mkdir_p(nested_dir)
-        
+
         nested_link = File.join(nested_dir, "nested_link")
-        File.symlink("../../target.txt", nested_link)  # Points back to project root
-        
+        File.symlink("../../target.txt", nested_link) # Points back to project root
+
         expect do
           validator.validate_path("level1/level2/nested_link")
         end.not_to raise_error
@@ -385,89 +385,89 @@ RSpec.describe Sxn::Security::SecurePathValidator do
       end.to raise_error(Sxn::PathValidationError, /#{Regexp.escape(dangerous_path)}/)
     end
   end
-  
+
   describe "manual path normalization" do
     it "handles path traversal in normalize_path_manually" do
       # Create a path that would result in more .. than parts available
       # This should trigger the path traversal detection
       path_with_traversal = "/a/../../../etc/passwd"
-      
+
       # Mock the behavior to ensure we test the right path
       expect do
         validator.send(:normalize_path_manually, path_with_traversal)
       end.to raise_error(Sxn::PathValidationError, /path traversal detected/)
     end
-    
+
     it "handles empty normalized parts" do
       result = validator.send(:normalize_path_manually, "/some/./path/./file.txt")
       expect(result).to eq("/some/path/file.txt")
     end
-    
+
     it "handles relative path normalization" do
       result = validator.send(:normalize_path_manually, "relative/./path")
       expect(result).to eq("relative/path")
     end
   end
-  
+
   describe "symlink target validation edge cases" do
     let(:subdir) { File.join(temp_dir, "subdir") }
     let(:symlink_path) { File.join(subdir, "test_link") }
-    
+
     before do
       FileUtils.mkdir_p(subdir)
     end
-    
+
     it "validates absolute symlink targets" do
       # Create a symlink with absolute target within project
       target_file = File.join(temp_dir, "target.txt")
       File.write(target_file, "content")
       File.symlink(target_file, symlink_path)
-      
+
       expect do
         validator.validate_path("subdir/test_link")
       end.not_to raise_error
     end
-    
+
     it "rejects absolute symlink targets outside project" do
       # Create a symlink with absolute target outside project
       File.symlink("/etc/passwd", symlink_path)
-      
+
       expect do
         validator.validate_path("subdir/test_link")
       end.to raise_error(Sxn::PathValidationError, /outside project boundaries/)
     end
-    
+
     it "validates relative symlink resolution" do
       # Create target in parent directory of symlink
       target_file = File.join(temp_dir, "target.txt")
       File.write(target_file, "content")
-      
+
       # Create relative symlink pointing to parent
       File.symlink("../target.txt", symlink_path)
-      
+
       expect do
         validator.validate_path("subdir/test_link")
       end.not_to raise_error
     end
-    
+
     it "rejects relative symlinks that resolve outside project" do
       # Create symlink that points outside project via relative path
       File.symlink("../../../etc/passwd", symlink_path)
-      
+
       # This should raise Errno::ENOENT since the target doesn't exist
       expect do
         validator.validate_path("subdir/test_link")
       end.to raise_error(Errno::ENOENT)
     end
   end
-  
+
   describe "argument validation" do
     it "rejects nil paths in validate_path" do
       expect do
         validator.validate_path(nil)
       end.to raise_error(ArgumentError, /cannot be nil or empty/)
     end
-    
+
     it "rejects empty paths in validate_path" do
       expect do
         validator.validate_path("")

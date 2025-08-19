@@ -33,7 +33,7 @@ module Sxn
       # Execution result for rule application
       class ExecutionResult
         attr_reader :applied_rules, :failed_rules, :total_duration, :errors
-        
+
         def skipped_rules
           @skipped_rules.map { |s| s[:rule] }
         end
@@ -138,7 +138,7 @@ module Sxn
           # Load and validate all rules
           all_rules = load_rules(rules_config)
           valid_rules = validate_rules(all_rules)
-          
+
           # Track skipped rules (those that failed validation)
           skipped_rules = all_rules - valid_rules
           skipped_rules.each do |rule|
@@ -257,16 +257,14 @@ module Sxn
         rules = []
 
         rules_config.each do |rule_name, rule_spec|
-          begin
-            rule = load_single_rule(rule_name, rule_spec)
-            rules << rule
-          rescue ArgumentError, ValidationError => e
-            # ArgumentError and ValidationError for invalid rule types should bubble up
-            raise e
-          rescue StandardError => e
-            # Other errors during rule creation are logged but don't stop loading
-            @logger&.warn("Failed to load rule '#{rule_name}': #{e.message}")
-          end
+          rule = load_single_rule(rule_name, rule_spec)
+          rules << rule
+        rescue ArgumentError, ValidationError => e
+          # ArgumentError and ValidationError for invalid rule types should bubble up
+          raise e
+        rescue StandardError => e
+          # Other errors during rule creation are logged but don't stop loading
+          @logger&.warn("Failed to load rule '#{rule_name}': #{e.message}")
         end
 
         rules
@@ -288,7 +286,8 @@ module Sxn
         rule_class = get_rule_class(rule_type)
         if rule_class.nil?
           available_types = RULE_TYPES.keys.join(", ")
-          raise ValidationError, "Unknown rule type '#{rule_type}' for rule '#{rule_name}'. Available: #{available_types}"
+          raise ValidationError,
+                "Unknown rule type '#{rule_type}' for rule '#{rule_name}'. Available: #{available_types}"
         end
 
         rule_class.new(rule_name, config, project_path, session_path, dependencies: dependencies)
@@ -302,15 +301,13 @@ module Sxn
       # Validate all rules
       def validate_rules(rules)
         valid_rules = []
-        
+
         rules.each do |rule|
-          begin
-            rule.validate
-            valid_rules << rule
-          rescue StandardError => e
-            @logger&.warn("Rule '#{rule.name}' validation failed: #{e.message}")
-            # Skip invalid rules but continue processing
-          end
+          rule.validate
+          valid_rules << rule
+        rescue StandardError => e
+          @logger&.warn("Rule '#{rule.name}' validation failed: #{e.message}")
+          # Skip invalid rules but continue processing
         end
 
         # Validate dependencies exist for valid rules only
@@ -318,7 +315,7 @@ module Sxn
 
         # Check for circular dependencies for valid rules only
         check_circular_dependencies(valid_rules)
-        
+
         valid_rules
       end
 
@@ -327,9 +324,7 @@ module Sxn
         rule_names = rules.map(&:name)
         rules.each do |rule|
           rule.dependencies.each do |dep|
-            unless rule_names.include?(dep)
-              raise ValidationError, "Rule '#{rule.name}' depends on non-existent rule '#{dep}'"
-            end
+            raise ValidationError, "Rule '#{rule.name}' depends on non-existent rule '#{dep}'" unless rule_names.include?(dep)
           end
         end
       end

@@ -110,12 +110,12 @@ module Sxn
         cache_key = generate_cache_key(template_content, variables)
         if @validation_cache.key?(cache_key)
           cached_result = @validation_cache[cache_key]
-          if cached_result == false
-            # Re-raise cached error without re-validating
-            raise Errors::TemplateSecurityError, "Cached validation error for template"
-          else
-            return cached_result
-          end
+          raise Errors::TemplateSecurityError, "Cached validation error for template" if cached_result == false
+
+          # Re-raise cached error without re-validating
+
+          return cached_result
+
         end
 
         begin
@@ -401,9 +401,7 @@ module Sxn
         end
 
         # Check that the file exists and is readable
-        unless path.exist? && path.readable?
-          raise Errors::TemplateSecurityError, "Template path is not accessible: #{template_path}"
-        end
+        raise Errors::TemplateSecurityError, "Template path is not accessible: #{template_path}" unless path.exist? && path.readable?
 
         true
       end

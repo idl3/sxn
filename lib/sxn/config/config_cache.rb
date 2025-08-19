@@ -118,7 +118,7 @@ module Sxn
       # Ensure cache directory exists
       def ensure_cache_directory
         return if Dir.exist?(cache_dir)
-        
+
         # Thread-safe directory creation
         FileUtils.mkdir_p(cache_dir)
       rescue SystemCallError
@@ -151,7 +151,7 @@ module Sxn
         @write_mutex.synchronize do
           # Ensure cache directory exists before any file operations
           ensure_cache_directory
-          
+
           # Use a more unique temp file name to avoid collisions
           temp_file = "#{cache_file_path}.#{Process.pid}.#{Thread.current.object_id}.tmp"
 
@@ -168,37 +168,36 @@ module Sxn
               return false
             end
           end
-          
+
           # Retry logic for rename operation in case of race conditions
           retries = 0
           begin
             # Ensure the cache directory still exists before rename
             ensure_cache_directory
-            
+
             # Use atomic rename with proper error handling
             File.rename(temp_file, cache_file_path)
-          rescue Errno::ENOENT => e
+          rescue Errno::ENOENT
             retries += 1
-            if retries <= 3
-              # Directory or temp file might have issues, recreate and retry
-              ensure_cache_directory
-              
-              # If temp file is missing, recreate it
-              unless File.exist?(temp_file)
-                begin
-                  File.write(temp_file, JSON.pretty_generate(cache_data))
-                rescue SystemCallError
-                  # Can't recreate, give up
-                  return false
-                end
+            return false unless retries <= 3
+
+            # Directory or temp file might have issues, recreate and retry
+            ensure_cache_directory
+
+            # If temp file is missing, recreate it
+            unless File.exist?(temp_file)
+              begin
+                File.write(temp_file, JSON.pretty_generate(cache_data))
+              rescue SystemCallError
+                # Can't recreate, give up
+                return false
               end
-              
-              retry
-            else
-              # Give up after 3 retries, but don't crash - caching is optional
-              # Don't warn here as it's expected in concurrent scenarios
-              return false
             end
+
+            retry
+
+          # Give up after 3 retries, but don't crash - caching is optional
+          # Don't warn here as it's expected in concurrent scenarios
           rescue SystemCallError
             # Handle other system errors gracefully - don't warn as it's expected
             return false
@@ -206,7 +205,7 @@ module Sxn
             # Clean up temp file if it exists
             FileUtils.rm_f(temp_file) if temp_file && File.exist?(temp_file)
           end
-          
+
           true
         end
       end
@@ -254,7 +253,7 @@ module Sxn
           # Check if mtime or size changed
           return true if metadata["mtime"] != cached_metadata["mtime"]
           return true if metadata["size"] != cached_metadata["size"]
-          
+
           # Always check checksum for content changes (most reliable method)
           return true if metadata["checksum"] != cached_metadata["checksum"]
         end

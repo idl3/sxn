@@ -35,12 +35,12 @@ module Sxn
       # Validate arguments, filtering out nil values for optional arguments
       args_for_validation = [folder].compact
       expected_arg_count = folder.nil? ? 0 : 1
-      
+
       RuntimeValidations.validate_thor_arguments("init", args_for_validation, options, {
-        args: { count: [expected_arg_count], types: [String] },
-        options: { force: :boolean, auto_detect: :boolean, quiet: :boolean }
-      })
-      
+                                                   args: { count: [expected_arg_count], types: [String] },
+                                                   options: { force: :boolean, auto_detect: :boolean, quiet: :boolean }
+                                                 })
+
       Commands::Init.new.init(folder)
     rescue Sxn::Error => e
       handle_error(e)
@@ -201,14 +201,17 @@ module Sxn
       # steep:ignore:start - Safe integer to string coercion for UI display
       # These integer values are safely converted to strings for display purposes.
       # Runtime validation ensures proper type handling.
-      @ui.key_value("Total Sessions", RuntimeValidations.validate_and_coerce_type(sessions.size, String, "session count display"))
-      @ui.key_value("Total Projects", RuntimeValidations.validate_and_coerce_type(projects.size, String, "project count display"))
+      @ui.key_value("Total Sessions",
+                    RuntimeValidations.validate_and_coerce_type(sessions.size, String, "session count display"))
+      @ui.key_value("Total Projects",
+                    RuntimeValidations.validate_and_coerce_type(projects.size, String, "project count display"))
 
       # Active worktrees
       if current_session
         worktree_manager = Sxn::Core::WorktreeManager.new(config_manager, session_manager)
         worktrees = worktree_manager.list_worktrees(session_name: current_session)
-        @ui.key_value("Active Worktrees", RuntimeValidations.validate_and_coerce_type(worktrees.size, String, "worktree count display"))
+        @ui.key_value("Active Worktrees",
+                      RuntimeValidations.validate_and_coerce_type(worktrees.size, String, "worktree count display"))
       end
 
       @ui.newline
@@ -254,9 +257,7 @@ module Sxn
             issues << "Sessions folder does not exist: #{config_manager.sessions_folder_path}"
           end
 
-          unless File.readable?(config_manager.config_path)
-            issues << "Configuration file is not readable: #{config_manager.config_path}"
-          end
+          issues << "Configuration file is not readable: #{config_manager.config_path}" unless File.readable?(config_manager.config_path)
 
           if issues.empty?
             @ui.success("Configuration is valid")

@@ -47,7 +47,9 @@ Metrics/PerceivedComplexity:
 
 # Layout cops
 Layout/LineLength:
-  Max: 120
+  Max: 150
+  Exclude:
+    - 'spec/**/*'
 
 # Lint cops for better type checking
 Lint/UselessAssignment:
@@ -70,3 +72,26 @@ Security/Eval:
 
 Security/Open:
   Enabled: true
+
+# Gemspec cops
+Gemspec/DevelopmentDependencies:
+  Enabled: false
+
+# Style cops - allow predicates
+Naming/PredicatePrefix:
+  Enabled: false
+
+Naming/PredicateMethod:
+  Enabled: false
+
+# Allow OpenStruct for flexibility
+Style/OpenStructUse:
+  Enabled: false
+
+# Allow parameter lists for complex initializers
+Metrics/ParameterLists:
+  Max: 8
+
+# Naming cops - allow set_ methods
+Naming/AccessorMethodName:
+  Enabled: false

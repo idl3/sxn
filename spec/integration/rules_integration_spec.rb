@@ -365,7 +365,7 @@ RSpec.describe "Rules System Integration" do
         allow(Sxn::Security::SecureCommandExecutor).to receive(:new).and_return(mock_executor)
         allow(mock_executor).to receive(:command_allowed?).and_return(true)
 
-        allow(mock_executor).to receive(:execute) do |command, description:, **|
+        allow(mock_executor).to receive(:execute) do |command, _description:, **|
           mock_result = instance_double("Sxn::Security::SecureCommandExecutor::CommandResult")
 
           # Make bundle install fail, others succeed

@@ -134,10 +134,8 @@ module Sxn
       #
       # @param project_path [String] Absolute path to the project directory
       def initialize(project_path)
-        if project_path.nil? || project_path.empty?
-          raise ArgumentError, "Project path cannot be nil or empty"
-        end
-        
+        raise ArgumentError, "Project path cannot be nil or empty" if project_path.nil? || project_path.empty?
+
         @project_path = File.realpath(project_path)
         validate_project_path!
       rescue Errno::ENOENT
@@ -226,11 +224,17 @@ module Sxn
 
         # Add setup commands rules based on package manager
         setup_commands = suggest_setup_commands_rules(project_info)
-        rules["setup_commands"] = setup_commands unless setup_commands["config"]["commands"] && setup_commands["config"]["commands"].empty?
+        unless setup_commands["config"]["commands"] && setup_commands["config"]["commands"].empty?
+          rules["setup_commands"] =
+            setup_commands
+        end
 
         # Add template rules for common project documentation
         template_rules = suggest_template_rules(project_info)
-        rules["templates"] = template_rules unless template_rules["config"]["templates"] && template_rules["config"]["templates"].empty?
+        unless template_rules["config"]["templates"] && template_rules["config"]["templates"].empty?
+          rules["templates"] =
+            template_rules
+        end
 
         rules
       end
@@ -308,17 +312,13 @@ module Sxn
 
         # Special logic for Node.js vs JavaScript distinction
         # Only apply when using actual PROJECT_TYPES criteria for nodejs
-        if type == :nodejs && file_exists_in_project?("package.json") && 
-           criteria == PROJECT_TYPES[:nodejs]
-          # Don't boost Node.js confidence if this looks like a TypeScript project
-          unless file_exists_in_project?("tsconfig.json") && file_exists_in_project?("*.ts")
-            # Only boost Node.js if it has typical Node.js characteristics
-            # Otherwise treat it as plain JavaScript
-            if has_nodejs_characteristics?
-              confidence += 50
-            else
-              # No bonus for basic package.json - let JavaScript win
-            end
+        # Don't boost Node.js confidence if this looks like a TypeScript project
+        if type == :nodejs && file_exists_in_project?("package.json") &&
+           criteria == PROJECT_TYPES[:nodejs] && !(file_exists_in_project?("tsconfig.json") && file_exists_in_project?("*.ts"))
+          # Only boost Node.js if it has typical Node.js characteristics
+          # Otherwise treat it as plain JavaScript
+          if has_nodejs_characteristics?
+            confidence += 50
           end
         end
 
@@ -339,13 +339,14 @@ module Sxn
       def calculate_confidence_score(type)
         criteria = PROJECT_TYPES[type]
         return 0 unless criteria
+
         calculate_type_confidence(type, criteria)
       end
 
       # Check if a file exists in the project (supports glob patterns)
       def file_exists_in_project?(file_pattern)
         return false unless @project_path && File.directory?(@project_path)
-        
+
         if file_pattern.include?("*")
           !Dir.glob(File.join(@project_path, file_pattern)).empty?
         else
@@ -359,7 +360,7 @@ module Sxn
       # Detect primary programming language
       def detect_primary_language
         return :unknown unless @project_path && File.directory?(@project_path)
-        
+
         language_files = {
           ruby: %w[*.rb Gemfile Rakefile],
           javascript: %w[*.js *.jsx package.json],
@@ -377,15 +378,13 @@ module Sxn
 
         language_files.each do |language, patterns|
           score = patterns.sum do |pattern|
-            begin
-              if pattern.include?("*")
-                Dir.glob(File.join(@project_path, "**", pattern)).length
-              else
-                file_exists_in_project?(pattern) ? 10 : 0
-              end
-            rescue Errno::EACCES, Errno::EIO, StandardError
-              0
+            if pattern.include?("*")
+              Dir.glob(File.join(@project_path, "**", pattern)).length
+            else
+              file_exists_in_project?(pattern) ? 10 : 0
             end
+          rescue Errno::EACCES, Errno::EIO, StandardError
+            0
           end
           language_scores[language] = score
         end
@@ -398,7 +397,7 @@ module Sxn
       # Detect all languages present in the project
       def detect_all_languages
         return [] unless @project_path && File.directory?(@project_path)
-        
+
         language_files = {
           ruby: %w[*.rb Gemfile Rakefile],
           javascript: %w[*.js *.jsx package.json],
@@ -411,23 +410,21 @@ module Sxn
           csharp: %w[*.cs *.csproj],
           cpp: %w[*.cpp *.hpp *.cmake CMakeLists.txt]
         }
-        
+
         detected_languages = []
         language_files.each do |language, patterns|
           score = patterns.sum do |pattern|
-            begin
-              if pattern.include?("*")
-                Dir.glob(File.join(@project_path, "**", pattern)).length
-              else
-                file_exists_in_project?(pattern) ? 1 : 0
-              end
-            rescue Errno::EACCES, Errno::EIO, StandardError
-              0
+            if pattern.include?("*")
+              Dir.glob(File.join(@project_path, "**", pattern)).length
+            else
+              file_exists_in_project?(pattern) ? 1 : 0
             end
+          rescue Errno::EACCES, Errno::EIO, StandardError
+            0
           end
-          detected_languages << language if score > 0
+          detected_languages << language if score.positive?
         end
-        
+
         detected_languages
       rescue StandardError
         []
@@ -479,8 +476,13 @@ module Sxn
         databases = []
 
         # Check configuration files and environment files
-        databases << :postgresql if file_contains?("config/database.yml", "postgresql") || env_contains?("DATABASE_URL", "postgres") || file_contains?(".env", "postgresql://")
-        databases << :mysql if file_contains?("config/database.yml", "mysql") || env_contains?("DATABASE_URL", "mysql") || file_contains?(".env", "mysql://")
+        databases << :postgresql if file_contains?("config/database.yml",
+                                                   "postgresql") || env_contains?("DATABASE_URL",
+                                                                                  "postgres") || file_contains?(".env",
+                                                                                                                "postgresql://")
+        databases << :mysql if file_contains?("config/database.yml",
+                                              "mysql") || env_contains?("DATABASE_URL",
+                                                                        "mysql") || file_contains?(".env", "mysql://")
         databases << :sqlite if file_contains?("config/database.yml", "sqlite") || file_exists_in_project?("*.sqlite*")
         databases << :mongodb if package_json_has_dependency?("mongoose") || requirements_contains?("pymongo")
         databases << :redis if package_json_has_dependency?("redis") || requirements_contains?("redis")
@@ -497,16 +499,14 @@ module Sxn
 
         found_files = []
         sensitive_patterns.each do |pattern|
-          begin
-            if pattern.include?("*")
-              found_files.concat(Dir.glob(File.join(@project_path, "**", pattern)))
-            else
-              file_path = File.join(@project_path, pattern)
-              found_files << file_path if File.exist?(file_path)
-            end
-          rescue Errno::EACCES, Errno::EIO, StandardError
-            # Skip patterns that cause errors
+          if pattern.include?("*")
+            found_files.concat(Dir.glob(File.join(@project_path, "**", pattern)))
+          else
+            file_path = File.join(@project_path, pattern)
+            found_files << file_path if File.exist?(file_path)
           end
+        rescue Errno::EACCES, Errno::EIO, StandardError
+          # Skip patterns that cause errors
         end
 
         found_files.map { |f| Pathname.new(f).relative_path_from(Pathname.new(@project_path)).to_s }
@@ -615,7 +615,7 @@ module Sxn
       # Check if project has typical Node.js characteristics
       def has_nodejs_characteristics?
         return false unless file_exists_in_project?("package.json")
-        
+
         # Check for Node.js-specific dependencies or scripts
         nodejs_indicators = %w[
           express fastify koa hapi
@@ -626,14 +626,14 @@ module Sxn
           commander inquirer chalk
           axios request node-fetch
         ]
-        
+
         # Check for Node.js specific scripts
         nodejs_scripts = %w[start dev server build test]
-        
+
         has_nodejs_deps = nodejs_indicators.any? { |dep| package_json_has_dependency?(dep) }
         has_nodejs_scripts = nodejs_scripts.any? { |script| package_json_has_script?(script) }
         has_main_entry = package_json_has_main_entry?
-        
+
         has_nodejs_deps || has_nodejs_scripts || has_main_entry
       end
 
@@ -704,12 +704,11 @@ module Sxn
       end
 
       def env_contains?(env_var, content)
-        env_value = ENV[env_var]
+        env_value = ENV.fetch(env_var, nil)
         return false unless env_value
 
         env_value.include?(content)
       end
-
 
       # Analysis methods for detailed project inspection
       def analyze_important_files
@@ -811,7 +810,7 @@ module Sxn
       def parse_gemfile_lock
         # Simplified - would need more robust parsing for production
         return [] unless file_exists_in_project?("Gemfile.lock")
-        
+
         begin
           # Try to read and parse the file
           content = File.read(File.join(@project_path, "Gemfile.lock"))
@@ -825,16 +824,16 @@ module Sxn
       def parse_gemfile
         # Parse Gemfile for gem dependencies
         return [] unless file_exists_in_project?("Gemfile")
-        
+
         begin
           content = File.read(File.join(@project_path, "Gemfile"))
           gems = []
-          
+
           # Extract gem names using regex
           content.scan(/gem\s+['"]([^'"]+)['"]/) do |match|
             gems << match[0]
           end
-          
+
           gems
         rescue StandardError
           []
@@ -843,16 +842,16 @@ module Sxn
 
       def parse_package_json
         return [] unless file_exists_in_project?("package.json")
-        
+
         begin
           content = File.read(File.join(@project_path, "package.json"))
           data = JSON.parse(content)
-          
+
           dependencies = []
           dependencies.concat(data["dependencies"]&.keys || [])
           dependencies.concat(data["devDependencies"]&.keys || [])
           dependencies.concat(data["peerDependencies"]&.keys || [])
-          
+
           dependencies.uniq
         rescue JSON::ParserError, StandardError
           []

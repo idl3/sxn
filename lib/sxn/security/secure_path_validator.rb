@@ -81,9 +81,7 @@ module Sxn
         validated_destination = validate_path(destination, allow_creation: allow_creation)
 
         # Additional checks for file operations
-        if File.exist?(validated_source) && File.directory?(validated_source)
-          raise PathValidationError, "Source cannot be a directory: #{source}"
-        end
+        raise PathValidationError, "Source cannot be a directory: #{source}" if File.exist?(validated_source) && File.directory?(validated_source)
 
         [validated_source, validated_destination]
       end
@@ -117,9 +115,10 @@ module Sxn
           # Also check if it contains directory traversal
           if path.include?("../") || path.include?("..\\") || path.include?("..")
             raise PathValidationError, "Path contains directory traversal sequences: #{path}"
-          else
-            raise PathValidationError, "Path contains null bytes: #{path}"
           end
+
+          raise PathValidationError, "Path contains null bytes: #{path}"
+
         end
 
         # Check for obvious directory traversal attempts
@@ -162,7 +161,7 @@ module Sxn
       def validate_symlink_safety!(path)
         # Convert path to Pathname for manipulation
         pathname = Pathname.new(path)
-        
+
         # For absolute paths, we need to check each component from the path itself
         # For relative paths, build from project root
         if pathname.absolute?
@@ -170,7 +169,7 @@ module Sxn
           resolved_path = File.exist?(path) ? File.realpath(path) : path
           resolved_pathname = Pathname.new(resolved_path)
           project_root_pathname = Pathname.new(@project_root)
-          
+
           # Make path relative to project root to get the components to check
           begin
             relative_path = resolved_pathname.relative_path_from(project_root_pathname)
@@ -212,18 +211,18 @@ module Sxn
       def normalize_path_manually(path)
         # Convert to Pathname for easier manipulation
         pathname = Pathname.new(path)
-        
+
         # Special check for the dangerous traversal case we need to catch:
         # Paths like "/a/../../../etc/passwd" where we have more .. than directories to back out of
-        
+
         # First, let's check the cleaned path to see if it results in something that goes outside the root
         cleaned = pathname.cleanpath
-        
+
         # For absolute paths, check for dangerous traversal patterns
         if pathname.absolute?
           # Use cleanpath first to see what the path actually resolves to
           cleaned = pathname.cleanpath
-          
+
           # If cleanpath results in going to parent of root, check if it's truly dangerous
           if cleaned.to_s == "/"
             # This is fine - just resolves to root
@@ -232,7 +231,7 @@ module Sxn
             parts = path.split(File::SEPARATOR).reject { |p| p.empty? || p == "." }
             stack = []
             exceeded_root = false
-            
+
             parts.each do |part|
               if part == ".."
                 if stack.empty?
@@ -245,14 +244,12 @@ module Sxn
                 stack << part
               end
             end
-            
+
             # Only raise error if we exceeded root AND there are still meaningful path components
-            if exceeded_root && !stack.empty?
-              raise PathValidationError, "path traversal detected: #{path}"
-            end
+            raise PathValidationError, "path traversal detected: #{path}" if exceeded_root && !stack.empty?
           end
         end
-        
+
         # For all paths, use cleanpath for the actual normalization
         cleaned.to_s
       end

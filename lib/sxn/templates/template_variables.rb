@@ -117,6 +117,7 @@ module Sxn
       # Detect Ruby version
       def detect_ruby_version
         return "Unknown Ruby version" if RUBY_VERSION.nil?
+
         RUBY_VERSION
       rescue StandardError => e
         "Unknown Ruby version: #{e.message}"
@@ -148,28 +149,26 @@ module Sxn
       # Ensures all variable categories contain expected data types
       def validate_collected_variables(variables)
         return variables unless variables.is_a?(Hash)
-        
+
         variables.each do |category, data|
           next unless data.is_a?(Hash)
-          
+
           # Validate each variable can be safely used in templates
           data.each do |key, value|
             next if value.nil?
-            
+
             # Ensure values are template-safe (can be converted to strings)
-            unless value.respond_to?(:to_s)
-              Sxn.logger&.warn("Template variable #{category}.#{key} cannot be safely stringified: #{value.class}")
-            end
-            
+            Sxn.logger&.warn("Template variable #{category}.#{key} cannot be safely stringified: #{value.class}") unless value.respond_to?(:to_s)
+
             # Check for potentially problematic objects
             if value.is_a?(Proc) || value.is_a?(Method)
               Sxn.logger&.warn("Template variable #{category}.#{key} contains executable code - security risk")
             end
           end
         end
-        
+
         variables
-      rescue => e
+      rescue StandardError => e
         Sxn.logger&.error("Template variable validation failed: #{e.message}")
         variables # Return variables anyway, but log the issue
       end
@@ -213,16 +212,16 @@ module Sxn
       def _collect_git_variables
         # Determine git directory - prefer project path, fall back to session path
         git_dir = find_git_directory
-        
+
         # Return with available: false if no git directory found
         return { available: false } unless git_dir
 
         git_vars = {}
-        
+
         git_vars[:available] = true
         # Collect git information with timeout protection
         git_vars.merge!(collect_git_branch_info(git_dir))
-        
+
         # Collect author info and structure it properly for templates
         author_info = collect_git_author_info(git_dir)
         if author_info[:author_name] || author_info[:author_email]
@@ -231,7 +230,7 @@ module Sxn
             email: author_info[:author_email]
           }
         end
-        
+
         git_vars.merge!(collect_git_commit_info(git_dir))
         git_vars.merge!(collect_git_remote_info(git_dir))
         git_vars.merge!(collect_git_status_info(git_dir))
@@ -364,15 +363,15 @@ module Sxn
         return false unless path
 
         path_str = path.to_s
-        
+
         # First check for .git directory
         return true if File.exist?(File.join(path_str, ".git"))
-        
+
         # Then check with git command - if it fails (returns nil), not a git repo
-        git_output = execute_git_command(path, "rev-parse", "--git-dir") do |output|
+        execute_git_command(path, "rev-parse", "--git-dir") do |output|
           return true if output && !output.strip.empty?
         end
-        
+
         false
       end
 
@@ -474,13 +473,13 @@ module Sxn
           status_data[:deleted_files] = lines.select { |line| line.start_with?(" D", "AD") }.length
           status_data[:untracked_files] = lines.select { |line| line.start_with?("??") }.length
           status_data[:total_changes] = lines.length
-          
+
           # Add human-readable status
-          if lines.any?
-            status_data[:status] = "Has uncommitted changes"
-          else
-            status_data[:status] = "Clean working directory"
-          end
+          status_data[:status] = if lines.any?
+                                   "Has uncommitted changes"
+                                 else
+                                   "Clean working directory"
+                                 end
         end
 
         # Return with 'status' as nested object for template compatibility
@@ -503,7 +502,7 @@ module Sxn
       end
 
       # Execute git command with timeout and error handling
-      def execute_git_command(directory, *args, &block)
+      def execute_git_command(directory, *args)
         cmd = ["git"] + args
         options = {}
         options[:chdir] = directory.to_s if directory
@@ -521,7 +520,11 @@ module Sxn
                 yield output if block_given?
               end
             else
-              Process.kill("TERM", wait_thr.pid) rescue nil
+              begin
+                Process.kill("TERM", wait_thr.pid)
+              rescue StandardError
+                nil
+              end
               return nil
             end
           end
@@ -653,11 +656,11 @@ module Sxn
       # Collect Node.js version information
       def collect_node_version
         return {} unless node_available?
-        
+
         output = `node --version 2>/dev/null`.strip
         version = output.gsub(/^v/, "")
         return {} if version.empty?
-        
+
         { version: version }
       rescue StandardError
         {}

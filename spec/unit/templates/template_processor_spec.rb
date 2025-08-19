@@ -347,7 +347,7 @@ RSpec.describe Sxn::Templates::TemplateProcessor do
           "custom_object"
         end
       end.new
-      
+
       variables = { custom: custom_object }
       template = "{{custom}}"
       result = processor.process(template, variables)
@@ -364,17 +364,17 @@ RSpec.describe Sxn::Templates::TemplateProcessor do
 
   describe "performance and debugging" do
     it "logs performance metrics in debug mode" do
-      original_env = ENV["SXN_DEBUG"]
+      original_env = ENV.fetch("SXN_DEBUG", nil)
       ENV["SXN_DEBUG"] = "true"
-      
+
       # Capture stdout to check debug output
       original_stdout = $stdout
       $stdout = StringIO.new
-      
+
       begin
         template = "Hello {{user.name}}"
         processor.process(template, simple_variables)
-        
+
         output = $stdout.string
         expect(output).to match(/Template rendered in \d+\.\d+s/)
       ensure
@@ -385,13 +385,14 @@ RSpec.describe Sxn::Templates::TemplateProcessor do
 
     it "handles timeout scenarios gracefully", :slow do
       # Mock a scenario where rendering would timeout
-      allow(processor).to receive(:render_with_timeout) do |template, context, options|
+      allow(processor).to receive(:render_with_timeout) do |_template, _context, _options|
         sleep(0.1) # Small delay to simulate processing
-        raise Sxn::Templates::Errors::TemplateTimeoutError, "Template rendering exceeded #{described_class::MAX_RENDER_TIME} seconds"
+        raise Sxn::Templates::Errors::TemplateTimeoutError,
+              "Template rendering exceeded #{described_class::MAX_RENDER_TIME} seconds"
       end
 
       template = "{{user.name}}"
-      
+
       expect do
         processor.process(template, simple_variables)
       end.to raise_error(Sxn::Templates::Errors::TemplateTimeoutError)

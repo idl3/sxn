@@ -67,7 +67,7 @@ RSpec.describe Sxn::Rules::CopyFilesRule do
       allow(mock_file_copier).to receive(:copy_file).and_return(mock_copy_result)
       allow(mock_file_copier).to receive(:create_symlink).and_return(mock_copy_result)
       allow(mock_file_copier).to receive(:sensitive_file?) do |file_path|
-        sensitive_patterns = ['master.key', '.env', 'credentials.yml.enc', 'auth_token', 'secrets.json']
+        sensitive_patterns = ["master.key", ".env", "credentials.yml.enc", "auth_token", "secrets.json"]
         sensitive_patterns.any? { |pattern| file_path.include?(pattern) }
       end
     end
@@ -580,9 +580,9 @@ RSpec.describe Sxn::Rules::CopyFilesRule do
   describe "edge cases and error handling" do
     it "handles file processing errors gracefully" do
       allow(mock_file_copier).to receive(:copy_file).and_raise(StandardError, "Copy failed")
-      
+
       rule.validate
-      
+
       expect do
         rule.apply
       end.to raise_error(Sxn::Rules::ApplicationError, /Failed to copy files/)
@@ -598,7 +598,7 @@ RSpec.describe Sxn::Rules::CopyFilesRule do
         ]
       }
       invalid_rule = described_class.new(project_path, session_path, invalid_file_config)
-      
+
       expect do
         invalid_rule.validate
       end.to raise_error(Sxn::Rules::ValidationError, /Invalid strategy/)
@@ -607,10 +607,10 @@ RSpec.describe Sxn::Rules::CopyFilesRule do
     it "handles destination path calculations correctly" do
       # Test the private method for destination path calculation
       file_config = { "source" => "config/master.key" }
-      
+
       default_dest = rule.send(:destination_path, file_config)
       expect(default_dest).to eq("../session/config/master.key")
-      
+
       custom_dest = rule.send(:destination_path, file_config.merge("destination" => "custom/path.key"))
       expect(custom_dest).to eq("../session/custom/path.key")
     end
@@ -623,18 +623,18 @@ RSpec.describe Sxn::Rules::CopyFilesRule do
         "auth_token.txt",
         "secrets.json"
       ]
-      
+
       non_sensitive_files = [
         "README.md",
         "config/application.rb",
         "public/index.html"
       ]
-      
+
       sensitive_files.each do |file|
         result = rule.send(:sensitive_file?, file)
         expect(result).to be(true), "#{file} should be detected as sensitive"
       end
-      
+
       non_sensitive_files.each do |file|
         result = rule.send(:sensitive_file?, file)
         expect(result).to be(false), "#{file} should not be detected as sensitive"
@@ -648,9 +648,9 @@ RSpec.describe Sxn::Rules::CopyFilesRule do
         "backup" => true,
         "permissions" => "600"
       }
-      
+
       options = rule.send(:copy_options, file_config)
-      
+
       expect(options[:encrypt]).to be true
       expect(options[:backup]).to be true
       expect(options[:permissions]).to eq("600")

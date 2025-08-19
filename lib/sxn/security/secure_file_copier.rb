@@ -96,7 +96,7 @@ module Sxn
         raw_source, raw_destination = @path_validator.validate_file_operation(
           source, destination, allow_creation: true
         )
-        
+
         # Normalize paths for consistent behavior in tests and cross-platform compatibility
         validated_source = normalize_path_for_result(raw_source)
         validated_destination = normalize_path_for_result(raw_destination)
@@ -125,8 +125,8 @@ module Sxn
         duration = Time.now - start_time
 
         result = CopyResult.new(
-          normalize_path_for_result(validated_source), 
-          normalize_path_for_result(validated_destination), 
+          normalize_path_for_result(validated_source),
+          normalize_path_for_result(validated_destination),
           :copy,
           encrypted: encrypted, checksum: checksum, duration: duration
         )
@@ -152,17 +152,15 @@ module Sxn
         validate_file_operation!(validated_source, validated_destination)
 
         # Remove existing symlink/file if force is true
-        if force && (File.exist?(validated_destination) || File.symlink?(validated_destination))
-          File.unlink(validated_destination)
-        end
+        File.unlink(validated_destination) if force && (File.exist?(validated_destination) || File.symlink?(validated_destination))
 
         # Create the symlink
         File.symlink(validated_source, validated_destination)
 
         duration = Time.now - start_time
         result = CopyResult.new(
-          normalize_path_for_result(validated_source), 
-          normalize_path_for_result(validated_destination), 
+          normalize_path_for_result(validated_source),
+          normalize_path_for_result(validated_destination),
           :symlink, duration: duration
         )
 
@@ -248,23 +246,21 @@ module Sxn
       # @param file_path [String] Path to check (relative to project root)
       # @return [Boolean] true if permissions are secure
       def secure_permissions?(file_path)
-        begin
-          validated_path = @path_validator.validate_path(file_path, allow_creation: true)
-          return false unless File.exist?(validated_path)
+        validated_path = @path_validator.validate_path(file_path, allow_creation: true)
+        return false unless File.exist?(validated_path)
 
-          stat = File.stat(validated_path)
-          mode = stat.mode & 0o777
+        stat = File.stat(validated_path)
+        mode = stat.mode & 0o777
 
-          if sensitive_file?(file_path)
-            # Sensitive files should not be readable by group/other
-            mode.nobits?(0o077)
-          else
-            # Non-sensitive files should not be world-writable
-            mode.nobits?(0o002)
-          end
-        rescue Sxn::PathValidationError
-          false
+        if sensitive_file?(file_path)
+          # Sensitive files should not be readable by group/other
+          mode.nobits?(0o077)
+        else
+          # Non-sensitive files should not be world-writable
+          mode.nobits?(0o002)
         end
+      rescue Sxn::PathValidationError
+        false
       end
 
       private
@@ -299,9 +295,7 @@ module Sxn
         raise SecurityError, "File too large for secure copying: #{file_size} bytes" if file_size > MAX_FILE_SIZE
 
         # Check if source has dangerous permissions
-        if File.world_readable?(source_path) && sensitive_file?(source_path)
-          Sxn.logger&.warn("Copying world-readable sensitive file: #{source_path}")
-        end
+        Sxn.logger&.warn("Copying world-readable sensitive file: #{source_path}") if File.world_readable?(source_path) && sensitive_file?(source_path)
 
         # Validate destination path doesn't overwrite critical files
         return unless File.exist?(destination_path)
@@ -334,7 +328,7 @@ module Sxn
 
         # For absolute paths under project root, convert to relative
         if directory.start_with?(@project_root)
-          relative_directory = directory.sub(@project_root + "/", "")
+          relative_directory = directory.sub("#{@project_root}/", "")
           # Only validate if it's actually relative (not just the project root itself)
           @path_validator.validate_path(relative_directory, allow_creation: true) unless relative_directory.empty?
         end
@@ -348,7 +342,7 @@ module Sxn
         # Resolve paths back to real filesystem paths for actual operations
         real_source = denormalize_path_for_operations(source_path)
         real_destination = denormalize_path_for_operations(destination_path)
-        
+
         # Use atomic copy operation
         temp_file = "#{real_destination}.tmp"
 
@@ -367,7 +361,7 @@ module Sxn
         # Resolve paths back to real filesystem paths for actual operations
         real_source = denormalize_path_for_operations(source_path)
         real_destination = denormalize_path_for_operations(destination_path)
-        
+
         @encryption_key ||= generate_encryption_key
 
         # Read and encrypt content

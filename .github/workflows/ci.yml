@@ -26,7 +26,7 @@ jobs:
       run: |
         bundle exec rspec --exclude-pattern "**/comprehensive*_spec.rb" --format documentation
 
-    - name: Run RuboCop
+    - name: Run RuboCop linting
       run: |
         bundle exec rubocop --parallel
 

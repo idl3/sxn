@@ -122,7 +122,7 @@ module Sxn
         variables = Set.new
         loop_variables = Set.new
 
-        # Extract variables from {% if/unless variable %} expressions  
+        # Extract variables from {% if/unless variable %} expressions
         template_content.scan(/\{%\s*(?:if|unless)\s+(\w+)(?:\.\w+)*.*?%\}/) do |match|
           variables.add(match[0])
         end
@@ -136,12 +136,12 @@ module Sxn
         # Extract variables from {{ variable }} expressions, excluding loop variables
         # But only from outside control blocks
         content_outside_blocks = template_content.dup
-        
+
         # Remove content inside control blocks to avoid extracting variables from inside conditionals
-        content_outside_blocks.gsub!(/\{%\s*if\s+.*?\{%\s*endif\s*%\}/m, '')
-        content_outside_blocks.gsub!(/\{%\s*unless\s+.*?\{%\s*endunless\s*%\}/m, '')
-        content_outside_blocks.gsub!(/\{%\s*for\s+.*?\{%\s*endfor\s*%\}/m, '')
-        
+        content_outside_blocks.gsub!(/\{%\s*if\s+.*?\{%\s*endif\s*%\}/m, "")
+        content_outside_blocks.gsub!(/\{%\s*unless\s+.*?\{%\s*endunless\s*%\}/m, "")
+        content_outside_blocks.gsub!(/\{%\s*for\s+.*?\{%\s*endfor\s*%\}/m, "")
+
         content_outside_blocks.scan(/\{\{\s*(\w+)(?:\.\w+)*.*?\}\}/) do |match|
           var_name = match[0]
           variables.add(var_name) unless loop_variables.include?(var_name)

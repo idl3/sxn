@@ -9,16 +9,14 @@ module Sxn
         # Validate argument count
         if validations[:args]
           count_range = validations[:args][:count]
-          if count_range && !count_range.include?(args.size)
-            raise ArgumentError, "#{command_name} expects #{count_range} arguments, got #{args.size}"
-          end
+          raise ArgumentError, "#{command_name} expects #{count_range} arguments, got #{args.size}" if count_range && !count_range.include?(args.size)
 
           # Validate argument types
           if validations[:args][:types]
             args.each_with_index do |arg, index|
               expected_types = Array(validations[:args][:types][index] || validations[:args][:types].last)
               unless expected_types.any? { |type| arg.is_a?(type) }
-                raise TypeError, "#{command_name} argument #{index + 1} must be #{expected_types.join(' or ')}"
+                raise TypeError, "#{command_name} argument #{index + 1} must be #{expected_types.join(" or ")}"
               end
             end
           end
@@ -27,9 +25,7 @@ module Sxn
         # Validate options
         if validations[:options]
           options.each do |key, value|
-            if validations[:options][key.to_sym]
-              validate_option_type(command_name, key, value, validations[:options][key.to_sym])
-            end
+            validate_option_type(command_name, key, value, validations[:options][key.to_sym]) if validations[:options][key.to_sym]
           end
         end
 
@@ -39,17 +35,17 @@ module Sxn
       # Validate and coerce types for runtime safety
       def validate_and_coerce_type(value, target_type, context = nil)
         case target_type.name
-        when 'String'
+        when "String"
           value.to_s
-        when 'Integer'
+        when "Integer"
           Integer(value)
-        when 'Float'
+        when "Float"
           Float(value)
-        when 'TrueClass', 'FalseClass', 'Boolean'
+        when "TrueClass", "FalseClass", "Boolean"
           !!value
-        when 'Array'
+        when "Array"
           Array(value)
-        when 'Hash'
+        when "Hash"
           value.is_a?(Hash) ? value : {}
         else
           value
@@ -86,21 +82,13 @@ module Sxn
       def validate_option_type(command_name, key, value, expected_type)
         case expected_type
         when :boolean
-          unless [true, false, nil].include?(value)
-            raise TypeError, "#{command_name} option --#{key} must be boolean"
-          end
+          raise TypeError, "#{command_name} option --#{key} must be boolean" unless [true, false, nil].include?(value)
         when :string
-          unless value.nil? || value.is_a?(String)
-            raise TypeError, "#{command_name} option --#{key} must be a string"
-          end
+          raise TypeError, "#{command_name} option --#{key} must be a string" unless value.nil? || value.is_a?(String)
         when :integer
-          unless value.nil? || value.is_a?(Integer)
-            raise TypeError, "#{command_name} option --#{key} must be an integer"
-          end
+          raise TypeError, "#{command_name} option --#{key} must be an integer" unless value.nil? || value.is_a?(Integer)
         when :array
-          unless value.nil? || value.is_a?(Array)
-            raise TypeError, "#{command_name} option --#{key} must be an array"
-          end
+          raise TypeError, "#{command_name} option --#{key} must be an array" unless value.nil? || value.is_a?(Array)
         end
       end
     end

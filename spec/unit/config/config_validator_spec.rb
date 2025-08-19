@@ -227,19 +227,19 @@ RSpec.describe Sxn::Config::ConfigValidator do
         expect(result["settings"]["max_sessions"]).to eq 10
         expect(result["settings"]["worktree_cleanup_days"]).to eq 30
       end
-      
+
       it "handles try/rescue for default duplication" do
         # Test the dup rescue block in apply_defaults_recursive
         schema_with_unduplicatable = {
           "test_field" => {
             type: :hash,
-            default: Object.new.freeze  # This can't be duped
+            default: Object.new.freeze # This can't be duped
           }
         }
-        
+
         config = {}
         result = validator.send(:apply_defaults_recursive, config, schema_with_unduplicatable, config)
-        
+
         expect(result["test_field"]).not_to be_nil
       end
     end
@@ -402,43 +402,43 @@ RSpec.describe Sxn::Config::ConfigValidator do
       end.to perform_under(200).ms
     end
   end
-  
+
   describe "migrate_rules_v0_to_v1" do
     it "migrates copy_files array of strings" do
       rules = { "copy_files" => ["file1.txt", "file2.txt"] }
       validator.send(:migrate_rules_v0_to_v1, rules)
-      
+
       expect(rules["copy_files"]).to eq([
-        { "source" => "file1.txt", "strategy" => "copy" },
-        { "source" => "file2.txt", "strategy" => "copy" }
-      ])
+                                          { "source" => "file1.txt", "strategy" => "copy" },
+                                          { "source" => "file2.txt", "strategy" => "copy" }
+                                        ])
     end
-    
+
     it "migrates setup_commands array of strings" do
       rules = { "setup_commands" => ["bundle install", "rails db:migrate"] }
       validator.send(:migrate_rules_v0_to_v1, rules)
-      
+
       expect(rules["setup_commands"]).to eq([
-        { "command" => ["bundle", "install"] },
-        { "command" => ["rails", "db:migrate"] }
-      ])
+                                              { "command" => %w[bundle install] },
+                                              { "command" => ["rails", "db:migrate"] }
+                                            ])
     end
-    
+
     it "does not migrate if rules is not a hash" do
       rules = "not_a_hash"
       expect { validator.send(:migrate_rules_v0_to_v1, rules) }.not_to raise_error
     end
-    
+
     it "does not migrate if copy_files is not an array" do
       rules = { "copy_files" => "not_an_array" }
       expect { validator.send(:migrate_rules_v0_to_v1, rules) }.not_to raise_error
     end
-    
+
     it "does not migrate if setup_commands is not an array" do
       rules = { "setup_commands" => "not_an_array" }
       expect { validator.send(:migrate_rules_v0_to_v1, rules) }.not_to raise_error
     end
-    
+
     it "preserves existing hash format in copy_files" do
       rules = {
         "copy_files" => [
@@ -447,27 +447,27 @@ RSpec.describe Sxn::Config::ConfigValidator do
         ]
       }
       validator.send(:migrate_rules_v0_to_v1, rules)
-      
+
       expect(rules["copy_files"]).to eq([
-        { "source" => "existing.txt", "strategy" => "symlink" },
-        { "source" => "new_file.txt", "strategy" => "copy" }
-      ])
+                                          { "source" => "existing.txt", "strategy" => "symlink" },
+                                          { "source" => "new_file.txt", "strategy" => "copy" }
+                                        ])
     end
   end
-  
+
   describe "private methods" do
     describe "#needs_v0_to_v1_migration?" do
       it "returns false for non-hash config" do
         result = validator.send(:needs_v0_to_v1_migration?, "not_a_hash")
         expect(result).to be false
       end
-      
+
       it "returns false when projects is not a hash" do
         config = { "projects" => "not_a_hash" }
         result = validator.send(:needs_v0_to_v1_migration?, config)
         expect(result).to be false
       end
-      
+
       it "returns true when project has missing path" do
         config = {
           "projects" => {
@@ -480,7 +480,7 @@ RSpec.describe Sxn::Config::ConfigValidator do
         result = validator.send(:needs_v0_to_v1_migration?, config)
         expect(result).to be true
       end
-      
+
       it "returns true when project has empty path" do
         config = {
           "projects" => {
@@ -493,7 +493,7 @@ RSpec.describe Sxn::Config::ConfigValidator do
         result = validator.send(:needs_v0_to_v1_migration?, config)
         expect(result).to be true
       end
-      
+
       it "returns false when all projects have paths" do
         config = {
           "projects" => {
@@ -507,43 +507,43 @@ RSpec.describe Sxn::Config::ConfigValidator do
         expect(result).to be false
       end
     end
-    
+
     describe "#value_has_correct_type?" do
       it "validates string type" do
         expect(validator.send(:value_has_correct_type?, "test", { type: :string })).to be true
         expect(validator.send(:value_has_correct_type?, 123, { type: :string })).to be false
       end
-      
+
       it "validates integer type" do
         expect(validator.send(:value_has_correct_type?, 123, { type: :integer })).to be true
         expect(validator.send(:value_has_correct_type?, "123", { type: :integer })).to be false
       end
-      
+
       it "validates boolean type" do
         expect(validator.send(:value_has_correct_type?, true, { type: :boolean })).to be true
         expect(validator.send(:value_has_correct_type?, false, { type: :boolean })).to be true
         expect(validator.send(:value_has_correct_type?, "true", { type: :boolean })).to be false
       end
-      
+
       it "validates array type" do
         expect(validator.send(:value_has_correct_type?, [], { type: :array })).to be true
         expect(validator.send(:value_has_correct_type?, {}, { type: :array })).to be false
       end
-      
+
       it "validates hash type" do
         expect(validator.send(:value_has_correct_type?, {}, { type: :hash })).to be true
         expect(validator.send(:value_has_correct_type?, [], { type: :hash })).to be false
       end
-      
+
       it "returns false for unknown types" do
         expect(validator.send(:value_has_correct_type?, "test", { type: :unknown })).to be false
       end
-      
+
       it "returns true when no type specified" do
         expect(validator.send(:value_has_correct_type?, "test", {})).to be true
       end
     end
-    
+
     describe "edge cases in validation" do
       it "handles array constraint validation" do
         config = {
@@ -558,10 +558,10 @@ RSpec.describe Sxn::Config::ConfigValidator do
             }
           }
         }
-        
+
         expect(validator.valid?(config)).to be true
       end
-      
+
       it "validates max_length constraint for strings" do
         # This would need to be added to schema to test properly
         # Testing the method directly
@@ -569,7 +569,7 @@ RSpec.describe Sxn::Config::ConfigValidator do
         validator.send(:validate_field_constraints, "x" * 1000, { max_length: 10 }, "test_field")
         expect(validator.errors).to include("Field 'test_field' must be at most 10 characters long")
       end
-      
+
       it "validates max_length constraint for arrays" do
         validator.instance_variable_set(:@errors, [])
         validator.send(:validate_field_constraints, [1, 2, 3, 4, 5], { max_length: 3 }, "test_array")

@@ -22,9 +22,7 @@ module Sxn
       end
 
       def initialize_project(sessions_folder, force: false)
-        if initialized? && !force
-          raise Sxn::ConfigurationError, "Project already initialized. Use --force to reinitialize."
-        end
+        raise Sxn::ConfigurationError, "Project already initialized. Use --force to reinitialize." if initialized? && !force
 
         @sessions_folder = File.expand_path(sessions_folder, @base_path)
 
@@ -154,41 +152,35 @@ module Sxn
           # Read existing content
           existing_content = File.read(gitignore_path).strip
           existing_lines = existing_content.split("\n")
-          
+
           # Determine entries to add
           entries_to_add = []
           sxn_entry = ".sxn/"
-          
+
           # Get the relative path for sessions folder
           relative_sessions = sessions_folder_relative_path
           sessions_entry = relative_sessions.end_with?("/") ? relative_sessions : "#{relative_sessions}/"
-          
+
           # Check if entries already exist (case-insensitive and flexible matching)
-          unless has_gitignore_entry?(existing_lines, sxn_entry)
-            entries_to_add << sxn_entry
-          end
-          
+          entries_to_add << sxn_entry unless has_gitignore_entry?(existing_lines, sxn_entry)
+
           # Only add sessions entry if it's different from .sxn/
-          unless sessions_entry == ".sxn/" || has_gitignore_entry?(existing_lines, sessions_entry)
-            entries_to_add << sessions_entry
-          end
-          
+          entries_to_add << sessions_entry unless sessions_entry == ".sxn/" || has_gitignore_entry?(existing_lines, sessions_entry)
+
           # Add entries if needed
           if entries_to_add.any?
             # Prepare content to append
-            content_to_append = "\n# SXN session management\n" + entries_to_add.join("\n")
-            
+            content_to_append = "\n# SXN session management\n#{entries_to_add.join("\n")}"
+
             # Append to file
-            File.write(gitignore_path, existing_content + content_to_append + "\n")
+            File.write(gitignore_path, "#{existing_content}#{content_to_append}\n")
             return true
           end
-          
+
           false
         rescue StandardError => e
           # Log error but don't fail initialization
-          if ENV["SXN_DEBUG"]
-            warn "Failed to update .gitignore: #{e.message}"
-          end
+          warn "Failed to update .gitignore: #{e.message}" if ENV["SXN_DEBUG"]
           false
         end
       end
@@ -204,10 +196,10 @@ module Sxn
 
       def sessions_folder_relative_path
         return ".sxn" unless @sessions_folder
-        
+
         sessions_path = Pathname.new(@sessions_folder)
         base_path = Pathname.new(@base_path)
-        
+
         begin
           relative_path = sessions_path.relative_path_from(base_path).to_s
           # If it's the current directory or .sxn itself, return .sxn
@@ -228,16 +220,16 @@ module Sxn
       def has_gitignore_entry?(lines, entry)
         # Normalize the entry for comparison (remove trailing slash if present)
         normalized_entry = entry.chomp("/")
-        
+
         lines.any? do |line|
           # Skip comments and empty lines
           next false if line.strip.empty? || line.strip.start_with?("#")
-          
+
           # Normalize the line for comparison
           normalized_line = line.strip.chomp("/")
-          
+
           # Check for exact match or with trailing slash
-          normalized_line == normalized_entry || 
+          normalized_line == normalized_entry ||
             normalized_line == "#{normalized_entry}/" ||
             (normalized_entry.include?("/") && normalized_line == normalized_entry.split("/").last)
         end

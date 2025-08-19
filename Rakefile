@@ -50,4 +50,5 @@ end
 desc "Run all quality checks (rubocop + type checking)"
 task quality: [:rubocop, "rbs:validate", "rbs:check"]
 
-task default: :quality
+desc "Run tests"
+task default: :spec

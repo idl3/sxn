@@ -301,7 +301,7 @@ RSpec.describe Sxn::Config::ConfigCache do
 
       it "returns false and warns about write error" do
         expect { cache.set(sample_config, config_files) }.to output(/Warning: Failed to write cache/).to_stderr
-        # Note: The current implementation may return true even with write errors
+        # NOTE: The current implementation may return true even with write errors
         # since save_cache handles errors internally and doesn't propagate them properly
         cache.set(sample_config, config_files) # Just ensure it doesn't raise
       end

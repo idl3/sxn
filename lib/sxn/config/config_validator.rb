@@ -383,13 +383,9 @@ module Sxn
 
         # Array constraints
         if value.is_a?(Array)
-          if schema[:min_length] && value.length < schema[:min_length]
-            @errors << "Field '#{path}' must have at least #{schema[:min_length]} items"
-          end
+          @errors << "Field '#{path}' must have at least #{schema[:min_length]} items" if schema[:min_length] && value.length < schema[:min_length]
 
-          if schema[:max_length] && value.length > schema[:max_length]
-            @errors << "Field '#{path}' must have at most #{schema[:max_length]} items"
-          end
+          @errors << "Field '#{path}' must have at most #{schema[:max_length]} items" if schema[:max_length] && value.length > schema[:max_length]
         end
 
         # Allowed values constraint
@@ -481,9 +477,7 @@ module Sxn
             else
               # For hash with dynamic keys (like projects)
               config[key].each_value do |nested_value|
-                if nested_value.is_a?(Hash)
-                  apply_defaults_recursive(nested_value, field_schema[:value_schema], root_config)
-                end
+                apply_defaults_recursive(nested_value, field_schema[:value_schema], root_config) if nested_value.is_a?(Hash)
               end
             end
           end
@@ -518,9 +512,7 @@ module Sxn
 
         migrated["settings"]["max_sessions"] = migrated.delete("max_sessions") if migrated.key?("max_sessions")
 
-        if migrated.key?("worktree_cleanup_days")
-          migrated["settings"]["worktree_cleanup_days"] = migrated.delete("worktree_cleanup_days")
-        end
+        migrated["settings"]["worktree_cleanup_days"] = migrated.delete("worktree_cleanup_days") if migrated.key?("worktree_cleanup_days")
 
         # Ensure projects have required fields
         if migrated["projects"].is_a?(Hash)
@@ -528,9 +520,7 @@ module Sxn
             next unless project_config.is_a?(Hash)
 
             # Ensure path is present
-            if project_config["path"].nil? || project_config["path"].empty?
-              migrated["projects"][project_name]["path"] = "./#{project_name}"
-            end
+            migrated["projects"][project_name]["path"] = "./#{project_name}" if project_config["path"].nil? || project_config["path"].empty?
 
             # Convert old rule formats if needed
             migrate_rules_v0_to_v1(project_config["rules"]) if project_config["rules"]

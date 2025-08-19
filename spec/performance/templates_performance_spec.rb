@@ -465,12 +465,7 @@ RSpec.describe "Templates Performance", :performance do
   end
 
   def memory_usage_mb
-    # Get memory usage in MB
-    if RUBY_PLATFORM.match?(/darwin/)
-      # macOS
-    else
-      # Linux
-    end
+    # Get memory usage in MB - works for both macOS and Linux
     `ps -o rss= -p #{Process.pid}`.to_i / 1024.0
   rescue StandardError
     0 # Fallback if ps command fails

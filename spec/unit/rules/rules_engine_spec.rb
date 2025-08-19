@@ -568,7 +568,7 @@ RSpec.describe Sxn::Rules::RulesEngine do
           "config" => {}
         }
       }
-      
+
       expect do
         engine.apply_rules(bad_config)
       end.to raise_error(Sxn::Rules::ValidationError, /Unknown rule type/)
@@ -576,14 +576,14 @@ RSpec.describe Sxn::Rules::RulesEngine do
 
     it "handles rule instantiation errors" do
       allow(Sxn::Rules::CopyFilesRule).to receive(:new).and_raise(ArgumentError, "Bad initialization")
-      
+
       config = {
         "rule1" => {
           "type" => "copy_files",
           "config" => { "files" => [] }
         }
       }
-      
+
       result = engine.apply_rules(config)
       expect(result.success?).to be false
       expect(result.errors).not_to be_empty
@@ -600,11 +600,11 @@ RSpec.describe Sxn::Rules::RulesEngine do
           "config" => { "files" => [] } # Invalid empty files
         }
       }
-      
+
       allow_any_instance_of(Sxn::Rules::CopyFilesRule).to receive(:validate) do |rule|
         raise Sxn::Rules::ValidationError, "Invalid config" if rule.name == "invalid_rule"
       end
-      
+
       result = engine.apply_rules(config)
       expect(result.applied_rules.map(&:name)).to include("valid_rule")
       expect(result.skipped_rules.map(&:name)).to include("invalid_rule")
@@ -623,7 +623,7 @@ RSpec.describe Sxn::Rules::RulesEngine do
           "dependencies" => ["rule1"]
         }
       }
-      
+
       expect do
         engine.apply_rules(circular_config)
       end.to raise_error(Sxn::Rules::ValidationError, /circular dependency/i)
@@ -636,9 +636,9 @@ RSpec.describe Sxn::Rules::RulesEngine do
           "config" => { "files" => [{ "source" => "config/test.key", "strategy" => "copy", "required" => false }] }
         }
       }
-      
+
       allow_any_instance_of(Sxn::Rules::CopyFilesRule).to receive(:apply).and_raise(StandardError, "Application failed")
-      
+
       result = engine.apply_rules(config)
       expect(result.success?).to be false
       expect(result.failed_rules).not_to be_empty
@@ -649,10 +649,10 @@ RSpec.describe Sxn::Rules::RulesEngine do
   describe "private methods" do
     describe "#create_rule" do
       it "creates rules with correct parameters" do
-        rule = engine.send(:create_rule, "test_rule", "copy_files", 
-                           { "files" => [{ "source" => "test", "strategy" => "copy", "required" => false }] }, 
+        rule = engine.send(:create_rule, "test_rule", "copy_files",
+                           { "files" => [{ "source" => "test", "strategy" => "copy", "required" => false }] },
                            [], session_path, project_path)
-        
+
         expect(rule).to be_a(Sxn::Rules::CopyFilesRule)
         expect(rule.name).to eq("test_rule")
       end
@@ -668,10 +668,10 @@ RSpec.describe Sxn::Rules::RulesEngine do
       it "returns correct class for valid rule types" do
         copy_class = engine.send(:get_rule_class, "copy_files")
         expect(copy_class).to eq(Sxn::Rules::CopyFilesRule)
-        
+
         setup_class = engine.send(:get_rule_class, "setup_commands")
         expect(setup_class).to eq(Sxn::Rules::SetupCommandsRule)
-        
+
         template_class = engine.send(:get_rule_class, "template")
         expect(template_class).to eq(Sxn::Rules::TemplateRule)
       end
@@ -688,7 +688,7 @@ RSpec.describe Sxn::Rules::RulesEngine do
           double("rule", name: "rule1", dependencies: ["rule2"]),
           double("rule", name: "rule2", dependencies: [])
         ]
-        
+
         expect { engine.send(:validate_dependencies, rules) }.not_to raise_error
       end
 
@@ -696,7 +696,7 @@ RSpec.describe Sxn::Rules::RulesEngine do
         rules = [
           double("rule", name: "rule1", dependencies: ["missing_rule"])
         ]
-        
+
         expect do
           engine.send(:validate_dependencies, rules)
         end.to raise_error(Sxn::Rules::ValidationError, /depends on non-existent rule 'missing_rule'/)
@@ -709,7 +709,7 @@ RSpec.describe Sxn::Rules::RulesEngine do
           double("rule", name: "rule1", dependencies: ["rule2"]),
           double("rule", name: "rule2", dependencies: ["rule1"])
         ]
-        
+
         expect do
           engine.send(:check_circular_dependencies, rules)
         end.to raise_error(Sxn::Rules::ValidationError, /circular dependency/i)
@@ -721,7 +721,7 @@ RSpec.describe Sxn::Rules::RulesEngine do
           double("rule", name: "rule2", dependencies: ["rule3"]),
           double("rule", name: "rule3", dependencies: [])
         ]
-        
+
         expect { engine.send(:check_circular_dependencies, rules) }.not_to raise_error
       end
     end

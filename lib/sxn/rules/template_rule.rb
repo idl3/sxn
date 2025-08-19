@@ -46,15 +46,12 @@ module Sxn
 
       # Initialize the template rule
       def initialize(arg1 = nil, arg2 = nil, arg3 = nil, arg4 = nil, dependencies: [])
-        super(arg1, arg2, arg3, arg4, dependencies: dependencies)
+        super
         @template_processor = Templates::TemplateProcessor.new
         @template_variables = Templates::TemplateVariables.new
       end
 
       # Validate the rule configuration
-      def validate
-        super
-      end
 
       # Apply the template processing operations
       def apply
@@ -123,9 +120,7 @@ module Sxn
         source_path = File.join(@project_path, template_config["source"])
         required = template_config.fetch("required", true)
 
-        if required && !File.exist?(source_path)
-          raise ValidationError, "Required template file does not exist: #{template_config["source"]}"
-        end
+        raise ValidationError, "Required template file does not exist: #{template_config["source"]}" if required && !File.exist?(source_path)
 
         # Validate destination path is safe
         destination = template_config["destination"]
@@ -239,11 +234,11 @@ module Sxn
         hash2.each do |key, value|
           # Check if there's an existing key with the same string representation
           existing_key = result.keys.find { |k| k.to_s == key.to_s }
-          
+
           if existing_key && result[existing_key].is_a?(Hash) && value.is_a?(Hash)
             # Merge the hashes and set the new key (preserving the incoming key type)
             merged_value = deep_merge(result[existing_key], value)
-            result.delete(existing_key) if existing_key != key  # Remove old key if different
+            result.delete(existing_key) if existing_key != key # Remove old key if different
             result[key] = merged_value
           else
             # For non-hash values or new keys, just set the value
@@ -262,7 +257,6 @@ module Sxn
         log(:warn, "Could not extract variables from template: #{e.message}")
         []
       end
-
     end
   end
 end

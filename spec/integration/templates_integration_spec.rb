@@ -57,28 +57,28 @@ RSpec.describe "Templates Integration", type: :integration do
     # Mock git commands for realistic output
     allow_any_instance_of(Sxn::Templates::TemplateVariables).to receive(:execute_git_command) do |_instance, *args, &block|
       result = case args.join(" ")
-      when /rev-parse --git-dir/
-        ".git\n"
-      when /branch --show-current/
-        "feature/ATL-1234-cart-validation\n"
-      when /status --porcelain/
-        " M app/models/cart.rb\n A spec/models/cart_spec.rb\n"
-      when /config user.name/
-        "John Doe\n"
-      when /config user.email/
-        "john.doe@example.com\n"
-      when /log -1 --format/
-        "abc123def|Add cart validation logic|John Doe|john.doe@example.com|2025-01-16 14:00:00 +0000\n"
-      when /rev-parse --short HEAD/
-        "abc123d\n"
-      when /remote$/
-        "origin\n"
-      when /remote get-url origin/
-        "git@github.com:atlas-one/atlas-core.git\n"
-      else
-        ""
-      end
-      block&.call(result) if block
+               when /rev-parse --git-dir/
+                 ".git\n"
+               when /branch --show-current/
+                 "feature/ATL-1234-cart-validation\n"
+               when /status --porcelain/
+                 " M app/models/cart.rb\n A spec/models/cart_spec.rb\n"
+               when /config user.name/
+                 "John Doe\n"
+               when /config user.email/
+                 "john.doe@example.com\n"
+               when /log -1 --format/
+                 "abc123def|Add cart validation logic|John Doe|john.doe@example.com|2025-01-16 14:00:00 +0000\n"
+               when /rev-parse --short HEAD/
+                 "abc123d\n"
+               when /remote$/
+                 "origin\n"
+               when /remote get-url origin/
+                 "git@github.com:atlas-one/atlas-core.git\n"
+               else
+                 ""
+               end
+      block&.call(result)
       result
     end
 

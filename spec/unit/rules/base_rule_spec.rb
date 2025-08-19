@@ -347,17 +347,18 @@ RSpec.describe Sxn::Rules::BaseRule do
       # Apply the rule first to have something to rollback
       rule.validate
       rule.apply
-      
+
       # Add a non-test change that will actually trigger rollback
       rule.send(:track_change, :file_created, "/tmp/test_file")
-      
+
       # Mock a rollback failure
-      allow_any_instance_of(described_class::RuleChange).to receive(:rollback).and_raise(StandardError, "Rollback failed")
-      
+      allow_any_instance_of(described_class::RuleChange).to receive(:rollback).and_raise(StandardError,
+                                                                                         "Rollback failed")
+
       expect do
         rule.rollback
       end.to raise_error(Sxn::Rules::RollbackError, /Failed to rollback rule/)
-      
+
       expect(rule.state).to eq(:failed)
       expect(rule.errors).not_to be_empty
     end
@@ -367,7 +368,7 @@ RSpec.describe Sxn::Rules::BaseRule do
       empty_rule = test_rule_class.new(project_path, session_path, {})
       nil_rule = test_rule_class.new(project_path, session_path, nil)
       invalid_rule = test_rule_class.new(project_path, session_path, "not a hash")
-      
+
       expect(valid_rule.send(:validate_config_hash)).to be true
       expect(empty_rule.send(:validate_config_hash)).to be true
       expect(nil_rule.send(:validate_config_hash)).to be true
@@ -377,11 +378,10 @@ RSpec.describe Sxn::Rules::BaseRule do
     it "enforces session path writability" do
       readonly_session_path = Dir.mktmpdir
       File.chmod(0o444, readonly_session_path) # Read-only
-      
+
       expect do
         test_rule_class.new(project_path, readonly_session_path, config)
       end.to raise_error(ArgumentError, /Session path is not writable/)
-      
     ensure
       File.chmod(0o755, readonly_session_path)
       FileUtils.rm_rf(readonly_session_path)
