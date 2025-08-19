@@ -32,8 +32,12 @@ module Sxn
       # steep:ignore:start - Thor dynamic argument validation handled at runtime
       # Thor framework uses metaprogramming for argument parsing that can't be statically typed.
       # Runtime validation ensures type safety through Thor's built-in validation.
-      RuntimeValidations.validate_thor_arguments("init", [folder], options, {
-        args: { count: [0, 1], types: [String, NilClass] },
+      # Validate arguments, filtering out nil values for optional arguments
+      args_for_validation = [folder].compact
+      expected_arg_count = folder.nil? ? 0 : 1
+      
+      RuntimeValidations.validate_thor_arguments("init", args_for_validation, options, {
+        args: { count: [expected_arg_count], types: [String] },
         options: { force: :boolean, auto_detect: :boolean, quiet: :boolean }
       })
       

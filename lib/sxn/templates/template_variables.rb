@@ -147,13 +147,17 @@ module Sxn
       # Validate collected template variables
       # Ensures all variable categories contain expected data types
       def validate_collected_variables(variables)
+        return variables unless variables.is_a?(Hash)
+        
         variables.each do |category, data|
           next unless data.is_a?(Hash)
           
           # Validate each variable can be safely used in templates
           data.each do |key, value|
+            next if value.nil?
+            
             # Ensure values are template-safe (can be converted to strings)
-            unless value.nil? || value.respond_to?(:to_s)
+            unless value.respond_to?(:to_s)
               Sxn.logger&.warn("Template variable #{category}.#{key} cannot be safely stringified: #{value.class}")
             end
             

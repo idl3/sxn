@@ -4,6 +4,7 @@ require_relative "template_processor"
 require_relative "template_variables"
 require_relative "template_security"
 require_relative "errors"
+require_relative "../runtime_validations"
 
 # Add support for hash deep merging if not available
 unless Hash.method_defined?(:deep_merge)
@@ -82,12 +83,7 @@ module Sxn
         variables = collect_variables(custom_variables)
 
         # Runtime validation of template variables
-        RuntimeValidations.validate_template_variables(
-          template_path, 
-          variables, 
-          [], # Required variables determined at runtime
-          {}  # Optional variables with defaults
-        )
+        variables = RuntimeValidations.validate_template_variables(variables)
 
         # Validate template security if requested
         if options[:validate]
