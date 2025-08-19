@@ -905,8 +905,9 @@ RSpec.describe Sxn::Commands::Rules do
         rules_command.send(:show_rules_preview, "test-project")
 
         expect(mock_ui).to have_received(:subsection).with("Rules that would be applied:")
-        expect(mock_ui).to have_received(:list_item).with("copy_files: {source: \"file.txt\"}")
-        expect(mock_ui).to have_received(:list_item).with("setup_commands: {command: [\"npm\", \"install\"]}")
+        # Use regex to match both Ruby 3.2 hashrocket (=>) and Ruby 3.3+ colon syntax
+        expect(mock_ui).to have_received(:list_item).with(/copy_files: \{.*source.*"file\.txt".*\}/)
+        expect(mock_ui).to have_received(:list_item).with(/setup_commands: \{.*command.*\["npm", "install"\].*\}/)
       end
 
       it "shows empty state when no rules exist" do
