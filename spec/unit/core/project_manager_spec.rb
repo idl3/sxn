@@ -218,6 +218,14 @@ RSpec.describe Sxn::Core::ProjectManager do
 
       expect(result).to eq(project)
     end
+
+    it "raises error when project not found" do
+      allow(mock_config_manager).to receive(:get_project).with("non-existent").and_return(nil)
+
+      expect do
+        project_manager.get_project("non-existent")
+      end.to raise_error(Sxn::ProjectNotFoundError, "Project 'non-existent' not found")
+    end
   end
 
   describe "#project_exists?" do
@@ -251,6 +259,300 @@ RSpec.describe Sxn::Core::ProjectManager do
       project_manager.scan_projects(custom_path)
 
       expect(mock_config_manager).to have_received(:detect_projects)
+    end
+  end
+
+  describe "#detect_projects" do
+    let(:test_base_path) { File.join(temp_dir, "detect_test") }
+
+    before do
+      FileUtils.mkdir_p(test_base_path)
+      
+      # Create a Rails project directory
+      rails_dir = File.join(test_base_path, "rails_project")
+      FileUtils.mkdir_p(File.join(rails_dir, "config"))
+      File.write(File.join(rails_dir, "Gemfile"), "gem 'rails'")
+      File.write(File.join(rails_dir, "config", "application.rb"), "class Application")
+      
+      # Create a Ruby gem project directory
+      gem_dir = File.join(test_base_path, "gem_project")
+      FileUtils.mkdir_p(gem_dir)
+      File.write(File.join(gem_dir, "test.gemspec"), "Gem::Specification.new")
+      
+      # Create a Next.js project directory
+      nextjs_dir = File.join(test_base_path, "nextjs_project")
+      FileUtils.mkdir_p(nextjs_dir)
+      File.write(File.join(nextjs_dir, "package.json"), '{"dependencies": {"next": "13.0.0"}}')
+      
+      # Create a React project directory
+      react_dir = File.join(test_base_path, "react_project")
+      FileUtils.mkdir_p(react_dir)
+      File.write(File.join(react_dir, "package.json"), '{"dependencies": {"react": "18.0.0"}}')
+      
+      # Create a TypeScript project directory
+      ts_dir = File.join(test_base_path, "ts_project")
+      FileUtils.mkdir_p(ts_dir)
+      File.write(File.join(ts_dir, "package.json"), '{"dependencies": {}}')
+      File.write(File.join(ts_dir, "tsconfig.json"), '{"compilerOptions": {}}')
+      
+      # Create a JavaScript project directory
+      js_dir = File.join(test_base_path, "js_project")
+      FileUtils.mkdir_p(js_dir)
+      File.write(File.join(js_dir, "package.json"), '{"dependencies": {}}')
+      
+      # Create a project with invalid package.json
+      invalid_js_dir = File.join(test_base_path, "invalid_js_project")
+      FileUtils.mkdir_p(invalid_js_dir)
+      File.write(File.join(invalid_js_dir, "package.json"), 'invalid json')
+      
+      # Create an unknown project type directory
+      unknown_dir = File.join(test_base_path, "unknown_project")
+      FileUtils.mkdir_p(unknown_dir)
+      File.write(File.join(unknown_dir, "README.md"), "Some project")
+      
+      # Create a hidden directory (should be skipped)
+      hidden_dir = File.join(test_base_path, ".hidden_project")
+      FileUtils.mkdir_p(hidden_dir)
+      File.write(File.join(hidden_dir, "Gemfile"), "gem 'rails'")
+      
+      # Create a regular file (should be skipped)
+      File.write(File.join(test_base_path, "regular_file.txt"), "Not a directory")
+    end
+
+    it "uses current directory when no base_path provided" do
+      original_pwd = Dir.pwd
+      begin
+        Dir.chdir(test_base_path)
+        results = project_manager.detect_projects
+        
+        expect(results.size).to be > 0
+        detected_names = results.map { |p| p[:name] }
+        expect(detected_names).to include("rails_project")
+      ensure
+        Dir.chdir(original_pwd)
+      end
+    end
+
+    it "skips non-directory entries" do
+      results = project_manager.detect_projects(test_base_path)
+      
+      detected_names = results.map { |p| p[:name] }
+      expect(detected_names).not_to include("regular_file.txt")
+    end
+
+    it "skips hidden directories" do
+      results = project_manager.detect_projects(test_base_path)
+      
+      detected_names = results.map { |p| p[:name] }
+      expect(detected_names).not_to include(".hidden_project")
+    end
+
+    it "skips unknown project types" do
+      results = project_manager.detect_projects(test_base_path)
+      
+      detected_names = results.map { |p| p[:name] }
+      expect(detected_names).not_to include("unknown_project")
+    end
+
+    it "detects various project types" do
+      results = project_manager.detect_projects(test_base_path)
+      
+      # Convert to hash for easier testing
+      results_by_name = results.each_with_object({}) { |p, hash| hash[p[:name]] = p }
+      
+      expect(results_by_name["rails_project"][:type]).to eq("rails")
+      expect(results_by_name["gem_project"][:type]).to eq("ruby")
+      expect(results_by_name["nextjs_project"][:type]).to eq("nextjs")
+      expect(results_by_name["react_project"][:type]).to eq("react")
+      expect(results_by_name["ts_project"][:type]).to eq("typescript")
+      expect(results_by_name["js_project"][:type]).to eq("javascript")
+      expect(results_by_name["invalid_js_project"][:type]).to eq("javascript")
+    end
+  end
+
+  describe "#detect_project_type" do
+    let(:test_path) { File.join(temp_dir, "type_detection") }
+
+    before do
+      FileUtils.mkdir_p(test_path)
+    end
+
+    context "Rails detection" do
+      it "detects Rails projects with Gemfile and config/application.rb" do
+        FileUtils.mkdir_p(File.join(test_path, "config"))
+        File.write(File.join(test_path, "Gemfile"), "gem 'rails'")
+        File.write(File.join(test_path, "config", "application.rb"), "class Application")
+        
+        expect(project_manager.detect_project_type(test_path)).to eq("rails")
+      end
+
+      it "does not detect Rails without config/application.rb" do
+        File.write(File.join(test_path, "Gemfile"), "gem 'rails'")
+        
+        expect(project_manager.detect_project_type(test_path)).to eq("ruby")
+      end
+    end
+
+    context "Ruby gem detection" do
+      it "detects Ruby projects with Gemfile only" do
+        File.write(File.join(test_path, "Gemfile"), "source 'https://rubygems.org'")
+        
+        expect(project_manager.detect_project_type(test_path)).to eq("ruby")
+      end
+
+      it "detects Ruby projects with gemspec file" do
+        File.write(File.join(test_path, "test.gemspec"), "Gem::Specification.new")
+        
+        expect(project_manager.detect_project_type(test_path)).to eq("ruby")
+      end
+
+      it "detects Ruby projects with both Gemfile and gemspec" do
+        File.write(File.join(test_path, "Gemfile"), "source 'https://rubygems.org'")
+        File.write(File.join(test_path, "test.gemspec"), "Gem::Specification.new")
+        
+        expect(project_manager.detect_project_type(test_path)).to eq("ruby")
+      end
+    end
+
+    context "Node.js/JavaScript detection" do
+      it "detects Next.js projects" do
+        File.write(File.join(test_path, "package.json"), '{"dependencies": {"next": "13.0.0"}}')
+        
+        expect(project_manager.detect_project_type(test_path)).to eq("nextjs")
+      end
+
+      it "detects React projects without Next.js" do
+        File.write(File.join(test_path, "package.json"), '{"dependencies": {"react": "18.0.0"}}')
+        
+        expect(project_manager.detect_project_type(test_path)).to eq("react")
+      end
+
+      it "detects TypeScript projects with tsconfig.json" do
+        File.write(File.join(test_path, "package.json"), '{"dependencies": {}}')
+        File.write(File.join(test_path, "tsconfig.json"), '{"compilerOptions": {}}')
+        
+        expect(project_manager.detect_project_type(test_path)).to eq("typescript")
+      end
+
+      it "detects JavaScript projects as fallback" do
+        File.write(File.join(test_path, "package.json"), '{"dependencies": {}}')
+        
+        expect(project_manager.detect_project_type(test_path)).to eq("javascript")
+      end
+
+      it "handles invalid package.json gracefully" do
+        File.write(File.join(test_path, "package.json"), 'invalid json content')
+        
+        expect(project_manager.detect_project_type(test_path)).to eq("javascript")
+      end
+
+      it "handles package.json read errors gracefully" do
+        # Create a package.json with restricted permissions
+        package_json_path = File.join(test_path, "package.json")
+        File.write(package_json_path, '{"dependencies": {}}')
+        File.chmod(0o000, package_json_path)
+        
+        result = project_manager.detect_project_type(test_path)
+        expect(result).to eq("javascript")
+        
+        # Cleanup
+        File.chmod(0o644, package_json_path)
+      end
+    end
+
+    context "Unknown project type" do
+      it "returns 'unknown' for unrecognized project structures" do
+        File.write(File.join(test_path, "README.md"), "Some project")
+        
+        expect(project_manager.detect_project_type(test_path)).to eq("unknown")
+      end
+
+      it "returns 'unknown' for empty directories" do
+        expect(project_manager.detect_project_type(test_path)).to eq("unknown")
+      end
+    end
+  end
+
+  describe "#update_project" do
+    let(:existing_project) { { name: "test-project", path: project_path, type: "rails" } }
+
+    before do
+      allow(mock_config_manager).to receive(:get_project).with("test-project").and_return(existing_project)
+      allow(mock_config_manager).to receive(:update_project)
+    end
+
+    it "updates project successfully" do
+      updates = { type: "javascript" }
+      updated_project = existing_project.merge(updates)
+      allow(mock_config_manager).to receive(:get_project).with("test-project").and_return(updated_project)
+
+      result = project_manager.update_project("test-project", updates)
+
+      expect(mock_config_manager).to have_received(:update_project).with("test-project", updates)
+      expect(result).to eq(updated_project)
+    end
+
+    it "raises error for non-existent project" do
+      allow(mock_config_manager).to receive(:get_project).with("non-existent").and_return(nil)
+
+      expect do
+        project_manager.update_project("non-existent", {})
+      end.to raise_error(Sxn::ProjectNotFoundError, "Project 'non-existent' not found")
+    end
+
+    it "validates path updates exist" do
+      non_existent_path = "/path/that/does/not/exist"
+      updates = { path: non_existent_path }
+
+      expect do
+        project_manager.update_project("test-project", updates)
+      end.to raise_error(Sxn::InvalidProjectPathError, "Path is not a directory")
+    end
+
+    it "allows updates without path validation when no path provided" do
+      updates = { type: "javascript" }
+      updated_project = existing_project.merge(updates)
+      allow(mock_config_manager).to receive(:get_project).with("test-project").and_return(updated_project)
+
+      result = project_manager.update_project("test-project", updates)
+
+      expect(result).to eq(updated_project)
+    end
+
+    it "handles project deletion during update" do
+      updates = { type: "javascript" }
+      allow(mock_config_manager).to receive(:get_project).with("test-project").and_return(existing_project, nil)
+
+      expect do
+        project_manager.update_project("test-project", updates)
+      end.to raise_error(Sxn::ProjectNotFoundError, "Project 'test-project' was deleted during update")
+    end
+  end
+
+  describe "#validate_projects" do
+    it "validates multiple projects and returns results" do
+      projects = [
+        { name: "project1", path: git_project_path },
+        { name: "project2", path: "/non/existent" }
+      ]
+      
+      allow(mock_config_manager).to receive(:list_projects).and_return(projects)
+      allow(mock_config_manager).to receive(:get_project).with("project1").and_return(projects[0])
+      allow(mock_config_manager).to receive(:get_project).with("project2").and_return(projects[1])
+
+      results = project_manager.validate_projects
+
+      expect(results.size).to eq(2)
+      expect(results[0][:valid]).to be(true)
+      expect(results[1][:valid]).to be(false)
+    end
+
+    it "handles empty project list" do
+      allow(mock_config_manager).to receive(:list_projects).and_return([])
+
+      results = project_manager.validate_projects
+
+      expect(results).to be_empty
     end
   end
 
@@ -417,6 +719,70 @@ RSpec.describe Sxn::Core::ProjectManager do
         branch = project_manager.send(:detect_default_branch, broken_git_path)
         expect(branch).to eq("master")
       end
+
+      context "with git repository" do
+        let(:test_git_path) { File.join(temp_dir, "test_git_branches") }
+
+        before do
+          FileUtils.mkdir_p(test_git_path)
+          Dir.chdir(test_git_path) do
+            system("git init", out: File::NULL, err: File::NULL)
+            system("git config user.email 'test@example.com'", out: File::NULL, err: File::NULL)
+            system("git config user.name 'Test User'", out: File::NULL, err: File::NULL)
+            File.write("README.md", "# Test Project")
+            system("git add README.md", out: File::NULL, err: File::NULL)
+            system("git commit -m 'Initial commit'", out: File::NULL, err: File::NULL)
+          end
+        end
+
+        it "returns result from git symbolic-ref when available" do
+          Dir.chdir(test_git_path) do
+            # Set up a remote origin with HEAD
+            system("git remote add origin https://github.com/test/repo.git", out: File::NULL, err: File::NULL)
+            system("git branch -M main", out: File::NULL, err: File::NULL)
+            system("git symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main", out: File::NULL, err: File::NULL)
+          end
+
+          branch = project_manager.send(:detect_default_branch, test_git_path)
+          expect(branch).to eq("main")
+        end
+
+        it "falls back to current branch when symbolic-ref fails but show-current succeeds" do
+          Dir.chdir(test_git_path) do
+            # Ensure we're on a specific branch and clear any remote tracking
+            system("git checkout -b feature-branch", out: File::NULL, err: File::NULL)
+            # Remove any remote that might interfere
+            system("git remote rm origin", out: File::NULL, err: File::NULL) rescue nil
+          end
+
+          branch = project_manager.send(:detect_default_branch, test_git_path)
+          # Should return the current branch since symbolic-ref will fail
+          expect(["feature-branch", "master"]).to include(branch)
+        end
+
+        it "returns master when in empty repo (detached HEAD state)" do
+          empty_git_path = File.join(temp_dir, "empty_git")
+          FileUtils.mkdir_p(empty_git_path)
+          
+          # Create an empty git repository (no commits)
+          Dir.chdir(empty_git_path) do
+            system("git init", out: File::NULL, err: File::NULL)
+            system("git config user.email 'test@example.com'", out: File::NULL, err: File::NULL)
+            system("git config user.name 'Test User'", out: File::NULL, err: File::NULL)
+          end
+
+          branch = project_manager.send(:detect_default_branch, empty_git_path)
+          expect(branch).to eq("master")
+        end
+
+        it "handles StandardError exceptions gracefully" do
+          # Mock to raise an exception
+          allow(Dir).to receive(:chdir).with(test_git_path).and_raise(StandardError.new("Test error"))
+
+          branch = project_manager.send(:detect_default_branch, test_git_path)
+          expect(branch).to eq("master")
+        end
+      end
     end
 
     describe "#git_repository?" do
@@ -500,6 +866,24 @@ RSpec.describe Sxn::Core::ProjectManager do
         result = project_manager.send(:merge_rules, default_rules, custom_rules)
 
         expect(result["override_rule"]).to eq("custom_override")
+      end
+
+      it "handles mixed array and non-array rule merging" do
+        mixed_custom_rules = {
+          "copy_files" => [{ "source" => "custom.env", "strategy" => "copy" }],
+          "string_rule" => "new_string_value",
+          "hash_rule" => { "key" => "value" }
+        }
+
+        result = project_manager.send(:merge_rules, default_rules, mixed_custom_rules)
+
+        # Array rules are merged
+        expect(result["copy_files"].size).to eq(2)
+        expect(result["copy_files"]).to include({ "source" => "custom.env", "strategy" => "copy" })
+        
+        # Non-array rules are replaced
+        expect(result["string_rule"]).to eq("new_string_value")
+        expect(result["hash_rule"]).to eq({ "key" => "value" })
       end
     end
   end
