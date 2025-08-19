@@ -75,3 +75,4 @@ test_*.rb
 /progress/
 /sxn-sessions/
 /coverage/
+/test_projects/
