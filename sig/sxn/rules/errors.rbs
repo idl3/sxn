@@ -1,0 +1,33 @@
+# TypeScript RBS for Sxn::Rules errors
+
+module Sxn
+  module Rules
+    # Base error class for all rule-related errors
+    class RuleError < ::Sxn::Error
+    end
+
+    # Raised when rule validation fails
+    class ValidationError < RuleError
+    end
+
+    # Raised when rule application fails
+    class ApplicationError < RuleError
+    end
+
+    # Raised when rule rollback fails
+    class RollbackError < RuleError
+    end
+
+    # Raised when dependency resolution fails
+    class DependencyError < RuleError
+    end
+
+    # Raised when command execution fails
+    class CommandExecutionError < RuleError
+    end
+
+    # Raised when path validation fails
+    class PathValidationError < RuleError
+    end
+  end
+end

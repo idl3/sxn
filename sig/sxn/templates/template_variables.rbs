@@ -1,0 +1,103 @@
+# TypeProf 0.21.3
+
+module Sxn
+  module Templates
+    class TemplateVariables
+      # Git command timeout in seconds
+      GIT_TIMEOUT: Integer
+
+      @session: untyped
+      @project: untyped
+      @config: untyped
+      @cached_variables: Hash[Symbol, untyped]
+
+      def initialize: (?untyped session, ?untyped project, ?untyped config) -> void
+
+      def collect: () -> Hash[Symbol, untyped]
+
+      alias build_variables collect
+
+      def refresh!: () -> Hash[Symbol, untyped]
+
+      def get_category: (Symbol category) -> Hash[untyped, untyped]
+
+      def add_custom_variables: (Hash[untyped, untyped] custom_vars) -> void
+
+      def collect_session_variables: () -> Hash[untyped, untyped]
+
+      def collect_project_variables: () -> Hash[untyped, untyped]
+
+      def collect_git_variables: () -> Hash[untyped, untyped]
+
+      def collect_environment_variables: () -> Hash[untyped, untyped]
+
+      def collect_user_variables: () -> Hash[untyped, untyped]
+
+      def collect_timestamp_variables: () -> Hash[untyped, untyped]
+
+      def detect_ruby_version: () -> String
+
+      def detect_rails_version: () -> String?
+
+      def detect_node_version: () -> String?
+
+      private
+
+      def validate_collected_variables: (Hash[Symbol, untyped] variables) -> Hash[Symbol, untyped]
+
+      def _collect_session_variables: () -> Hash[Symbol, untyped]
+
+      def _collect_git_variables: () -> Hash[Symbol, untyped]
+
+      def _collect_project_variables: () -> Hash[Symbol, untyped]
+
+      def _collect_environment_variables: () -> Hash[Symbol, untyped]
+
+      def _collect_user_variables: () -> Hash[Symbol, untyped]
+
+      def _collect_timestamp_variables: () -> Hash[Symbol, untyped]
+
+      def format_timestamp: (untyped timestamp) -> String?
+
+      def find_git_directory: () -> untyped
+
+      def git_repository?: (untyped path) -> bool
+
+      def collect_git_branch_info: (untyped git_dir) -> Hash[Symbol, untyped]
+
+      def collect_git_author_info: (untyped git_dir) -> Hash[Symbol, untyped]
+
+      def collect_git_commit_info: (untyped git_dir) -> Hash[Symbol, untyped]
+
+      def collect_git_remote_info: (untyped git_dir) -> Hash[Symbol, untyped]
+
+      def collect_git_status_info: (untyped git_dir) -> Hash[Symbol, untyped]
+
+      def collect_git_user_config: () -> Hash[Symbol, untyped]
+
+      def execute_git_command: (untyped directory, *String args) { (String) -> void } -> String?
+
+      def detect_project_type: (untyped project_path) -> String
+
+      def collect_rails_project_info: () -> Hash[Symbol, untyped]
+
+      def collect_js_project_info: () -> Hash[Symbol, untyped]
+
+      def collect_ruby_project_info: () -> Hash[Symbol, untyped]
+
+      def detect_package_manager: () -> String
+
+      def rails_available?: () -> bool
+
+      def collect_rails_version: () -> Hash[Symbol, untyped]
+
+      def node_available?: () -> bool
+
+      def collect_node_version: () -> Hash[Symbol, untyped]
+
+      def collect_database_info: () -> Hash[Symbol, untyped]
+
+      alias collect_all_variables collect
+    end
+  end
+end

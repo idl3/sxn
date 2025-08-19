@@ -1,6 +1,6 @@
 # Main Sxn module providing session management for multi-repository development
 module Sxn
-  VERSION: String
+  # VERSION is defined in sig/sxn/version.rbs
   
   # Type aliases for common patterns
   type config_hash = Hash[String, untyped]

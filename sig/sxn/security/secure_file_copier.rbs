@@ -1,0 +1,79 @@
+# TypeProf 0.21.3
+
+module Sxn
+  module Security
+    class SecureFileCopier
+      # File operation result
+      class CopyResult
+        attr_reader source_path: String
+        attr_reader destination_path: String
+        attr_reader operation: Symbol
+        attr_reader encrypted: bool
+        attr_reader checksum: String?
+        attr_reader duration: Float
+
+        def initialize: (String source_path, String destination_path, Symbol operation, ?encrypted: bool, ?checksum: String?, ?duration: Float) -> void
+
+        def to_h: () -> Hash[Symbol, untyped]
+      end
+
+      # Patterns that identify sensitive files requiring special handling
+      SENSITIVE_FILE_PATTERNS: Array[Regexp]
+
+      # Default secure permissions for different file types
+      DEFAULT_PERMISSIONS: Hash[Symbol, Integer]
+
+      # Maximum file size for operations (100MB)
+      MAX_FILE_SIZE: Integer
+
+      @project_root: String
+      @path_validator: SecurePathValidator
+      @logger: untyped
+      @encryption_key: String?
+
+      def initialize: (String project_root, ?logger: untyped) -> void
+
+      def copy_file: (String source, String destination, ?permissions: Integer?, ?encrypt: bool, ?preserve_permissions: bool, ?create_directories: bool) -> CopyResult
+
+      def create_symlink: (String source, String destination, ?force: bool) -> CopyResult
+
+      def encrypt_file: (String file_path, ?key: String?) -> String
+
+      def decrypt_file: (String file_path, String key) -> bool
+
+      def sensitive_file?: (String file_path) -> bool
+
+      def secure_permissions?: (String file_path) -> bool
+
+      private
+
+      def normalize_path_for_result: (String path) -> String
+
+      def denormalize_path_for_operations: (String path) -> String
+
+      def validate_file_operation!: (String source_path, String destination_path) -> void
+
+      def determine_permissions: (String source_path, Integer? explicit_permissions, bool preserve_permissions) -> Integer
+
+      def create_destination_directory: (String destination_path) -> void
+
+      def copy_without_encryption: (String source_path, String destination_path, Integer permissions) -> void
+
+      def copy_with_encryption: (String source_path, String destination_path, Integer permissions) -> void
+
+      def encrypt_content: (String content, String key) -> String
+
+      def decrypt_content: (String encrypted_content, String key) -> String
+
+      def generate_encryption_key: () -> String
+
+      def generate_checksum: (String file_path) -> String?
+
+      def validate_file_exists!: (String file_path) -> void
+
+      def validate_file_readable!: (String file_path) -> void
+
+      def audit_log: (String event, untyped details) -> void
+    end
+  end
+end

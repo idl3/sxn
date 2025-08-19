@@ -1,0 +1,44 @@
+# TypeProf 0.21.3
+
+module Sxn
+  module Templates
+    class TemplateProcessor
+      # Maximum template size in bytes to prevent memory exhaustion
+      MAX_TEMPLATE_SIZE: Integer
+
+      # Maximum rendering time in seconds to prevent infinite loops
+      MAX_RENDER_TIME: Integer
+
+      # Allowed Liquid filters for security
+      ALLOWED_FILTERS: Array[String]
+
+      def initialize: () -> void
+
+      def process: (String template_content, ?Hash[untyped, untyped] variables, ?Hash[Symbol, untyped] options) -> String
+
+      def process_file: (String | Pathname template_path, ?Hash[untyped, untyped] variables, ?Hash[Symbol, untyped] options) -> String
+
+      def validate_syntax: (String template_content) -> bool
+
+      def extract_variables: (String template_content) -> Array[String]
+
+      private
+
+      def create_secure_liquid_environment: () -> bool
+
+      def validate_template_size!: (String template_content) -> void
+
+      def parse_template: (String template_content, ?validate: bool) -> untyped
+
+      def sanitize_variables: (Hash[untyped, untyped] variables) -> Hash[String, untyped]
+
+      def sanitize_key: (untyped key) -> String
+
+      def sanitize_value: (untyped value) -> untyped
+
+      def render_with_timeout: (untyped template, Hash[String, untyped] variables, Hash[Symbol, untyped] options) -> String
+
+      alias validate_template validate_syntax
+    end
+  end
+end

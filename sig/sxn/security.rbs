@@ -1,0 +1,128 @@
+# frozen_string_literal: true
+
+module Sxn
+  module Security
+    # SecureCommandExecutor provides secure command execution with strict controls
+    class SecureCommandExecutor
+      # Command execution result
+      class CommandResult
+        attr_reader exit_status: Integer
+        attr_reader stdout: String
+        attr_reader stderr: String
+        attr_reader command: Array[String]
+        attr_reader duration: Float
+
+        def initialize: (Integer exit_status, String? stdout, String? stderr, Array[String] command, Float duration) -> void
+        def success?: () -> bool
+        def failure?: () -> bool
+        def to_h: () -> Hash[Symbol, untyped]
+      end
+
+      attr_reader project_root: String
+      attr_reader logger: Logger?
+      attr_reader command_whitelist: Hash[String, String]
+
+      def initialize: (String project_root, ?logger: Logger?) -> void
+
+      def execute: (Array[String] command, ?env: Hash[String | Symbol, String], ?timeout: Integer, ?chdir: String?) -> CommandResult
+      def command_allowed?: (Array[String] command) -> bool
+      def allowed_commands: () -> Array[String]
+
+      def validate_and_resolve_command: (Array[String] command) -> Array[String]
+      def build_command_whitelist: () -> Hash[String, String]
+      def resolve_rails_command: () -> String?
+      def resolve_project_executable: (String cmd_name) -> String?
+      def build_safe_environment: (Hash[String | Symbol, String] user_env) -> Hash[String, String]
+      def validate_work_directory: (String chdir) -> String
+      def execute_with_timeout: (Array[String] command, Hash[String, String] env, String chdir, Integer timeout) -> OpenStruct
+      def audit_log: (String event, Array[String] command, String chdir, ?Hash[Symbol, untyped] details) -> void
+    end
+
+    # SecureFileCopier provides secure file copying operations with strict security controls
+    class SecureFileCopier
+      # File operation result
+      class CopyResult
+        attr_reader source_path: String
+        attr_reader destination_path: String
+        attr_reader operation: Symbol
+        attr_reader encrypted: bool
+        attr_reader checksum: String?
+        attr_reader duration: Float
+
+        def initialize: (String source_path, String destination_path, Symbol operation, ?encrypted: bool, ?checksum: String?, ?duration: Float) -> void
+        def to_h: () -> Hash[Symbol, untyped]
+      end
+
+      attr_reader project_root: String
+      attr_reader path_validator: SecurePathValidator
+      attr_reader logger: Logger?
+      attr_reader encryption_key: String?
+
+      def initialize: (String project_root, ?logger: Logger?) -> void
+
+      def copy_file: (String source, String destination, ?permissions: Integer?, ?encrypt: bool, ?preserve_permissions: bool, ?create_directories: bool) -> CopyResult
+      def create_symlink: (String source, String destination, ?force: bool) -> CopyResult
+      def encrypt_file: (String file_path, ?key: String?) -> String
+      def decrypt_file: (String file_path, String key) -> bool
+      def sensitive_file?: (String file_path) -> bool
+      def secure_permissions?: (String file_path) -> bool
+
+      def normalize_path_for_result: (String path) -> String
+      def denormalize_path_for_operations: (String path) -> String
+      def validate_file_operation!: (String source_path, String destination_path) -> void
+      def determine_permissions: (String source_path, Integer? explicit_permissions, bool preserve_permissions) -> Integer
+      def create_destination_directory: (String destination_path) -> void
+      def copy_without_encryption: (String source_path, String destination_path, Integer permissions) -> void
+      def copy_with_encryption: (String source_path, String destination_path, Integer permissions) -> void
+      def encrypt_content: (String content, String key) -> String
+      def decrypt_content: (String encrypted_content, String key) -> String
+      def generate_encryption_key: () -> String
+      def generate_checksum: (String file_path) -> String?
+      def validate_file_exists!: (String file_path) -> void
+      def validate_file_readable!: (String file_path) -> void
+      def audit_log: (String event, CopyResult | Hash[Symbol, untyped] details) -> void
+    end
+
+    # SecurePathValidator provides security controls for file system path operations
+    class SecurePathValidator
+      attr_reader project_root: String
+      attr_reader project_root_pathname: Pathname
+
+      def initialize: (String project_root) -> void
+
+      def validate_path: (String path, ?allow_creation: bool) -> String
+      def validate_file_operation: (String source, String destination, ?allow_creation: bool) -> [String, String]
+      def within_boundaries?: (String path) -> bool
+
+      def validate_path_components!: (String path) -> void
+      def validate_within_boundaries!: (String absolute_path) -> void
+      def validate_symlink_safety!: (String path) -> void
+      def normalize_path_manually: (String path) -> String
+    end
+
+    # Security error classes
+    class Error < Sxn::Error
+    end
+
+    class PathValidationError < Error
+    end
+
+    class CommandExecutionError < Error
+    end
+
+    class SecurityError < Error
+    end
+
+    class PathTraversalError < Error
+    end
+
+    class CommandInjectionError < Error
+    end
+
+    class FileSecurityError < Error
+    end
+
+    class ValidationError < Error
+    end
+  end
+end

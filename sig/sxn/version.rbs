@@ -1,0 +1,5 @@
+# frozen_string_literal: true
+
+module Sxn
+  VERSION: String
+end

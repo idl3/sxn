@@ -1,0 +1,83 @@
+module Sxn
+  module Database
+    # High-performance SQLite-based session storage
+    class SessionDatabase
+      type config_hash = Hash[Symbol, untyped]
+      type session_data_hash = Hash[Symbol, untyped]
+      type statistics_hash = Hash[Symbol, untyped]
+      type filters_hash = Hash[Symbol, untyped]
+      type sort_hash = Hash[Symbol, untyped]
+
+      attr_reader db_path: Pathname
+      attr_reader connection: SQLite3::Database?
+      attr_reader config: config_hash
+
+      def initialize: (?String? db_path, ?config_hash config) -> void
+      def create_session: (session_data_hash session_data) -> String
+      def list_sessions: (?filters: filters_hash, ?sort: sort_hash, ?limit: Integer, ?offset: Integer) -> Array[Hash[Symbol, untyped]]
+      def update_session: (String session_id, ?session_data_hash updates, ?expected_version: String?) -> bool
+      def delete_session: (String session_id, ?cascade: bool) -> bool
+      def search_sessions: (String query, ?filters: filters_hash, ?limit: Integer) -> Array[Hash[Symbol, untyped]]
+      def get_session: (String session_id) -> Hash[Symbol, untyped]
+      def get_session_by_name: (String name) -> Hash[Symbol, untyped]?
+      def statistics: () -> statistics_hash
+      def maintenance: (?Array[Symbol] tasks) -> Hash[Symbol, String]
+      def close: () -> void
+      def create_tables: () -> void
+      def update_session_status: (String name, String status) -> bool
+      
+      def default_config: () -> config_hash
+      def resolve_db_path: (String? path) -> Pathname
+      def ensure_directory_exists: () -> void
+      def initialize_connection: () -> void
+      def configure_sqlite_pragmas: () -> void
+      def setup_database: () -> void
+      def get_schema_version: () -> Integer
+      def set_schema_version: (Integer version) -> void
+      def create_initial_schema: () -> void
+      def run_migrations: (Integer from_version) -> void
+      def generate_session_id: () -> String
+      def validate_session_data!: (session_data_hash data) -> void
+      def validate_session_updates!: (session_data_hash updates) -> void
+      def serialize_tags: (Array[String]? tags) -> String?
+      def serialize_metadata: (Hash[untyped, untyped]? metadata) -> String?
+      def deserialize_session_row: (Hash[String, untyped] row) -> Hash[Symbol, untyped]
+      def session_directory_path: (String session_name) -> String
+      def build_where_conditions: (filters_hash filters, Array[untyped] params) -> Array[String]
+      def execute_query: (String sql, ?Array[untyped] params) -> Array[Hash[String, untyped]]
+      def with_transaction: [T] () { () -> T } -> T
+      def prepare_statement: (Symbol name, String sql) -> SQLite3::Statement
+      def count_sessions: () -> Integer
+      def count_sessions_by_status: () -> Hash[String, Integer]
+      def recent_session_activity: () -> Integer
+      def database_size_mb: () -> Float
+      def delete_session_worktrees: (String session_id) -> void
+      def delete_session_files: (String session_id) -> void
+    end
+    
+    # Database errors
+    class Error < Sxn::Error
+    end
+    
+    class DuplicateSessionError < Error
+    end
+    
+    class SessionNotFoundError < Error
+    end
+    
+    class ConflictError < Error
+    end
+    
+    class MigrationError < Error
+    end
+    
+    class IntegrityError < Error
+    end
+    
+    class ConnectionError < Error
+    end
+    
+    class TransactionError < Error
+    end
+  end
+end

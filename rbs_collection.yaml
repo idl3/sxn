@@ -12,22 +12,28 @@ path: .gem_rbs_collection
 # Gem dependencies
 gems:
   - name: thor
-    ignore: false
+    ignore: true  # Has RBS but causes conflicts
   - name: tty-prompt
-    ignore: false
+    ignore: true  # No RBS available
   - name: tty-table
-    ignore: false
+    ignore: true  # No RBS available
   - name: tty-progressbar
-    ignore: false
+    ignore: true  # No RBS available
   - name: pastel
-    ignore: false
+    ignore: true  # No RBS available
   - name: liquid
-    ignore: false
+    ignore: true  # No RBS available
   - name: rspec
-    ignore: true # Only for tests
+    ignore: true  # Only for tests
   - name: faker
-    ignore: true # Only for tests
+    ignore: true  # Only for tests
   - name: climate_control
-    ignore: true # Only for tests
+    ignore: true  # Only for tests
   - name: webmock
-    ignore: true # Only for tests
+    ignore: true  # Only for tests
+  - name: steep
+    ignore: true  # Type checker itself
+  - name: rubocop
+    ignore: true  # Linter
+  - name: parser
+    ignore: true  # Causes conflicts

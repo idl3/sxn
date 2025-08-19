@@ -1,0 +1,59 @@
+# frozen_string_literal: true
+
+module Sxn
+  module Core
+    # Manages session lifecycle and operations
+    class SessionManager
+      @config_manager: ConfigManager
+      @database: Sxn::Database::SessionDatabase
+
+      def initialize: (?ConfigManager? config_manager) -> void
+
+      def create_session: (String name, ?description: String?, ?linear_task: String?) -> Hash[Symbol, untyped]
+
+      def remove_session: (String name, ?force: bool) -> bool
+
+      def list_sessions: (?status: String?, ?limit: Integer, ?filters: Hash[untyped, untyped]?, **untyped options) -> Array[Hash[Symbol, untyped]]
+
+      def get_session: (String name) -> Hash[Symbol, untyped]?
+
+      def use_session: (String name) -> Hash[Symbol, untyped]
+
+      def current_session: () -> Hash[Symbol, untyped]?
+
+      def session_exists?: (String name) -> bool
+
+      def add_worktree_to_session: (String session_name, String project_name, String worktree_path, String branch) -> void
+
+      def remove_worktree_from_session: (String session_name, String project_name) -> void
+
+      def get_session_worktrees: (String session_name) -> Hash[String, Hash[Symbol, untyped]]
+
+      def archive_session: (String name) -> bool
+
+      def activate_session: (String name) -> bool
+
+      def cleanup_old_sessions: (?Integer days_old) -> Integer
+
+      private
+
+      def initialize_database: () -> Sxn::Database::SessionDatabase
+
+      def validate_session_name!: (String name) -> void
+
+      def ensure_sessions_folder_exists!: () -> void
+
+      def format_session_data: (Hash[Symbol, untyped] db_row) -> Hash[Symbol, untyped]
+
+      def update_session_status: (String session_id, String status, **untyped additional_options) -> void
+
+      def update_session_status_by_name: (String name, String status, **untyped additional_options) -> void
+
+      def find_uncommitted_worktrees: (Hash[Symbol, untyped] session) -> Array[String]
+
+      def remove_session_worktrees: (Hash[Symbol, untyped] session) -> void
+
+      def find_parent_repository: (String worktree_path) -> String?
+    end
+  end
+end

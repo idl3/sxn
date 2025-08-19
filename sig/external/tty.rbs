@@ -1,0 +1,71 @@
+# Basic TTY gem type definitions for Sxn
+
+module TTY
+  class Prompt
+    def initialize: (?Hash[Symbol, untyped] options) -> void
+    def ask: (String question, ?Hash[Symbol, untyped] options) -> String
+    def yes?: (String question) -> bool
+    def no?: (String question) -> bool
+    def select: (String question, Array[untyped] choices, ?Hash[Symbol, untyped] options) -> untyped
+    def multi_select: (String question, Array[untyped] choices, ?Hash[Symbol, untyped] options) -> Array[untyped]
+    def mask: (String question) -> String
+    def keypress: (String message, ?Hash[Symbol, untyped] options) -> String
+    def error: (String message) -> void
+    def warn: (String message) -> void
+    def ok: (String message) -> void
+    def say: (String message) -> void
+  end
+  
+  class Table
+    def initialize: (Array[Array[untyped]] rows, ?Array[String]? header) -> void
+    def render: (?Hash[Symbol, untyped] options) -> String
+    def <<: (Array[untyped] row) -> self
+    def to_s: () -> String
+  end
+  
+  class ProgressBar
+    def initialize: (String format, ?Hash[Symbol, untyped] options) -> void
+    def advance: (?Integer step) -> void
+    def update: (Hash[Symbol, untyped] tokens) -> void
+    def finish: () -> void
+    def reset: () -> void
+    def complete?: () -> bool
+    def current: () -> Integer
+    def total: () -> Integer
+    def total=: (Integer value) -> void
+    def ratio: () -> Float
+    def percent: () -> Integer
+    def log: (String message) -> void
+    def stop: () -> void
+  end
+end
+
+# Pastel for terminal colors
+class Pastel
+  def initialize: (?Hash[Symbol, untyped] options) -> void
+  def red: (String text) -> String
+  def green: (String text) -> String
+  def yellow: (String text) -> String
+  def blue: (String text) -> String
+  def magenta: (String text) -> String
+  def cyan: (String text) -> String
+  def white: (String text) -> String
+  def black: (String text) -> String
+  def bright_red: (String text) -> String
+  def bright_green: (String text) -> String
+  def bright_yellow: (String text) -> String
+  def bright_blue: (String text) -> String
+  def bright_magenta: (String text) -> String
+  def bright_cyan: (String text) -> String
+  def bright_white: (String text) -> String
+  def bright_black: (String text) -> String
+  def bold: (String text) -> String
+  def dim: (String text) -> String
+  def italic: (String text) -> String
+  def underline: (String text) -> String
+  def inverse: (String text) -> String
+  def hide: (String text) -> String
+  def strike: (String text) -> String
+  def strip: (String text) -> String
+  def decorate: (String text, *Symbol colors) -> String
+end

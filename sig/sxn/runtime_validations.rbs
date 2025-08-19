@@ -1,0 +1,16 @@
+# frozen_string_literal: true
+
+module Sxn
+  # Runtime validation helpers for Thor commands and type safety
+  module RuntimeValidations
+    def self.validate_thor_arguments: (String command_name, Array[untyped] args, Hash[Symbol, untyped] options, Hash[Symbol, untyped] validations) -> true
+
+    def self.validate_and_coerce_type: (untyped value, Class target_type, ?String? context) -> untyped
+
+    def self.validate_template_variables: (Hash[Symbol, untyped] variables) -> Hash[Symbol, Hash[Symbol, untyped]]
+
+    private
+
+    def self.validate_option_type: (String command_name, Symbol key, untyped value, Symbol expected_type) -> void
+  end
+end

@@ -1,0 +1,39 @@
+# frozen_string_literal: true
+
+module Sxn
+  module UI
+    # Progress bars for long-running operations
+    class ProgressBar
+      @bar: untyped
+
+      def initialize: (String title, ?total: Integer, ?format: Symbol) -> void
+
+      def advance: (?Integer step) -> void
+
+      def finish: () -> void
+
+      def current: () -> Integer
+
+      def total: () -> Integer
+
+      def percent: () -> Integer
+
+      def log: (String message) -> void
+
+      def self.with_progress: [T] (String title, Array[T] items, ?format: Symbol) { (T item, ProgressBar progress) -> untyped } -> Array[untyped]
+
+      def self.for_operation: [T] (String title, ?total_steps: Integer) { (Stepper stepper) -> T } -> T
+
+      # Helper class for step-by-step operations
+      class Stepper
+        @progress: ProgressBar
+
+        def initialize: (ProgressBar progress_bar) -> void
+
+        def step: (?String? message) -> void
+
+        def log: (String message) -> void
+      end
+    end
+  end
+end

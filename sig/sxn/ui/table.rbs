@@ -1,0 +1,43 @@
+# frozen_string_literal: true
+
+module Sxn
+  module UI
+    # Table formatting for lists and data display
+    class Table
+      @pastel: untyped
+
+      def initialize: () -> void
+
+      def sessions: (Array[Hash[Symbol, untyped]] sessions) -> void
+
+      def projects: (Array[Hash[Symbol, untyped]] projects) -> void
+
+      def worktrees: (Array[Hash[Symbol, untyped]] worktrees) -> void
+
+      def rules: (Array[Hash[Symbol, untyped]] rules, ?String? project_filter) -> void
+
+      def config_summary: (Hash[Symbol, untyped] config) -> void
+
+      # Add a header to the table output
+      def header: (String title) -> void
+
+      private
+
+      def render_table: (Array[String] headers, Array[Array[String]] rows) -> void
+
+      def empty_table: (String message) -> void
+
+      def status_indicator: (String status) -> String
+
+      def worktree_status: (Hash[Symbol, untyped] worktree) -> String
+
+      def git_clean?: (String path) -> bool
+
+      def format_date: (String? date_string) -> String
+
+      def truncate_path: (String? path, ?max_length: Integer) -> String
+
+      def truncate_config: (untyped config, ?max_length: Integer) -> String
+    end
+  end
+end

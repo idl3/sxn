@@ -1,0 +1,38 @@
+# frozen_string_literal: true
+
+module Sxn
+  module UI
+    # Interactive prompts with validation
+    class Prompt
+      @prompt: untyped
+
+      def initialize: () -> void
+
+      def ask: [T] (String message, ?Hash[Symbol, untyped] options) ?{ (untyped) -> void } -> T
+
+      def ask_yes_no: (String message, ?default: bool) -> bool
+
+      def select: [T] (String message, Array[T] | Hash[String, T] choices, ?Hash[Symbol, untyped] options) -> T
+
+      def multi_select: [T] (String message, Array[T] | Hash[String, T] choices, ?Hash[Symbol, untyped] options) -> Array[T]
+
+      def folder_name: (?String message, ?default: String?) -> String
+
+      def session_name: (?String message, ?existing_sessions: Array[String]) -> String
+
+      def project_name: (?String message) -> String
+
+      def project_path: (?String message) -> String
+
+      def branch_name: (?String message, ?default: String?) -> String
+
+      def confirm_deletion: (String item_name, ?String item_type) -> bool
+
+      def rule_type: () -> String
+
+      def sessions_folder_setup: () -> String
+
+      def project_detection_confirm: (Array[Hash[Symbol, String]] detected_projects) -> bool
+    end
+  end
+end

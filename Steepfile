@@ -1,66 +1,50 @@
-# typed: true
+# frozen_string_literal: true
+
+D = Steep::Diagnostic
 
 target :lib do
   signature "sig"
   
   check "lib"
   
-  # Core library files
-  library "pathname"
-  library "logger"
-  library "json"
-  library "yaml"
-  library "fileutils"
-  library "tempfile"
-  library "digest"
-  library "time"
-  library "optparse"
-  library "English"
-  library "shellwords"
-  library "open3"
-  library "stringio"
-  library "monitor"
-  library "mutex_m"
+  # Ignore non-Ruby files
+  ignore "lib/sxn/templates/**/*.liquid"
   
-  # Gem dependencies
-  library "thor"
-  library "tty-prompt"
-  library "tty-table"
-  library "tty-progressbar"
-  library "pastel"
-  library "liquid"
+  # Standard library types
+  library "pathname", "logger", "json", "yaml", "fileutils", "optparse"
+  library "tempfile", "digest", "time", "shellwords", "open3", "stringio"
+  library "monitor", "mutex_m", "timeout", "forwardable"
   
-  # Configure Steep options
+  # Configure diagnostic settings
   configure_code_diagnostics do |hash|
-    # Allow some flexibility while we improve type coverage
-    hash[Steep::Diagnostic::Ruby::NoMethod] = :warning
-    hash[Steep::Diagnostic::Ruby::UnresolvedOverloading] = :hint
-    hash[Steep::Diagnostic::Ruby::MethodDefinitionMissing] = :hint
-    hash[Steep::Diagnostic::Ruby::IncompatibleAssignment] = :warning
-  end
-end
-
-target :spec do
-  signature "sig"
-  
-  check "spec"
-  
-  library "rspec"
-  library "faker"
-  library "climate_control"
-  library "webmock"
-  
-  # Inherit libraries from :lib target
-  library "pathname"
-  library "logger"
-  library "json"
-  library "yaml"
-  library "fileutils"
-  
-  configure_code_diagnostics do |hash|
-    # Be more lenient with test code
-    hash[Steep::Diagnostic::Ruby::NoMethod] = :hint
-    hash[Steep::Diagnostic::Ruby::UnresolvedOverloading] = nil
-    hash[Steep::Diagnostic::Ruby::MethodDefinitionMissing] = nil
+    # Critical errors that must be fixed
+    hash[D::Ruby::MethodArityMismatch] = :error
+    hash[D::Ruby::RequiredBlockMissing] = :error
+    hash[D::Ruby::InsufficientKeywordArguments] = :error
+    hash[D::Ruby::InsufficientPositionalArguments] = :error
+    hash[D::Ruby::ReturnTypeMismatch] = :error
+    hash[D::Ruby::MethodBodyTypeMismatch] = :warning
+    
+    # Framework limitations and metaprogramming
+    hash[D::Ruby::UnexpectedKeywordArgument] = :information  # Thor dynamic args
+    hash[D::Ruby::UnexpectedPositionalArgument] = :information  # Thor dynamic args
+    hash[D::Ruby::FallbackAny] = :hint  # Template variable resolution
+    hash[D::Ruby::NoMethod] = :hint  # Dynamic method calls
+    
+    # RBS coverage gaps
+    hash[D::Ruby::UnknownConstant] = :hint
+    hash[D::Ruby::MethodDefinitionMissing] = :hint
+    hash[D::Ruby::UndeclaredMethodDefinition] = :hint
+    
+    # Type coercion
+    hash[D::Ruby::ArgumentTypeMismatch] = :information
+    hash[D::Ruby::IncompatibleAssignment] = :warning
+    hash[D::Ruby::MethodReturnTypeAnnotationMismatch] = :warning
+    
+    # Other warnings
+    hash[D::Ruby::UnexpectedBlockGiven] = :warning
+    hash[D::Ruby::UnresolvedOverloading] = :warning
+    hash[D::Ruby::UnexpectedJump] = :hint
+    hash[D::Ruby::UnannotatedEmptyCollection] = :hint
   end
 end

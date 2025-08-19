@@ -1,0 +1,60 @@
+# TypeScript RBS for Sxn::Rules::SetupCommandsRule
+
+module Sxn
+  module Rules
+    class SetupCommandsRule < BaseRule
+      # Constants
+      CONDITION_TYPES: Hash[String, Symbol]
+      DEFAULT_TIMEOUT: Integer
+      MAX_TIMEOUT: Integer
+
+      # Instance variables
+      @command_executor: ::Sxn::Security::SecureCommandExecutor
+      @executed_commands: Array[Hash[Symbol, untyped]]
+
+      # Initialize the setup commands rule
+      def initialize: (untyped arg1, ?untyped arg2, ?untyped arg3, ?untyped arg4, ?dependencies: Array[String]) -> void
+
+      # Validate the rule configuration
+      def validate: () -> bool
+
+      # Apply the command execution operations
+      def apply: (?Hash[untyped, untyped] context) -> bool
+
+      # Get summary of executed commands
+      def execution_summary: () -> Array[Hash[Symbol, untyped]]
+
+      private
+
+      # Validate rule-specific configuration
+      def validate_rule_specific!: () -> void
+
+      # Validate individual command configuration
+      def validate_command_config!: (Hash[String, untyped] command_config, Integer index) -> void
+
+      # Check if condition format is valid
+      def valid_condition?: (untyped condition) -> bool
+
+      # Apply a single command operation
+      def apply_command: (Hash[String, untyped] command_config, Integer index, bool continue_on_failure) -> void
+
+      # Execute a command with the security layer
+      def execute_command_safely: (Hash[String, untyped] command_config) -> untyped
+
+      # Determine the working directory for command execution
+      def determine_working_directory: (Hash[String, untyped] command_config) -> String
+
+      # Check if command should be executed based on its condition
+      def should_execute_command?: (Hash[String, untyped] command_config) -> bool
+
+      # Condition evaluation methods
+      def file_exists?: (String path) -> bool
+      def file_missing?: (String path) -> bool
+      def directory_exists?: (String path) -> bool
+      def directory_missing?: (String path) -> bool
+      def command_available?: (String command_name) -> bool
+      def env_var_set?: (String var_name) -> bool
+      def always_true: (?untyped arg) -> bool
+    end
+  end
+end

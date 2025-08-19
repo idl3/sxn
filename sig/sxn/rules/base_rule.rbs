@@ -1,0 +1,137 @@
+# TypeScript RBS for Sxn::Rules::BaseRule
+
+module Sxn
+  module Rules
+    class BaseRule
+      # Rule execution states
+      module States
+        PENDING: Symbol
+        VALIDATING: Symbol
+        VALIDATED: Symbol
+        APPLYING: Symbol
+        APPLIED: Symbol
+        ROLLING_BACK: Symbol
+        ROLLED_BACK: Symbol
+        FAILED: Symbol
+      end
+
+      include States
+
+      # Instance variables
+      @name: String
+      @config: Hash[String, untyped]
+      @project_path: String
+      @session_path: String
+      @dependencies: Array[String]
+      @state: Symbol
+      @changes: Array[RuleChange]
+      @errors: Array[StandardError]
+      @start_time: Time?
+      @end_time: Time?
+      @logger: untyped
+
+      # Attributes
+      attr_reader name: String
+      attr_reader config: Hash[String, untyped]
+      attr_reader project_path: String
+      attr_reader session_path: String
+      attr_reader state: Symbol
+      attr_reader dependencies: Array[String]
+      attr_reader changes: Array[RuleChange]
+      attr_reader errors: Array[StandardError]
+
+      # Initialize a new rule instance
+      def initialize: (untyped arg1, ?untyped arg2, ?untyped arg3, ?untyped arg4, ?dependencies: Array[String]) -> void
+
+      # Validate the rule configuration and dependencies
+      def validate: () -> bool
+
+      # Apply the rule's action
+      def apply: (?Hash[untyped, untyped] context) -> bool
+
+      # Rollback the rule's changes
+      def rollback: () -> bool
+
+      # Check if this rule can be executed (all dependencies are satisfied)
+      def can_execute?: (Array[String] completed_rules) -> bool
+
+      # Get rule execution duration in seconds
+      def duration: () -> Float?
+
+      # Get rule type
+      def type: () -> String
+
+      # Check if rule is required
+      def required?: () -> bool
+
+      # Validate rule configuration (public method expected by tests)
+      def validate_config_hash: (?Hash[String, untyped] config) -> bool
+
+      # Get rule description
+      def description: () -> String
+
+      # Check if rule has been successfully applied
+      def applied?: () -> bool
+
+      # Check if rule has failed
+      def failed?: () -> bool
+
+      # Check if rule can be rolled back
+      def rollbackable?: () -> bool
+
+      # Get a hash representation of the rule for serialization
+      def to_h: () -> Hash[Symbol, untyped]
+
+      private
+
+      # Track a change made by this rule for rollback purposes
+      def track_change: (Symbol type, String target, ?Hash[Symbol, untyped] metadata) -> RuleChange
+
+      # Get the logger instance
+      def logger: () -> untyped
+
+      # Log a message with rule context
+      def log: (Symbol level, String message, ?Hash[Symbol, untyped] metadata) -> void
+
+      private
+
+      # Change the rule state and track timing
+      def change_state!: (Symbol new_state) -> void
+
+      # Validate that required paths exist and are accessible
+      def validate_paths!: () -> void
+
+      # Validate basic rule configuration
+      def validate_config!: () -> void
+
+      # Validate rule dependencies
+      def validate_dependencies!: () -> void
+
+      # Validate rule-specific configuration
+      def validate_rule_specific!: () -> void
+
+      # Rollback all tracked changes in reverse order
+      def rollback_changes!: () -> bool
+
+      # Represents a single change made by a rule
+      class RuleChange
+        @type: Symbol
+        @target: String
+        @metadata: Hash[Symbol, untyped]
+        @timestamp: Time
+
+        attr_reader type: Symbol
+        attr_reader target: String
+        attr_reader metadata: Hash[Symbol, untyped]
+        attr_reader timestamp: Time
+
+        def initialize: (Symbol type, String target, ?Hash[Symbol, untyped] metadata) -> void
+
+        # Rollback this specific change
+        def rollback: () -> void
+
+        def to_h: () -> Hash[Symbol, untyped]
+      end
+    end
+  end
+end

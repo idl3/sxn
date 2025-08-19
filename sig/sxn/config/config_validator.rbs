@@ -1,0 +1,64 @@
+# frozen_string_literal: true
+
+module Sxn
+  module Config
+    # Validates configuration structure and values
+    class ConfigValidator
+      # Current schema version
+      CURRENT_VERSION: Integer
+
+      # Configuration schema definition
+      SCHEMA: Hash[String, Hash[Symbol, untyped]]
+
+      @errors: Array[String]
+
+      attr_reader errors: Array[String]
+
+      def initialize: () -> void
+
+      # Validate configuration against schema
+      def valid?: (untyped config) -> bool
+
+      # Validate and migrate configuration if needed
+      def validate_and_migrate: (Hash[untyped, untyped] config) -> Hash[untyped, untyped]
+
+      # Get formatted error messages
+      def format_errors: () -> String
+
+      # Migrate configuration from older versions
+      def migrate_config: (Hash[untyped, untyped] config) -> Hash[untyped, untyped]
+
+      private
+
+      # Check if config needs v0 to v1 migration based on structure
+      def needs_v0_to_v1_migration?: (Hash[untyped, untyped] config) -> bool
+
+      # Validate configuration against schema recursively
+      def validate_against_schema: (Hash[untyped, untyped] config, Hash[String, Hash[Symbol, untyped]] schema, String path) -> void
+
+      # Check if value has the correct type according to schema
+      def value_has_correct_type?: (untyped value, Hash[Symbol, untyped] schema) -> bool
+
+      # Validate field type
+      def validate_field_type: (untyped value, Hash[Symbol, untyped] schema, String path) -> void
+
+      # Validate field constraints
+      def validate_field_constraints: (untyped value, Hash[Symbol, untyped] schema, String path) -> void
+
+      # Validate nested schemas
+      def validate_nested_schema: (untyped value, Hash[Symbol, untyped] schema, String path) -> void
+
+      # Apply default values to configuration
+      def apply_defaults: (Hash[untyped, untyped] config) -> Hash[untyped, untyped]
+
+      # Apply defaults recursively
+      def apply_defaults_recursive: (Hash[untyped, untyped] config, Hash[String, Hash[Symbol, untyped]] schema, Hash[untyped, untyped] root_config) -> Hash[untyped, untyped]
+
+      # Migrate from version 0 (unversioned) to version 1
+      def migrate_v0_to_v1: (Hash[untyped, untyped] config) -> Hash[untyped, untyped]
+
+      # Migrate rules from version 0 to version 1
+      def migrate_rules_v0_to_v1: (Hash[untyped, untyped]? rules) -> void
+    end
+  end
+end

@@ -1,0 +1,38 @@
+# frozen_string_literal: true
+
+module Sxn
+  module Commands
+    # Initialize sxn in a project folder
+    class Init < Thor
+      include Thor::Actions
+
+      @ui: Sxn::UI::Output
+      @prompt: Sxn::UI::Prompt
+      @config_manager: Sxn::Core::ConfigManager
+
+      # Initialize the command with Thor arguments
+      def initialize: (?Array[String] args, ?Hash[Symbol, untyped] local_options, ?Hash[Symbol, untyped] config) -> void
+
+      # Initialize sxn in a project folder
+      # @param folder Optional folder path for sessions
+      def init: (?String? folder) -> void
+
+      private
+
+      # Determine the sessions folder based on options and user input
+      # @param folder Optional folder path provided
+      # @return Sessions folder path
+      def determine_sessions_folder: (String? folder) -> String
+
+      # Auto-detect projects in the current directory
+      def auto_detect_projects: () -> void
+
+      # Register detected projects with the project manager
+      # @param projects Array of detected project configurations
+      def register_detected_projects: (Array[Hash[Symbol, untyped]] projects) -> void
+
+      # Display next steps after initialization
+      def display_next_steps: () -> void
+    end
+  end
+end

@@ -1,0 +1,65 @@
+# TypeScript RBS for Sxn::Rules::CopyFilesRule
+
+module Sxn
+  module Rules
+    class CopyFilesRule < BaseRule
+      # Constants
+      VALID_STRATEGIES: Array[String]
+      REQUIRE_ENCRYPTION_PATTERNS: Array[Regexp]
+
+      # Instance variables
+      @file_copier: ::Sxn::Security::SecureFileCopier
+
+      # Initialize the copy files rule
+      def initialize: (untyped arg1, ?untyped arg2, ?untyped arg3, ?untyped arg4, ?dependencies: Array[String]) -> void
+
+      # Validate the rule configuration
+      def validate: () -> bool
+
+      # Apply the file copying operations
+      def apply: () -> bool
+
+      private
+
+      # Validate rule-specific configuration
+      def validate_rule_specific!: () -> void
+
+
+      # Delegate sensitive file detection to the file copier
+      def sensitive_file?: (String file_path) -> bool
+
+      # Validate individual file configuration
+      def validate_file_config!: (Hash[String, untyped] file_config, Integer index) -> void
+
+      # Check if permissions string is valid
+      def valid_permissions?: (untyped permissions) -> bool
+
+      # Convert permissions to integer format
+      def normalize_permissions: (untyped permissions) -> Integer
+
+      # Calculate destination path based on file config (method for tests)
+      def destination_path: (Hash[String, untyped] file_config) -> String
+
+      # Apply a single file operation
+      def apply_file_operation: (Hash[String, untyped] file_config) -> void
+
+      # Apply a copy operation
+      def apply_copy_operation: (String source, String destination, String source_path, String destination_path, Hash[String, untyped] file_config) -> void
+
+      # Apply a symlink operation
+      def apply_symlink_operation: (String source, String destination, String source_path, String destination_path, Hash[String, untyped] file_config) -> void
+
+      # Build options hash for file copying
+      def build_copy_options: (Hash[String, untyped] file_config) -> Hash[Symbol, untyped]
+
+      # Get copy options from file config (alias for build_copy_options)
+      def copy_options: (Hash[String, untyped] file_config) -> Hash[Symbol, untyped]
+
+      # Check if a file should be encrypted based on patterns and configuration
+      def should_encrypt_file?: (String file_path, Hash[String, untyped] file_config) -> bool
+
+      # Convert absolute path to relative path from project root
+      def relative_path: (String absolute_path) -> String
+    end
+  end
+end

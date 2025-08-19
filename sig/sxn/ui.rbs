@@ -1,0 +1,63 @@
+module Sxn
+  module UI
+    class Output
+      @pastel: untyped  # Pastel instance
+      @quiet: bool
+      @verbose: bool
+      
+      def initialize: (?quiet: bool, ?verbose: bool) -> void
+      def say: (String message, ?color: Symbol?) -> void
+      def success: (String message) -> void
+      def error: (String message) -> void
+      def warning: (String message) -> void
+      def info: (String message) -> void
+      def debug: (String message) -> void
+      def newline: () -> void
+      def print: (String message) -> void
+      def puts: (String message) -> void
+      
+      private
+      def format_message: (String message, ?Symbol? color) -> String
+      def should_output?: (?Symbol? level) -> bool
+    end
+    
+    class Prompt
+      @prompt: untyped  # TTY::Prompt instance
+      
+      def initialize: () -> void
+      def ask: (String question, ?Hash[Symbol, untyped] options) -> String
+      def yes?: (String question) -> bool
+      def no?: (String question) -> bool
+      def select: (String question, Array[untyped] choices, ?Hash[Symbol, untyped] options) -> untyped
+      def multi_select: (String question, Array[untyped] choices, ?Hash[Symbol, untyped] options) -> Array[untyped]
+      def mask: (String question) -> String
+      def keypress: (String message, ?Hash[Symbol, untyped] options) -> String
+    end
+    
+    class Table
+      @table: untyped  # TTY::Table instance
+      
+      def initialize: (Array[Array[untyped]] data, ?Array[String]? headers) -> void
+      def render: (?Hash[Symbol, untyped] options) -> String
+      def add_row: (Array[untyped] row) -> void
+      def clear: () -> void
+      
+      private
+      def format_table: () -> untyped
+    end
+    
+    class ProgressBar
+      @bar: untyped  # TTY::ProgressBar instance
+      
+      def initialize: (String format, ?Hash[Symbol, untyped] options) -> void
+      def advance: (?Integer step) -> void
+      def update: (Hash[Symbol, untyped] tokens) -> void
+      def finish: () -> void
+      def reset: () -> void
+      def complete?: () -> bool
+      def current: () -> Integer
+      def total: () -> Integer
+      def total=: (Integer value) -> void
+    end
+  end
+end

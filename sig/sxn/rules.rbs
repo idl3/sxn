@@ -1,0 +1,287 @@
+module Sxn
+  module Rules
+    # Abstract base class for all sxn rules with state machine and validation
+    class BaseRule
+      # Rule state constants
+      CREATED: String
+      VALIDATED: String
+      APPLYING: String
+      APPLIED: String
+      FAILED: String
+      SKIPPED: String
+
+      # Valid state transitions
+      VALID_TRANSITIONS: Hash[String, Array[String]]
+
+      type rule_config = Hash[String, untyped]
+      type change_record = Hash[Symbol, untyped]
+      type error_array = Array[StandardError]
+      type dependencies_array = Array[BaseRule]
+      type metadata_hash = Hash[Symbol, untyped]
+
+      attr_reader name: String
+      attr_reader state: String
+      attr_reader errors: error_array
+      attr_reader changes: Array[change_record]
+      attr_reader dependencies: dependencies_array
+      attr_reader metadata: metadata_hash
+      attr_reader created_at: Time
+      attr_reader updated_at: Time
+      attr_reader config: rule_config
+      attr_reader session_path: String
+      attr_reader project_path: String
+
+      def initialize: (String?, ?rule_config?, String?, String?, ?dependencies: dependencies_array) -> void
+
+      # State management methods
+      def state?: (String query_state) -> bool
+      def can_transition_to?: (String new_state) -> bool
+      def created?: () -> bool
+      def validated?: () -> bool
+      def applying?: () -> bool
+      def applied?: () -> bool
+      def failed?: () -> bool
+      def skipped?: () -> bool
+
+      # Public interface methods (abstract)
+      def validate: () -> void
+      def apply: () -> bool
+      def rollback: () -> void
+      def check: () -> bool
+      def preview: () -> Hash[Symbol, untyped]
+      def enabled?: () -> bool
+      def skip_if?: () -> bool
+
+      # Utility methods
+      def reset!: () -> void
+      def skip!: (?String reason) -> void
+      def to_h: () -> Hash[Symbol, untyped]
+      def summary: () -> Hash[Symbol, untyped]
+      def has_changes?: () -> bool
+      def error_messages: () -> Array[String]
+      def execution_duration: () -> Float?
+
+      def change_state!: (String new_state) -> void
+      def track_change: (Symbol action, String target, ?change_record details) -> void
+      def log: (Symbol level, String message, ?Hash[Symbol, untyped] context) -> void
+      def validate_rule_specific!: () -> void
+      def validate_paths!: () -> void
+      def validate_required_config!: (Array[String] required_keys) -> void
+
+      def initialize_with_legacy_args: (String? arg1, rule_config? arg2, String? arg3, String? arg4, dependencies: dependencies_array) -> void
+      def safe_pathname: (String? path) -> Pathname?
+      def validate_common_requirements!: () -> void
+      def record_execution_time: () -> void
+    end
+    
+    # CopyFilesRule handles secure file copying operations
+    class CopyFilesRule < BaseRule
+      type file_config = Hash[String, untyped]
+      type permission_mode = Integer
+      type copy_operation_result = Hash[Symbol, untyped]
+
+      def initialize: (String?, ?Hash[String, untyped]?, String?, String?, ?dependencies: Array[BaseRule]) -> void
+      def validate: () -> void
+      def apply: () -> bool
+      def validate_rule_specific!: () -> void
+      def validate_file_config!: (file_config config, Integer index) -> void
+      def apply_file_operation: (file_config file_config, Integer index) -> copy_operation_result
+      def create_destination_directory: (String destination_path) -> void
+      def determine_file_permissions: (String source_path, file_config config) -> permission_mode
+      def copy_file_securely: (String source_path, String destination_path, permission_mode permissions, file_config config) -> copy_operation_result
+      def detect_sensitive_file?: (String file_path) -> bool
+      def backup_existing_file: (String file_path) -> String?
+      def validate_file_operation: (String source, String destination) -> void
+    end
+    
+    # SetupCommandsRule executes shell commands during session setup with security controls
+    class SetupCommandsRule < BaseRule
+      type command_config = Hash[String, untyped]
+      type command_result = Hash[Symbol, untyped]
+      type environment_vars = Hash[String, String]
+
+      attr_reader command_executor: Sxn::Security::SecureCommandExecutor
+
+      def initialize: (String?, ?Hash[String, untyped]?, String?, String?, ?dependencies: Array[BaseRule]) -> void
+      def validate: () -> void
+      def apply: () -> bool
+      def preview: () -> Hash[Symbol, untyped]
+      def rollback: () -> void
+      def validate_rule_specific!: () -> void
+      def validate_command_config!: (command_config config, Integer index) -> void
+      def execute_command: (command_config config, Integer index) -> command_result
+      def build_command_array: (String | Array[String] command) -> Array[String]
+      def build_environment: (environment_vars? env_config) -> environment_vars
+      def should_ignore_failure?: (command_config config, command_result result) -> bool
+      def validate_command_security: (Array[String] command) -> void
+      def extract_command_info: (command_config config) -> Hash[Symbol, untyped]
+    end
+    
+    # TemplateRule processes and applies template files using the secure template processor
+    class TemplateRule < BaseRule
+      type template_config = Hash[String, untyped]
+      type template_variables = Hash[Symbol, untyped]
+
+      attr_reader template_processor: Sxn::Templates::TemplateProcessor
+      attr_reader template_variables: Sxn::Templates::TemplateVariables
+
+      def initialize: (String?, ?Hash[String, untyped]?, String?, String?, ?dependencies: Array[BaseRule]) -> void
+      def validate: () -> void
+      def apply: () -> bool
+      def validate_rule_specific!: () -> void
+      def validate_template_config!: (template_config config, Integer index) -> void
+      def apply_template: (template_config config, Integer index) -> void
+      def build_template_variables: (template_config config) -> template_variables
+      def deep_merge: (Hash[untyped, untyped] hash1, Hash[untyped, untyped] hash2) -> Hash[untyped, untyped]
+      def extract_used_variables: (String template_content) -> Array[String]
+    end
+    
+    # RulesEngine orchestrates rule execution with dependency resolution and parallel processing
+    class RulesEngine
+      type rule_instance = BaseRule
+      type execution_result = Hash[Symbol, untyped]
+      type rule_config = Hash[String, untyped]
+      type execution_stats = Hash[Symbol, untyped]
+      type dependency_graph = Hash[rule_instance, Array[rule_instance]]
+
+      attr_reader rules: Array[rule_instance]
+      attr_reader session_path: String
+      attr_reader project_path: String
+      attr_reader config: rule_config
+      attr_reader execution_history: Array[execution_result]
+      attr_reader stats: execution_stats
+
+      def initialize: (String session_path, String project_path, ?rule_config config) -> void
+
+      # Rule management
+      def add_rule: (rule_instance rule) -> void
+      def remove_rule: (String name) -> bool
+      def find_rule: (String name) -> rule_instance?
+      def clear_rules: () -> void
+      def rule_count: () -> Integer
+      def enabled_rules: () -> Array[rule_instance]
+
+      # Rule creation factory methods
+      def create_copy_files_rule: (String name, rule_config config) -> CopyFilesRule
+      def create_setup_commands_rule: (String name, rule_config config) -> SetupCommandsRule
+      def create_template_rule: (String name, rule_config config) -> TemplateRule
+
+      # Execution methods
+      def execute_all: (?validate_first: bool, ?parallel: bool, ?continue_on_error: bool) -> execution_result
+      def execute_rule: (String name) -> execution_result
+      def validate_all: () -> execution_result
+      def validate_rule: (String name) -> execution_result
+      def preview_changes: () -> Hash[String, untyped]
+      def rollback_all: () -> execution_result
+      def rollback_rule: (String name) -> execution_result
+
+      # Dependency management
+      def resolve_dependencies: () -> Array[rule_instance]
+      def build_dependency_graph: () -> dependency_graph
+      def detect_circular_dependencies: () -> Array[Array[rule_instance]]?
+      def topological_sort: () -> Array[rule_instance]
+
+      # State and status methods
+      def all_valid?: () -> bool
+      def any_failed?: () -> bool
+      def execution_summary: () -> execution_stats
+      def failed_rules: () -> Array[rule_instance]
+      def successful_rules: () -> Array[rule_instance]
+      def reset_all!: () -> void
+
+      # Configuration and discovery
+      def load_rules_from_config: (String config_path) -> Integer
+      def auto_discover_rules: () -> Integer
+      def suggest_rules: () -> Array[Hash[Symbol, untyped]]
+      def save_rules_config: (String config_path) -> bool
+
+      # Utility methods
+      def to_h: () -> Hash[Symbol, untyped]
+      def rule_names: () -> Array[String]
+      def rule_types: () -> Array[String]
+      def filter_rules: (String type) -> Array[rule_instance]
+
+      def execute_rules_sequentially: (Array[rule_instance] rules, bool validate_first, bool continue_on_error) -> execution_result
+      def execute_rules_in_parallel: (Array[rule_instance] rules, bool validate_first, bool continue_on_error) -> execution_result
+      def execute_single_rule: (rule_instance rule, bool validate_first) -> execution_result
+      def handle_rule_error: (rule_instance rule, StandardError error) -> execution_result
+      def update_stats: (rule_instance rule, execution_result result) -> void
+      def create_rule_instance: (String type, String name, rule_config config) -> rule_instance
+      def validate_rule_config: (String type, rule_config config) -> void
+      def log_execution: (Symbol level, String message, ?Hash[Symbol, untyped] context) -> void
+      def detect_project_type: () -> String
+      def suggest_rails_rules: () -> Array[Hash[Symbol, untyped]]
+      def suggest_js_rules: () -> Array[Hash[Symbol, untyped]]
+      def suggest_generic_rules: () -> Array[Hash[Symbol, untyped]]
+      def find_template_files: () -> Array[String]
+      def find_config_files: () -> Array[String]
+    end
+    
+    # ProjectDetector analyzes directories to identify project types and configurations
+    class ProjectDetector
+      # Project type detection patterns
+      PROJECT_PATTERNS: Hash[String, Array[Hash[Symbol, untyped]]]
+
+      # Framework-specific detection
+      FRAMEWORK_PATTERNS: Hash[String, Hash[Symbol, untyped]]
+
+      # Language version detection
+      VERSION_PATTERNS: Hash[String, Array[Hash[Symbol, untyped]]]
+
+      type detection_result = Hash[Symbol, untyped]
+      type project_info = Hash[Symbol, untyped]
+
+      attr_reader path: Pathname
+      attr_reader cache: Hash[String, untyped]
+
+      def initialize: (String | Pathname path) -> void
+
+      def detect: () -> detection_result
+      def detect_project_type: () -> String
+      def detect_framework: () -> String?
+      def detect_language_version: () -> String?
+      def detect_build_tools: () -> Array[String]
+      def detect_dependencies: () -> Hash[String, Array[String]]
+      def confidence_score: () -> Float
+      def suggested_rules: () -> Array[String]
+
+      def self.detect_projects: (String | Pathname base_path, ?recursive: bool, ?max_depth: Integer) -> Array[project_info]
+      def self.quick_detect: (String | Pathname path) -> String
+
+      def analyze_file_patterns: () -> Hash[String, Integer]
+      def check_configuration_files: () -> Hash[String, untyped]
+      def analyze_package_managers: () -> Array[String]
+      def detect_rails_project: () -> Hash[Symbol, untyped]?
+      def detect_node_project: () -> Hash[Symbol, untyped]?
+      def detect_ruby_gem: () -> Hash[Symbol, untyped]?
+      def detect_python_project: () -> Hash[Symbol, untyped]?
+      def detect_go_project: () -> Hash[Symbol, untyped]?
+      def detect_rust_project: () -> Hash[Symbol, untyped]?
+      def parse_package_json: () -> Hash[String, untyped]?
+      def parse_gemspec: () -> Hash[String, untyped]?
+      def parse_cargo_toml: () -> Hash[String, untyped]?
+      def calculate_confidence: (Hash[String, Integer] scores) -> Float
+      def find_files: (String pattern, ?max_depth: Integer) -> Array[Pathname]
+      def file_exists?: (String relative_path) -> bool
+    end
+    
+    # Rules errors (base class only - specific errors defined in sig/sxn/rules/errors.rbs)
+    class RuleError < Sxn::Error
+    end
+    
+    class InvalidStateTransitionError < RuleError
+    end
+    
+    class ConfigurationError < RuleError
+    end
+    
+    class ExecutionTimeoutError < RuleError
+    end
+    
+    class RollbackNotSupportedError < RuleError
+    end
+    
+    class ExecutionCancelledError < RuleError
+    end
+  end
+end

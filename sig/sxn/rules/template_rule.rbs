@@ -1,0 +1,44 @@
+# TypeScript RBS for Sxn::Rules::TemplateRule
+
+module Sxn
+  module Rules
+    class TemplateRule < BaseRule
+      # Constants
+      SUPPORTED_ENGINES: Array[String]
+
+      # Instance variables
+      @template_processor: ::Sxn::Templates::TemplateProcessor
+      @template_variables: ::Sxn::Templates::TemplateVariables
+
+      # Initialize the template rule
+      def initialize: (untyped arg1, ?untyped arg2, ?untyped arg3, ?untyped arg4, ?dependencies: Array[String]) -> void
+
+      # Validate the rule configuration
+      def validate: () -> bool
+
+      # Apply the template processing operations
+      def apply: () -> bool
+
+      private
+
+      # Validate rule-specific configuration
+      def validate_rule_specific!: () -> void
+
+
+      # Validate individual template configuration
+      def validate_template_config!: (Hash[String, untyped] template_config, Integer index) -> void
+
+      # Apply a single template operation
+      def apply_template: (Hash[String, untyped] template_config, Integer index) -> void
+
+      # Build variables hash for template processing
+      def build_template_variables: (Hash[String, untyped] template_config) -> Hash[Symbol, untyped]
+
+      # Deep merge two hashes, with the second hash taking precedence
+      def deep_merge: (Hash[untyped, untyped] hash1, Hash[untyped, untyped] hash2) -> Hash[untyped, untyped]
+
+      # Extract variable names used in a template
+      def extract_used_variables: (String template_content) -> Array[String]
+    end
+  end
+end

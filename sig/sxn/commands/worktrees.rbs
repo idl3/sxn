@@ -1,0 +1,82 @@
+# frozen_string_literal: true
+
+module Sxn
+  module Commands
+    # Manage git worktrees
+    class Worktrees < Thor
+      include Thor::Actions
+
+      @ui: Sxn::UI::Output
+      @prompt: Sxn::UI::Prompt
+      @table: Sxn::UI::Table
+      @config_manager: Sxn::Core::ConfigManager
+      @project_manager: Sxn::Core::ProjectManager
+      @session_manager: Sxn::Core::SessionManager
+      @worktree_manager: Sxn::Core::WorktreeManager
+
+      # Initialize the command with Thor arguments
+      def initialize: (?Array[String] args, ?Hash[Symbol, untyped] local_options, ?Hash[Symbol, untyped] config) -> void
+
+      # Add worktree to current session
+      # @param project_name Project name
+      # @param branch Branch name (optional)
+      def add: (?String? project_name, ?String? branch) -> void
+
+      # Remove worktree from current session
+      # @param project_name Project name
+      def remove: (?String? project_name) -> void
+
+      # List worktrees in current session
+      def list: () -> void
+
+      # Validate a worktree
+      # @param project_name Project name
+      def validate: (?String? project_name) -> void
+
+      # Show status of all worktrees in current session
+      def status: () -> void
+
+      private
+
+      # Ensure the project is initialized, exit if not
+      def ensure_initialized!: () -> void
+
+      # Select a project interactively
+      # @param message Prompt message
+      # @return Project name or nil
+      def select_project: (String message) -> String?
+
+      # List worktrees for current session
+      def list_session_worktrees: () -> void
+
+      # List worktrees from all sessions
+      def list_all_worktrees: () -> void
+
+      # List worktrees with validation
+      # @param worktrees Array of worktrees
+      # @param session_name Session name
+      def list_with_validation: (Array[Hash[Symbol, untyped]] worktrees, String session_name) -> void
+
+      # Display worktree information
+      # @param worktree Worktree configuration hash
+      # @param detailed Whether to show detailed information
+      def display_worktree_info: (Hash[Symbol, untyped] worktree, ?detailed: bool) -> void
+
+      # Display available commands for a worktree
+      # @param worktree Worktree configuration hash
+      def display_worktree_commands: (Hash[Symbol, untyped] worktree) -> void
+
+      # Display status summary for worktrees
+      # @param worktrees Array of worktrees
+      def display_worktree_status: (Array[Hash[Symbol, untyped]] worktrees) -> void
+
+      # Apply project rules to a worktree
+      # @param project_name Project name
+      # @param session_name Session name
+      def apply_project_rules: (String project_name, String session_name) -> void
+
+      # Suggest adding a worktree
+      def suggest_add_worktree: () -> void
+    end
+  end
+end

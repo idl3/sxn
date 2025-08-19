@@ -1,0 +1,64 @@
+# frozen_string_literal: true
+
+module Sxn
+  module Config
+    # Handles hierarchical configuration discovery and loading
+    class ConfigDiscovery
+      CONFIG_FILE_NAME: String
+      LOCAL_CONFIG_DIR: String
+      WORKSPACE_CONFIG_DIR: String
+      GLOBAL_CONFIG_DIR: String
+      ENV_PREFIX: String
+
+      @start_directory: Pathname
+
+      attr_reader start_directory: Pathname
+
+      def initialize: (?String start_directory) -> void
+
+      # Discover and load configuration from all sources
+      def discover_config: (?Hash[untyped, untyped] cli_options) -> Hash[untyped, untyped]
+
+      # Find all configuration files in the hierarchy
+      def find_config_files: () -> Array[String]
+
+      private
+
+      # Load configurations from all sources
+      def load_all_configs: () -> Hash[Symbol, Hash[untyped, untyped]]
+
+      # Find local project config by walking up directory tree
+      def find_local_config: () -> String?
+
+      # Find workspace config by walking up directory tree
+      def find_workspace_config: () -> String?
+
+      # Find global user config
+      def find_global_config: () -> String?
+
+      # Load system default configuration
+      def load_system_defaults: () -> Hash[String, untyped]
+
+      # Load global user configuration
+      def load_global_config: () -> Hash[untyped, untyped]
+
+      # Load workspace configuration
+      def load_workspace_config: () -> Hash[untyped, untyped]
+
+      # Load local project configuration
+      def load_local_config: () -> Hash[untyped, untyped]
+
+      # Load environment variable configuration
+      def load_env_config: () -> Hash[String, untyped]
+
+      # Load and parse YAML file safely
+      def load_yaml_file: (String file_path) -> Hash[untyped, untyped]
+
+      # Merge configurations with proper precedence
+      def merge_configs: (Hash[Symbol, Hash[untyped, untyped]?] configs, Hash[untyped, untyped] cli_options) -> Hash[untyped, untyped]
+
+      # Deep merge configuration hashes
+      def deep_merge!: (Hash[untyped, untyped] target, Hash[untyped, untyped] source) -> Hash[untyped, untyped]
+    end
+  end
+end

@@ -1,0 +1,62 @@
+# frozen_string_literal: true
+
+module Sxn
+  module Commands
+    # Manage development sessions
+    class Sessions < Thor
+      include Thor::Actions
+
+      @ui: Sxn::UI::Output
+      @prompt: Sxn::UI::Prompt
+      @table: Sxn::UI::Table
+      @config_manager: Sxn::Core::ConfigManager
+      @session_manager: Sxn::Core::SessionManager
+
+      # Initialize the command with Thor arguments
+      def initialize: (?Array[String] args, ?Hash[Symbol, untyped] local_options, ?Hash[Symbol, untyped] config) -> void
+
+      # Create a new session
+      # @param name Session name
+      def add: (?String? name) -> void
+
+      # Remove a session
+      # @param name Session name
+      def remove: (?String? name) -> void
+
+      # List all sessions
+      def list: () -> void
+
+      # Switch to a session
+      # @param name Session name
+      def use: (?String? name) -> void
+
+      # Show current session
+      def current: () -> void
+
+      # Archive a session
+      # @param name Session name
+      def archive: (?String? name) -> void
+
+      # Activate an archived session
+      # @param name Session name
+      def activate: (?String? name) -> void
+
+      private
+
+      # Ensure the project is initialized, exit if not
+      def ensure_initialized!: () -> void
+
+      # Display session information
+      # @param session Session configuration hash
+      # @param verbose Whether to show verbose information
+      def display_session_info: (Hash[Symbol, untyped]? session, ?verbose: bool) -> void
+
+      # Display available commands for a session
+      # @param session_name Session name
+      def display_session_commands: (String session_name) -> void
+
+      # Suggest creating a session
+      def suggest_create_session: () -> void
+    end
+  end
+end

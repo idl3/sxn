@@ -1,0 +1,67 @@
+# frozen_string_literal: true
+
+module Sxn
+  module Config
+    # Caches discovered configurations with TTL and file change invalidation
+    class ConfigCache
+      CACHE_DIR: String
+      CACHE_FILE: String
+      DEFAULT_TTL: Integer
+
+      @cache_dir: String
+      @cache_file_path: String
+      @ttl: Integer
+      @write_mutex: Mutex
+
+      attr_reader cache_dir: String
+      attr_reader cache_file_path: String
+      attr_reader ttl: Integer
+
+      def initialize: (?cache_dir: String?, ?ttl: Integer) -> void
+
+      # Get cached configuration or nil if invalid/missing
+      def get: (Array[String] config_files) -> Hash[untyped, untyped]?
+
+      # Store configuration in cache
+      def set: (Hash[untyped, untyped] config, Array[String] config_files) -> bool
+
+      # Invalidate the cache by removing the cache file
+      def invalidate: () -> bool
+
+      # Check if cache is valid without loading the full configuration
+      def valid?: (Array[String] config_files) -> bool
+
+      # Get cache statistics
+      def stats: (?Array[String] config_files) -> Hash[Symbol, untyped]
+
+      private
+
+      # Ensure cache directory exists
+      def ensure_cache_directory: () -> void
+
+      # Check if cache file exists
+      def cache_exists?: () -> bool
+
+      # Load cache data from file
+      def load_cache: () -> Hash[String, untyped]?
+
+      # Save cache data to file atomically
+      def save_cache: (Hash[String, untyped] cache_data) -> bool
+
+      # Check if cache is still valid
+      def cache_valid?: (Hash[String, untyped] cache_data, Array[String] config_files) -> bool
+
+      # Check if cache has expired based on TTL
+      def ttl_expired?: (Hash[String, untyped] cache_data) -> bool
+
+      # Check if any config files have changed
+      def files_changed?: (Hash[String, untyped] cache_data, Array[String] config_files) -> bool
+
+      # Build metadata for config files
+      def build_file_metadata: (Array[String] config_files) -> Hash[String, Hash[String, untyped]]
+
+      # Calculate file checksum for additional validation
+      def file_checksum: (String file_path) -> String
+    end
+  end
+end

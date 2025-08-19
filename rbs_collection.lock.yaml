@@ -1,0 +1,180 @@
+---
+path: ".gem_rbs_collection"
+gems:
+- name: addressable
+  version: '2.8'
+  source:
+    type: git
+    name: ruby/gem_rbs_collection
+    revision: 6a12ebdb5a08a2eecc32622efce9c644684c1c52
+    remote: https://github.com/ruby/gem_rbs_collection.git
+    repo_dir: gems
+- name: async
+  version: '2.12'
+  source:
+    type: git
+    name: ruby/gem_rbs_collection
+    revision: 6a12ebdb5a08a2eecc32622efce9c644684c1c52
+    remote: https://github.com/ruby/gem_rbs_collection.git
+    repo_dir: gems
+- name: base64
+  version: 0.3.0
+  source:
+    type: rubygems
+- name: bcrypt
+  version: '3.1'
+  source:
+    type: git
+    name: ruby/gem_rbs_collection
+    revision: 6a12ebdb5a08a2eecc32622efce9c644684c1c52
+    remote: https://github.com/ruby/gem_rbs_collection.git
+    repo_dir: gems
+- name: benchmark
+  version: '0'
+  source:
+    type: stdlib
+- name: bigdecimal
+  version: '3.1'
+  source:
+    type: git
+    name: ruby/gem_rbs_collection
+    revision: 6a12ebdb5a08a2eecc32622efce9c644684c1c52
+    remote: https://github.com/ruby/gem_rbs_collection.git
+    repo_dir: gems
+- name: concurrent-ruby
+  version: '1.1'
+  source:
+    type: git
+    name: ruby/gem_rbs_collection
+    revision: 6a12ebdb5a08a2eecc32622efce9c644684c1c52
+    remote: https://github.com/ruby/gem_rbs_collection.git
+    repo_dir: gems
+- name: diff-lcs
+  version: '1.5'
+  source:
+    type: git
+    name: ruby/gem_rbs_collection
+    revision: 6a12ebdb5a08a2eecc32622efce9c644684c1c52
+    remote: https://github.com/ruby/gem_rbs_collection.git
+    repo_dir: gems
+- name: digest
+  version: '0'
+  source:
+    type: stdlib
+- name: ffi
+  version: 1.17.2
+  source:
+    type: rubygems
+- name: fileutils
+  version: '0'
+  source:
+    type: stdlib
+- name: io-console
+  version: '0'
+  source:
+    type: stdlib
+- name: json
+  version: '0'
+  source:
+    type: stdlib
+- name: listen
+  version: '3.9'
+  source:
+    type: git
+    name: ruby/gem_rbs_collection
+    revision: 6a12ebdb5a08a2eecc32622efce9c644684c1c52
+    remote: https://github.com/ruby/gem_rbs_collection.git
+    repo_dir: gems
+- name: logger
+  version: '0'
+  source:
+    type: stdlib
+- name: mini_mime
+  version: '0.1'
+  source:
+    type: git
+    name: ruby/gem_rbs_collection
+    revision: 6a12ebdb5a08a2eecc32622efce9c644684c1c52
+    remote: https://github.com/ruby/gem_rbs_collection.git
+    repo_dir: gems
+- name: monitor
+  version: '0'
+  source:
+    type: stdlib
+- name: openssl
+  version: '0'
+  source:
+    type: stdlib
+- name: optparse
+  version: '0'
+  source:
+    type: stdlib
+- name: parallel
+  version: '1.20'
+  source:
+    type: git
+    name: ruby/gem_rbs_collection
+    revision: 6a12ebdb5a08a2eecc32622efce9c644684c1c52
+    remote: https://github.com/ruby/gem_rbs_collection.git
+    repo_dir: gems
+- name: pathname
+  version: '0'
+  source:
+    type: stdlib
+- name: pp
+  version: '0'
+  source:
+    type: stdlib
+- name: prettyprint
+  version: '0'
+  source:
+    type: stdlib
+- name: prism
+  version: 1.4.0
+  source:
+    type: rubygems
+- name: rake
+  version: '13.0'
+  source:
+    type: git
+    name: ruby/gem_rbs_collection
+    revision: 6a12ebdb5a08a2eecc32622efce9c644684c1c52
+    remote: https://github.com/ruby/gem_rbs_collection.git
+    repo_dir: gems
+- name: rbs
+  version: 3.9.4
+  source:
+    type: rubygems
+- name: rbs_rails
+  version: 0.12.1
+  source:
+    type: rubygems
+- name: rdoc
+  version: '0'
+  source:
+    type: stdlib
+- name: rubocop-ast
+  version: '1.46'
+  source:
+    type: git
+    name: ruby/gem_rbs_collection
+    revision: 6a12ebdb5a08a2eecc32622efce9c644684c1c52
+    remote: https://github.com/ruby/gem_rbs_collection.git
+    repo_dir: gems
+- name: socket
+  version: '0'
+  source:
+    type: stdlib
+- name: sqlite3
+  version: '2.0'
+  source:
+    type: git
+    name: ruby/gem_rbs_collection
+    revision: 6a12ebdb5a08a2eecc32622efce9c644684c1c52
+    remote: https://github.com/ruby/gem_rbs_collection.git
+    repo_dir: gems
+- name: tsort
+  version: '0'
+  source:
+    type: stdlib
+gemfile_lock_path: Gemfile.lock

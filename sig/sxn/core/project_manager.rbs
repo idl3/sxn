@@ -1,0 +1,52 @@
+# frozen_string_literal: true
+
+module Sxn
+  module Core
+    # Manages project registration and configuration
+    class ProjectManager
+      @config_manager: ConfigManager
+
+      def initialize: (?ConfigManager? config_manager) -> void
+
+      def add_project: (String name, String path, ?type: String?, ?default_branch: String?) -> Hash[Symbol, untyped]
+
+      def remove_project: (String name) -> bool
+
+      def list_projects: () -> Array[Hash[Symbol, untyped]]
+
+      def get_project: (String name) -> Hash[Symbol, untyped]
+
+      def project_exists?: (String name) -> bool
+
+      def scan_projects: (?String? base_path) -> Array[Hash[Symbol, String]]
+
+      def detect_projects: (?String? base_path) -> Array[Hash[Symbol, String]]
+
+      def detect_project_type: (String path) -> String
+
+      def update_project: (String name, ?Hash[Symbol, untyped] updates) -> Hash[Symbol, untyped]
+
+      def validate_projects: () -> Array[Hash[Symbol, untyped]]
+
+      def auto_register_projects: (Array[Hash[Symbol, String]] detected_projects) -> Array[Hash[Symbol, untyped]]
+
+      def validate_project: (String name) -> Hash[Symbol, untyped]
+
+      def get_project_rules: (String name) -> Hash[String, untyped]
+
+      private
+
+      def validate_project_name!: (String name) -> void
+
+      def validate_project_path!: (String path) -> void
+
+      def detect_default_branch: (String path) -> String
+
+      def git_repository?: (String path) -> bool
+
+      def get_default_rules_for_type: (String type) -> Hash[String, untyped]
+
+      def merge_rules: (Hash[String, untyped] default_rules, Hash[String, untyped] custom_rules) -> Hash[String, untyped]
+    end
+  end
+end

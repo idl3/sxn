@@ -1,0 +1,115 @@
+# TypeScript RBS for Sxn::Rules::ProjectDetector
+
+module Sxn
+  module Rules
+    class ProjectDetector
+      # Constants
+      PROJECT_TYPES: Hash[Symbol, Hash[Symbol, untyped]]
+      PACKAGE_MANAGERS: Hash[Symbol, Hash[Symbol, untyped]]
+
+      # Instance variables
+      @project_path: String
+
+      # Attributes
+      attr_reader project_path: String
+
+      # Initialize the project detector
+      def initialize: (String project_path) -> void
+
+      # Detect comprehensive project information
+      def detect_project_info: () -> Hash[Symbol, untyped]
+
+      # Detect project type for a given path (used by ConfigManager)
+      def detect_type: (String path) -> Symbol
+
+      # Legacy method for compatibility with tests
+      # Detect the primary project type
+      def detect_project_type: () -> Symbol
+
+      # Detect the package manager used by the project
+      def detect_package_manager: () -> Symbol
+
+      # Suggest default rules based on detected project characteristics
+      def suggest_default_rules: () -> Hash[String, untyped]
+
+      # Get detailed analysis of the project structure
+      def analyze_project_structure: () -> Hash[Symbol, untyped]
+
+      # Parse dependencies by type for testing
+      def parse_dependencies: (Symbol type) -> Array[String]
+
+      private
+
+      # Validate that the project path exists and is a directory
+      def validate_project_path!: () -> void
+
+      # Calculate confidence score for a project type
+      def calculate_type_confidence: (Symbol type, Hash[Symbol, untyped] criteria) -> Integer
+
+      # Calculate confidence score for a specific project type (test compatibility)
+      def calculate_confidence_score: (Symbol type) -> Integer
+
+      # Check if a file exists in the project (supports glob patterns)
+      def file_exists_in_project?: (String file_pattern) -> bool
+
+      # Detect primary programming language
+      def detect_primary_language: () -> Symbol
+
+      # Detect all languages present in the project
+      def detect_all_languages: () -> Array[Symbol]
+
+      # Detect web framework
+      def detect_framework: () -> Symbol
+
+      # Check if project has Docker configuration
+      def has_docker?: () -> bool
+
+      # Check if project has test configuration
+      def has_tests?: () -> bool
+
+      # Check if project has CI configuration
+      def has_ci_config?: () -> bool
+
+      # Detect database configuration
+      def detect_database: () -> Symbol
+
+      # Detect sensitive files that should be handled carefully
+      def detect_sensitive_files: () -> Array[String]
+
+      # Suggest copy files rules based on project characteristics
+      def suggest_copy_files_rules: (Hash[Symbol, untyped] project_info) -> Hash[String, untyped]
+
+      # Suggest setup commands based on package manager
+      def suggest_setup_commands_rules: (Hash[Symbol, untyped] project_info) -> Hash[String, untyped]
+
+      # Suggest template rules for documentation
+      def suggest_template_rules: (Hash[Symbol, untyped] project_info) -> Hash[String, untyped]
+
+      # Check if project has typical Node.js characteristics
+      def has_nodejs_characteristics?: () -> bool
+
+      # Helper methods for file content checking
+      def gemfile_contains?: (String gem_name) -> bool
+      def package_json_has_dependency?: (String dep_name) -> bool
+      def requirements_contains?: (String package_name) -> bool
+      def package_json_has_script?: (String script_name) -> bool
+      def package_json_has_main_entry?: () -> bool
+      def file_contains?: (String file_path, String content) -> bool
+      def env_contains?: (String env_var, String content) -> bool
+
+      # Analysis methods for detailed project inspection
+      def analyze_important_files: () -> Array[String]
+      def analyze_directory_structure: () -> Array[String]
+      def analyze_dependencies: () -> Hash[Symbol, untyped]
+      def analyze_configuration_files: () -> Array[String]
+      def analyze_scripts: () -> Hash[Symbol, untyped]
+      def analyze_documentation: () -> Array[String]
+
+      # Dependency parsing helpers
+      def parse_gemfile_lock: () -> Array[String]
+      def parse_gemfile: () -> Array[String]
+      def parse_package_json: () -> Array[String]
+      def parse_requirements_txt: () -> Array[String]
+    end
+  end
+end

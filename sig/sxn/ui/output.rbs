@@ -1,0 +1,50 @@
+# frozen_string_literal: true
+
+module Sxn
+  module UI
+    # Formatted output with colors and status indicators
+    class Output
+      @pastel: untyped
+
+      def initialize: () -> void
+
+      def success: (String message) -> void
+
+      def error: (String message) -> void
+
+      def warning: (String message) -> void
+
+      def info: (String message) -> void
+
+      def debug: (String message) -> void
+
+      def status: (String | Symbol label, String message, ?Symbol color) -> void
+
+      def section: (String title) -> void
+
+      def subsection: (String | Symbol title) -> void
+
+      def list_item: (String item, ?String? description) -> void
+
+      def empty_state: (String message) -> void
+
+      def key_value: (String key, String value, ?indent: Integer) -> void
+
+      def progress_start: (String message) -> void
+
+      def progress_done: () -> void
+
+      def progress_failed: () -> void
+
+      def newline: () -> void
+
+      def recovery_suggestion: (String message) -> void
+
+      def command_example: (String command, ?String? description) -> void
+
+      private
+
+      def debug_mode?: () -> bool
+    end
+  end
+end
