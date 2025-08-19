@@ -310,6 +310,107 @@ RSpec.describe Sxn::Core::ConfigManager do
     end
   end
 
+  describe "#update_project" do
+    before do
+      config_manager.initialize_project(sessions_folder)
+      project_path = File.join(temp_dir, "test_project")
+      config_manager.add_project("test_project", project_path, type: "rails", default_branch: "main")
+    end
+
+    context "when project exists" do
+      it "updates path when provided" do
+        new_path = File.join(temp_dir, "updated_project")
+
+        result = config_manager.update_project("test_project", { path: new_path })
+
+        expect(result).to be true
+        config = YAML.safe_load_file(config_path)
+        expect(config["projects"]["test_project"]["path"]).to eq("updated_project")
+      end
+
+      it "does not update path when not provided" do
+        result = config_manager.update_project("test_project", { type: "javascript" })
+
+        expect(result).to be true
+        config = YAML.safe_load_file(config_path)
+        expect(config["projects"]["test_project"]["path"]).to eq("test_project")
+      end
+
+      it "updates type when provided" do
+        result = config_manager.update_project("test_project", { type: "javascript" })
+
+        expect(result).to be true
+        config = YAML.safe_load_file(config_path)
+        expect(config["projects"]["test_project"]["type"]).to eq("javascript")
+      end
+
+      it "does not update type when not provided" do
+        result = config_manager.update_project("test_project", { path: "/some/path" })
+
+        expect(result).to be true
+        config = YAML.safe_load_file(config_path)
+        expect(config["projects"]["test_project"]["type"]).to eq("rails")
+      end
+
+      it "updates default_branch when provided" do
+        result = config_manager.update_project("test_project", { default_branch: "develop" })
+
+        expect(result).to be true
+        config = YAML.safe_load_file(config_path)
+        expect(config["projects"]["test_project"]["default_branch"]).to eq("develop")
+      end
+
+      it "does not update default_branch when not provided" do
+        result = config_manager.update_project("test_project", { type: "javascript" })
+
+        expect(result).to be true
+        config = YAML.safe_load_file(config_path)
+        expect(config["projects"]["test_project"]["default_branch"]).to eq("main")
+      end
+
+      it "updates multiple fields simultaneously" do
+        updates = {
+          path: File.join(temp_dir, "multi_update"),
+          type: "vue",
+          default_branch: "develop"
+        }
+
+        result = config_manager.update_project("test_project", updates)
+
+        expect(result).to be true
+        config = YAML.safe_load_file(config_path)
+        project = config["projects"]["test_project"]
+        expect(project["path"]).to eq("multi_update")
+        expect(project["type"]).to eq("vue")
+        expect(project["default_branch"]).to eq("develop")
+      end
+    end
+
+    context "when project does not exist" do
+      it "returns false and does not create project" do
+        result = config_manager.update_project("non_existent", { type: "rails" })
+
+        expect(result).to be false
+        config = YAML.safe_load_file(config_path)
+        expect(config["projects"]["non_existent"]).to be_nil
+      end
+    end
+
+    it "initializes projects hash if it doesn't exist but doesn't persist when project not found" do
+      # Manually remove projects from config
+      config = YAML.safe_load_file(config_path)
+      config.delete("projects")
+      File.write(config_path, YAML.dump(config))
+
+      result = config_manager.update_project("non_existent", { type: "rails" })
+
+      expect(result).to be false
+      # Config file should not be modified since project wasn't found
+      config = YAML.safe_load_file(config_path)
+      expect(config["projects"]).to be_nil
+    end
+  end
+
   describe "#remove_project" do
     before do
       config_manager.initialize_project(sessions_folder)
@@ -465,6 +566,26 @@ RSpec.describe Sxn::Core::ConfigManager do
         projects = config_manager.detect_projects
         expect(projects.none? { |p| p[:name].start_with?(".") }).to be true
       end
+
+      it "specifically skips directories starting with dot" do
+        # This test ensures line 132 is covered (next if entry.start_with?("."))
+        # First clear existing directories from the before block
+        ["rails_app", "js_app", ".hidden_dir", "unknown_app"].each do |dir|
+          FileUtils.rm_rf(File.join(temp_dir, dir))
+        end
+        FileUtils.rm_f(File.join(temp_dir, "regular_file.txt"))
+
+        FileUtils.mkdir_p(File.join(temp_dir, ".dotfile"))
+        FileUtils.mkdir_p(File.join(temp_dir, "normal_dir"))
+
+        allow(detector_double).to receive(:detect_type).with(File.join(temp_dir, "normal_dir")).and_return(:rails)
+
+        projects = config_manager.detect_projects
+
+        expect(projects.size).to eq(1)
+        expect(projects.first[:name]).to eq("normal_dir")
+        expect(projects.none? { |p| p[:name] == ".dotfile" }).to be true
+      end
     end
 
     context "when no directories exist" do
@@ -583,6 +704,252 @@ RSpec.describe Sxn::Core::ConfigManager do
 
         config_manager.send(:setup_database)
       end
+    end
+  end
+
+  describe "#update_gitignore" do
+    let(:gitignore_path) { File.join(temp_dir, ".gitignore") }
+
+    before do
+      config_manager.initialize_project(sessions_folder)
+    end
+
+    context "when .gitignore file exists" do
+      before do
+        File.write(gitignore_path, "# Existing content\nnode_modules/\n")
+      end
+
+      it "adds SXN entries when they don't exist" do
+        result = config_manager.update_gitignore
+
+        expect(result).to be true
+        content = File.read(gitignore_path)
+        expect(content).to include(".sxn/")
+        expect(content).to include("# SXN session management")
+      end
+
+      it "does not add duplicate SXN entries" do
+        # Add .sxn/ entry manually first, and sessions/ since that's what this test config has
+        File.write(gitignore_path, "# Existing content\n.sxn/\nsessions/\nnode_modules/\n")
+
+        result = config_manager.update_gitignore
+
+        expect(result).to be false
+        content = File.read(gitignore_path)
+        expect(content.scan(".sxn/").length).to eq(1)
+        expect(content.scan("sessions/").length).to eq(1)
+      end
+
+      it "adds sessions entry when different from .sxn/" do
+        # Initialize with custom sessions folder
+        custom_sessions = File.join(temp_dir, "custom_sessions")
+        config_manager.initialize_project(custom_sessions, force: true)
+
+        File.write(gitignore_path, "# Existing content\nnode_modules/\n")
+        result = config_manager.update_gitignore
+
+        expect(result).to be true
+        content = File.read(gitignore_path)
+        expect(content).to include(".sxn/")
+        expect(content).to include("custom_sessions/")
+      end
+
+      it "does not add sessions entry when it's the same as .sxn/" do
+        # Test with .sxn as sessions folder
+        sxn_sessions = File.join(temp_dir, ".sxn")
+        config_manager.initialize_project(sxn_sessions, force: true)
+
+        File.write(gitignore_path, "# Existing content\nnode_modules/\n")
+        result = config_manager.update_gitignore
+
+        expect(result).to be true
+        content = File.read(gitignore_path)
+        expect(content).to include(".sxn/")
+        # Should not have duplicate .sxn/ entries since sessions_entry == ".sxn/"
+        expect(content.scan(".sxn/").length).to eq(1)
+      end
+
+      it "is case-sensitive for matching" do
+        File.write(gitignore_path, "# Existing content\n.SXN\nnode_modules/\n")
+
+        result = config_manager.update_gitignore
+
+        expect(result).to be true # .SXN is not the same as .sxn
+        content = File.read(gitignore_path)
+        expect(content).to include(".SXN")
+        expect(content).to include(".sxn/")
+      end
+
+      it "handles existing entries with and without trailing slashes" do
+        File.write(gitignore_path, "# Existing content\n.sxn\nsessions\nnode_modules/\n")
+
+        result = config_manager.update_gitignore
+
+        expect(result).to be false
+      end
+
+      it "ignores comments and empty lines when checking" do
+        File.write(gitignore_path, "# This is .sxn comment\n\n# Another comment\nnode_modules/\n")
+
+        result = config_manager.update_gitignore
+
+        expect(result).to be true
+        content = File.read(gitignore_path)
+        expect(content).to include(".sxn/")
+      end
+
+      it "handles errors gracefully in debug mode" do
+        ENV["SXN_DEBUG"] = "true"
+        allow(File).to receive(:read).with(gitignore_path).and_raise(StandardError, "Read error")
+
+        expect do
+          result = config_manager.update_gitignore
+          expect(result).to be false
+        end.to output(/Failed to update \.gitignore/).to_stderr
+
+        ENV.delete("SXN_DEBUG")
+      end
+
+      it "handles errors gracefully without debug mode" do
+        allow(File).to receive(:read).with(gitignore_path).and_raise(StandardError, "Read error")
+
+        expect do
+          result = config_manager.update_gitignore
+          expect(result).to be false
+        end.not_to output.to_stderr
+      end
+    end
+
+    context "when .gitignore file does not exist" do
+      it "returns false" do
+        FileUtils.rm_f(gitignore_path)
+
+        result = config_manager.update_gitignore
+        expect(result).to be false
+      end
+    end
+
+    context "when .gitignore is a symlink" do
+      it "returns false and does not modify" do
+        FileUtils.rm_f(gitignore_path)
+        real_file = File.join(temp_dir, "real_gitignore")
+        File.write(real_file, "content")
+        File.symlink(real_file, gitignore_path)
+
+        result = config_manager.update_gitignore
+        expect(result).to be false
+      end
+    end
+  end
+
+  describe "sessions folder path resolution" do
+    context "with various path configurations" do
+      it "handles relative path from sessions_folder_relative_path when @sessions_folder is nil" do
+        config_manager.initialize_project(sessions_folder)
+        config_manager.instance_variable_set(:@sessions_folder, nil)
+
+        path = config_manager.send(:sessions_folder_relative_path)
+        expect(path).to eq(".sxn")
+      end
+
+      it "returns .sxn when sessions folder is current directory" do
+        current_dir_sessions = temp_dir
+        config_manager.initialize_project(current_dir_sessions)
+
+        path = config_manager.send(:sessions_folder_relative_path)
+        expect(path).to eq(".sxn")
+      end
+
+      it "returns .sxn when sessions folder is .sxn itself" do
+        sxn_sessions = File.join(temp_dir, ".sxn")
+        config_manager.initialize_project(sxn_sessions)
+
+        path = config_manager.send(:sessions_folder_relative_path)
+        expect(path).to eq(".sxn")
+      end
+
+      it "returns .sxn when sessions folder ends with /.sxn" do
+        nested_sxn = File.join(temp_dir, "nested", ".sxn")
+        config_manager.initialize_project(nested_sxn)
+
+        path = config_manager.send(:sessions_folder_relative_path)
+        expect(path).to eq(".sxn")
+      end
+
+      it "returns basename when too many ../ components" do
+        # Create a deeply nested path that would have many ../
+        deep_sessions = File.join("/", "very", "deep", "nested", "sessions")
+        config_manager.instance_variable_set(:@sessions_folder, deep_sessions)
+
+        path = config_manager.send(:sessions_folder_relative_path)
+        expect(path).to eq("sessions")
+      end
+
+      it "returns basename when relative path starts with ../../../" do
+        # Create a path that starts with ../../../
+        parent_sessions = File.join(File.dirname(temp_dir, 3), "sessions")
+        config_manager.instance_variable_set(:@sessions_folder, parent_sessions)
+
+        path = config_manager.send(:sessions_folder_relative_path)
+        expect(path).to eq("sessions")
+      end
+
+      it "handles ArgumentError from relative_path_from" do
+        # Force an ArgumentError by using paths that can't be made relative
+        allow(Pathname).to receive(:new).with(anything).and_call_original
+        sessions_path = double("Pathname")
+        allow(Pathname).to receive(:new).with("/some/path").and_return(sessions_path)
+        allow(sessions_path).to receive(:relative_path_from).and_raise(ArgumentError)
+
+        config_manager.instance_variable_set(:@sessions_folder, "/some/path")
+
+        path = config_manager.send(:sessions_folder_relative_path)
+        expect(path).to eq("path")
+      end
+    end
+  end
+
+  describe "has_gitignore_entry?" do
+    it "matches exact entries" do
+      lines = ["node_modules", ".sxn", "tmp"]
+      result = config_manager.send(:has_gitignore_entry?, lines, ".sxn")
+      expect(result).to be true
+    end
+
+    it "matches entries with trailing slashes" do
+      lines = ["node_modules/", ".sxn/", "tmp/"]
+      result = config_manager.send(:has_gitignore_entry?, lines, ".sxn")
+      expect(result).to be true
+    end
+
+    it "ignores comments and empty lines" do
+      lines = ["# This is a comment", "", "  ", "# .sxn comment", "node_modules"]
+      result = config_manager.send(:has_gitignore_entry?, lines, ".sxn")
+      expect(result).to be false
+    end
+
+    it "handles entries with subdirectories" do
+      lines = ["some/path/session", "another/dir"]
+      result = config_manager.send(:has_gitignore_entry?, lines, "some/path/session")
+      expect(result).to be true
+    end
+
+    it "matches basename for subdirectory entries" do
+      lines = %w[sessions node_modules]
+      result = config_manager.send(:has_gitignore_entry?, lines, "some/path/sessions")
+      expect(result).to be true
+    end
+
+    it "does not match when entry is not found" do
+      lines = %w[node_modules tmp build]
+      result = config_manager.send(:has_gitignore_entry?, lines, ".sxn")
+      expect(result).to be false
+    end
+
+    it "handles mixed whitespace and slashes" do
+      lines = ["  node_modules/  ", " .sxn ", "tmp/"]
+      result = config_manager.send(:has_gitignore_entry?, lines, ".sxn")
+      expect(result).to be true
     end
   end
 

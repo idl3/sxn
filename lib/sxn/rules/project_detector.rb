@@ -643,6 +643,8 @@ module Sxn
         return false unless File.exist?(gemfile_path)
 
         File.read(gemfile_path).include?(gem_name)
+      rescue Errno::EACCES, Errno::EIO, StandardError
+        false
       end
 
       def package_json_has_dependency?(dep_name)
@@ -667,6 +669,8 @@ module Sxn
         return false unless File.exist?(requirements_path)
 
         File.read(requirements_path).downcase.include?(package_name.downcase)
+      rescue Errno::EACCES, Errno::EIO, StandardError
+        false
       end
 
       def package_json_has_script?(script_name)

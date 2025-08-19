@@ -758,4 +758,237 @@ RSpec.describe Sxn::Rules::RulesEngine do
       end
     end
   end
+
+  # Additional comprehensive tests for missing branch coverage
+  describe "comprehensive branch coverage" do
+    describe "ExecutionResult timing edge cases" do
+      it "handles finish! without start! (line 57 else branch)" do
+        result = described_class::ExecutionResult.new
+        # Don't call start! to test the else branch
+        result.finish!
+        
+        # Total duration should remain 0 when @start_time is nil
+        expect(result.total_duration).to eq(0)
+      end
+    end
+
+    describe "logging edge cases" do
+      context "when logger is nil" do
+        let(:nil_logger_engine) { described_class.new(project_path, session_path, logger: nil) }
+        
+        it "handles nil logger in apply_rules (line 153 else branch)" do
+          result = nil_logger_engine.apply_rules(simple_rules_config)
+          expect(result.success?).to be true
+        end
+        
+        it "handles nil logger in rollback_rules (line 181 else branch)" do
+          nil_logger_engine.apply_rules(simple_rules_config)
+          expect(nil_logger_engine.rollback_rules).to be true
+        end
+        
+        it "handles nil logger in rule rollback (line 186, 188, 191 else branches)" do
+          # Apply a rule first
+          nil_logger_engine.apply_rules(simple_rules_config)
+          
+          # Mock rollback failure to test line 191 else branch  
+          applied_rules = nil_logger_engine.instance_variable_get(:@applied_rules)
+          allow(applied_rules.first).to receive(:rollback).and_raise(StandardError, "Rollback failed")
+          
+          expect(nil_logger_engine.rollback_rules).to be true
+        end
+      end
+    end
+    
+    describe "validation and error handling edge cases" do
+      it "handles ValidationError in apply_rules (line 163 else branch)" do
+        allow(engine).to receive(:load_rules).and_raise(Sxn::Rules::ValidationError, "Test validation error")
+        
+        expect do
+          engine.apply_rules(simple_rules_config)
+        end.to raise_error(Sxn::Rules::ValidationError)
+      end
+      
+      it "handles StandardError in apply_rules (line 166 else branch)" do
+        allow(engine).to receive(:load_rules).and_raise(StandardError, "Test standard error")
+        
+        result = engine.apply_rules(simple_rules_config)
+        expect(result.success?).to be false
+        expect(result.errors.first[:rule]).to eq("engine")
+      end
+    end
+    
+    describe "rule loading edge cases" do
+      it "handles non-hash rules config in load_rules (line 255)" do
+        expect do
+          engine.send(:load_rules, "not-a-hash")
+        end.to raise_error(ArgumentError, "Rules config must be a hash")
+      end
+      
+      it "handles rule loading errors gracefully (line 267 else branch)" do
+        # Mock a rule creation that fails with non-ValidationError
+        allow(engine).to receive(:load_single_rule).and_raise(RuntimeError, "Some runtime error")
+        
+        # Should not raise error, just log warning and continue
+        rules = engine.send(:load_rules, simple_rules_config)
+        expect(rules).to be_empty # Rule should be skipped
+      end
+      
+      it "bubbles up ArgumentError and ValidationError (line 264)" do
+        allow(engine).to receive(:load_single_rule).and_raise(ArgumentError, "Invalid argument")
+        
+        expect do
+          engine.send(:load_rules, simple_rules_config)
+        end.to raise_error(ArgumentError)
+      end
+    end
+    
+    describe "path validation edge cases" do
+      it "handles session path that exists but is not writable (line 246, 250 branches)" do
+        # Create a non-writable session path (line 246 false, line 250 raises)
+        non_writable_session = Dir.mktmpdir("non_writable")
+        File.chmod(0o444, non_writable_session)
+        
+        expect do
+          described_class.new(project_path, non_writable_session)
+        end.to raise_error(ArgumentError, /Session path is not writable/)
+      ensure
+        File.chmod(0o755, non_writable_session) if non_writable_session
+        FileUtils.rm_rf(non_writable_session) if non_writable_session
+      end
+    end
+    
+    describe "rule validation edge cases" do
+      it "continues validation despite rule failures (line 309 else branch)" do
+        config = {
+          "valid_rule" => {
+            "type" => "copy_files",
+            "config" => { "files" => [{ "source" => "config/test.key", "strategy" => "copy", "required" => false }] }
+          },
+          "invalid_rule" => {
+            "type" => "copy_files",
+            "config" => { "files" => [{ "source" => "config/test.key", "strategy" => "copy", "required" => false }] }
+          }
+        }
+        
+        # Mock validation to fail for one rule
+        call_count = 0
+        allow_any_instance_of(Sxn::Rules::CopyFilesRule).to receive(:validate) do |instance|
+          call_count += 1
+          raise StandardError, "Validation failed" if call_count == 2
+        end
+        
+        valid_rules = engine.send(:validate_rules, engine.send(:load_rules, config))
+        expect(valid_rules.size).to eq(1) # Only one rule should pass validation
+      end
+    end
+    
+    describe "dependency resolution edge cases" do
+      it "handles unresolvable dependencies in execution order (line 386, 388 branches)" do
+        # Create a scenario where dependencies cannot be resolved
+        rule1 = double("rule1", name: "rule1", dependencies: ["missing_dep"], can_execute?: false)
+        rule2 = double("rule2", name: "rule2", dependencies: ["another_missing"], can_execute?: false)
+        
+        expect do
+          engine.send(:resolve_execution_order, [rule1, rule2])
+        end.to raise_error(Sxn::Rules::ValidationError, /Cannot resolve dependencies/)
+      end
+      
+      it "handles missing dependency in circular detection (line 359 branch)" do
+        # Test when a dependency rule doesn't exist in the map
+        rule_with_missing_dep = double("rule", name: "rule1", dependencies: ["missing_rule"])
+        rule_map = { "rule1" => rule_with_missing_dep }
+        visited = Set.new
+        rec_stack = Set.new
+        
+        # Should not cause error, just skip the missing dependency
+        result = engine.send(:has_circular_dependency?, rule_with_missing_dep, rule_map, visited, rec_stack)
+        expect(result).to be false
+      end
+    end
+    
+    describe "parallel execution edge cases" do
+      it "uses sequential execution for single rules (line 405, 410 else branches)" do
+        single_rule_config = {
+          "single_rule" => {
+            "type" => "copy_files",
+            "config" => { "files" => [{ "source" => "config/test.key", "strategy" => "copy", "required" => false }] }
+          }
+        }
+        
+        result = engine.apply_rules(single_rule_config, parallel: true)
+        expect(result.success?).to be true
+      end
+      
+      it "handles parallel execution with max_parallelism (line 424 else branch)" do
+        # Mock to avoid actual logger calls in parallel branch
+        allow(engine.logger).to receive(:debug)
+        
+        # Create config with multiple rules but limit parallelism
+        many_rules_config = {
+          "rule1" => { "type" => "copy_files", "config" => { "files" => [{ "source" => "config/test.key", "strategy" => "copy", "required" => false }] } },
+          "rule2" => { "type" => "copy_files", "config" => { "files" => [{ "source" => "config/test.key", "strategy" => "copy", "required" => false }] } },
+          "rule3" => { "type" => "copy_files", "config" => { "files" => [{ "source" => "config/test.key", "strategy" => "copy", "required" => false }] } }
+        }
+        
+        result = engine.apply_rules(many_rules_config, parallel: true, max_parallelism: 1)
+        expect(result.success?).to be true
+      end
+    end
+    
+    describe "rule execution edge cases" do
+      it "handles rule execution without mutex (line 450, 459, 470 else branches)" do
+        # Test sequential execution path where mutex is nil
+        result = engine.apply_rules(simple_rules_config, parallel: false)
+        expect(result.success?).to be true
+      end
+      
+      it "handles non-rollbackable rule failures (line 463, 475, 477 else branches)" do
+        config = {
+          "failing_rule" => {
+            "type" => "copy_files",
+            "config" => { "files" => [{ "source" => "config/test.key", "strategy" => "copy", "required" => false }] }
+          }
+        }
+        
+        # Mock rule to fail and not be rollbackable
+        allow_any_instance_of(Sxn::Rules::CopyFilesRule).to receive(:apply).and_raise(StandardError, "Rule failed")
+        allow_any_instance_of(Sxn::Rules::CopyFilesRule).to receive(:rollbackable?).and_return(false)
+        
+        result = engine.apply_rules(config, continue_on_failure: true)
+        expect(result.success?).to be false
+        expect(result.failed_rules.size).to eq(1)
+      end
+      
+      it "handles rollback failure during rule execution (line 477 else branch)" do
+        config = {
+          "failing_rule" => {
+            "type" => "copy_files",
+            "config" => { "files" => [{ "source" => "config/test.key", "strategy" => "copy", "required" => false }] }
+          }
+        }
+        
+        # Mock rule to fail, be rollbackable, but rollback also fails
+        allow_any_instance_of(Sxn::Rules::CopyFilesRule).to receive(:apply).and_raise(StandardError, "Rule failed")
+        allow_any_instance_of(Sxn::Rules::CopyFilesRule).to receive(:rollbackable?).and_return(true)
+        allow_any_instance_of(Sxn::Rules::CopyFilesRule).to receive(:rollback).and_raise(StandardError, "Rollback failed")
+        
+        result = engine.apply_rules(config, continue_on_failure: true)
+        expect(result.success?).to be false
+        expect(result.failed_rules.size).to eq(1)
+      end
+    end
+    
+    describe "rollback edge cases" do
+      it "handles non-rollbackable rules during rollback (line 188 else branch)" do
+        # Apply rules first
+        engine.apply_rules(simple_rules_config)
+        
+        # Mock applied rule to not be rollbackable
+        applied_rules = engine.instance_variable_get(:@applied_rules)
+        allow(applied_rules.first).to receive(:rollbackable?).and_return(false)
+        
+        expect(engine.rollback_rules).to be true
+      end
+    end
+  end
 end
