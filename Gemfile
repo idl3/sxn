@@ -21,5 +21,4 @@ group :development do
   gem "rbs", "~> 3.4"
   gem "rbs_rails", "~> 0.12"
   gem "steep", "~> 1.6"
-  gem "typeprof", "~> 0.21"
 end
