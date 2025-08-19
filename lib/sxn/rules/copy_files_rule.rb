@@ -99,12 +99,12 @@ module Sxn
         end
       end
 
+      private
+
       # Delegate sensitive file detection to the file copier
       def sensitive_file?(file_path)
         @file_copier.sensitive_file?(file_path)
       end
-
-      private
 
       # Validate individual file configuration
       def validate_file_config!(file_config, index)

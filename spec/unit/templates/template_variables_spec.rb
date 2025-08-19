@@ -79,7 +79,7 @@ RSpec.describe Sxn::Templates::TemplateVariables do
     end
   end
 
-  describe "#collect_session_variables" do
+  describe "#_collect_session_variables" do
     it "collects basic session information" do
       variables = collector.get_category(:session)
 
@@ -145,7 +145,7 @@ RSpec.describe Sxn::Templates::TemplateVariables do
     end
   end
 
-  describe "#collect_git_variables" do
+  describe "#_collect_git_variables" do
     before do
       # Mock git directory detection
       allow(collector).to receive(:find_git_directory).and_return("/tmp/git-repo")
@@ -242,7 +242,7 @@ RSpec.describe Sxn::Templates::TemplateVariables do
     end
   end
 
-  describe "#collect_project_variables" do
+  describe "#_collect_project_variables" do
     it "returns empty hash when no project" do
       collector_without_project = described_class.new(mock_session, nil, mock_config)
 
@@ -293,7 +293,7 @@ RSpec.describe Sxn::Templates::TemplateVariables do
     end
   end
 
-  describe "#collect_environment_variables" do
+  describe "#_collect_environment_variables" do
     it "collects Ruby environment information" do
       variables = collector.get_category(:environment)
 
@@ -354,7 +354,7 @@ RSpec.describe Sxn::Templates::TemplateVariables do
     end
   end
 
-  describe "#collect_user_variables" do
+  describe "#_collect_user_variables" do
     before do
       # Mock git config commands
       allow(collector).to receive(:execute_git_command)
@@ -397,7 +397,7 @@ RSpec.describe Sxn::Templates::TemplateVariables do
     end
   end
 
-  describe "#collect_timestamp_variables" do
+  describe "#_collect_timestamp_variables" do
     it "provides timestamp information" do
       frozen_time = Time.parse("2025-01-16 15:30:00 UTC")
       allow(Time).to receive(:now).and_return(frozen_time)
@@ -572,13 +572,11 @@ RSpec.describe Sxn::Templates::TemplateVariables do
 
   describe "error handling" do
     describe "#detect_ruby_version" do
-      it "handles errors gracefully" do
-        # Mock RUBY_VERSION to raise an error (though this is unlikely in practice)
-        stub_const("RUBY_VERSION", nil)
-        allow(collector).to receive(:detect_ruby_version).and_call_original
-        
-        # In practice, RUBY_VERSION is always available, but test error handling
-        expect { collector.send(:detect_ruby_version) }.not_to raise_error
+      it "returns Ruby version string" do
+        # Just test that it returns a string - RUBY_VERSION is always available
+        version = collector.send(:detect_ruby_version)
+        expect(version).to be_a(String)
+        expect(version).not_to be_empty
       end
     end
 

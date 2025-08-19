@@ -631,11 +631,13 @@ RSpec.describe Sxn::Rules::CopyFilesRule do
       ]
       
       sensitive_files.each do |file|
-        expect(rule.send(:sensitive_file?, file)).to be true, "#{file} should be detected as sensitive"
+        result = rule.send(:sensitive_file?, file)
+        expect(result).to be(true), "#{file} should be detected as sensitive"
       end
       
       non_sensitive_files.each do |file|
-        expect(rule.send(:sensitive_file?, file)).to be false, "#{file} should not be detected as sensitive"
+        result = rule.send(:sensitive_file?, file)
+        expect(result).to be(false), "#{file} should not be detected as sensitive"
       end
     end
 

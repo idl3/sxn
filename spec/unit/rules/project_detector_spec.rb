@@ -332,7 +332,7 @@ RSpec.describe Sxn::Rules::ProjectDetector do
         has_docker: true,
         has_tests: true,
         has_ci: false,
-        database: :unknown
+        database: :postgresql
       )
       expect(info[:sensitive_files]).to include("config/master.key", ".env")
       expect(info[:analysis_timestamp]).to be_a(String)

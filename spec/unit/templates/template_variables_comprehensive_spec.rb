@@ -51,9 +51,9 @@ RSpec.describe Sxn::Templates::TemplateVariables, "comprehensive coverage for mi
     end
   end
 
-  describe "#collect_environment_variables" do
+  describe "#_collect_environment_variables" do
     it "returns environment information" do
-      result = variables.send(:collect_environment_variables)
+      result = variables.send(:_collect_environment_variables)
 
       expect(result).to include(:ruby, :os)
       expect(result[:ruby]).to include(:version, :platform)
@@ -63,12 +63,12 @@ RSpec.describe Sxn::Templates::TemplateVariables, "comprehensive coverage for mi
     it "handles errors gracefully" do
       allow(RbConfig::CONFIG).to receive(:[]).and_raise(StandardError, "Config error")
 
-      result = variables.send(:collect_environment_variables)
+      result = variables.send(:_collect_environment_variables)
       expect(result[:error]).to include("Failed to collect environment variables")
     end
   end
 
-  describe "#collect_project_variables" do
+  describe "#_collect_project_variables" do
     before do
       # Create project structure
       FileUtils.mkdir_p(project_path)
@@ -77,7 +77,7 @@ RSpec.describe Sxn::Templates::TemplateVariables, "comprehensive coverage for mi
     end
 
     it "detects project type and metadata" do
-      result = variables.send(:collect_project_variables)
+      result = variables.send(:_collect_project_variables)
 
       expect(result).to include(:path, :name, :type)
       expect(result[:path]).to eq(project_path.to_s)
@@ -87,14 +87,14 @@ RSpec.describe Sxn::Templates::TemplateVariables, "comprehensive coverage for mi
     it "detects JavaScript project from package.json" do
       # Remove Gemfile so package.json takes precedence
       FileUtils.rm_f(File.join(project_path, "Gemfile"))
-      result = variables.send(:collect_project_variables)
+      result = variables.send(:_collect_project_variables)
       expect(result[:type]).to eq("javascript")
     end
 
     it "detects Ruby project from Gemfile" do
       FileUtils.rm_f(File.join(project_path, "package.json"))
 
-      result = variables.send(:collect_project_variables)
+      result = variables.send(:_collect_project_variables)
       expect(result[:type]).to eq("ruby")
     end
 
@@ -102,21 +102,21 @@ RSpec.describe Sxn::Templates::TemplateVariables, "comprehensive coverage for mi
       # Remove all project files to make type unknown
       FileUtils.rm_rf(Dir.glob(File.join(project_path, "*")))
 
-      result = variables.send(:collect_project_variables)
+      result = variables.send(:_collect_project_variables)
       expect(result[:type]).to eq("unknown")
     end
 
     it "handles errors gracefully" do
       allow(mock_project).to receive(:name).and_raise(StandardError, "Project error")
 
-      result = variables.send(:collect_project_variables)
+      result = variables.send(:_collect_project_variables)
       expect(result[:error]).to include("Failed to collect project variables")
     end
   end
 
-  describe "#collect_session_variables" do
+  describe "#_collect_session_variables" do
     it "returns session information" do
-      result = variables.send(:collect_session_variables)
+      result = variables.send(:_collect_session_variables)
 
       expect(result).to include(:path, :name, :created_at, :status)
       expect(result[:path]).to eq(session_path.to_s)
@@ -127,21 +127,21 @@ RSpec.describe Sxn::Templates::TemplateVariables, "comprehensive coverage for mi
     it "handles missing session gracefully" do
       variables_without_session = described_class.new(nil, mock_project)
 
-      result = variables_without_session.send(:collect_session_variables)
+      result = variables_without_session.send(:_collect_session_variables)
       expect(result).to eq({})
     end
 
     it "handles session errors gracefully" do
       allow(mock_session).to receive(:name).and_raise(StandardError, "Session error")
 
-      result = variables.send(:collect_session_variables)
+      result = variables.send(:_collect_session_variables)
       expect(result[:error]).to include("Failed to collect session variables")
     end
   end
 
-  describe "#collect_user_variables" do
+  describe "#_collect_user_variables" do
     it "returns user configuration information" do
-      result = variables.send(:collect_user_variables)
+      result = variables.send(:_collect_user_variables)
 
       expect(result).to include(:username, :home)
       expect(result[:username]).to be_a(String) if result[:username]
@@ -151,12 +151,12 @@ RSpec.describe Sxn::Templates::TemplateVariables, "comprehensive coverage for mi
     it "handles errors gracefully" do
       allow(Dir).to receive(:home).and_raise(StandardError, "Home error")
 
-      result = variables.send(:collect_user_variables)
+      result = variables.send(:_collect_user_variables)
       expect(result[:error]).to include("Failed to collect user variables")
     end
   end
 
-  describe "#collect_git_variables" do
+  describe "#_collect_git_variables" do
     before do
       # Create a git repository structure
       Dir.chdir(project_path) do
@@ -170,7 +170,7 @@ RSpec.describe Sxn::Templates::TemplateVariables, "comprehensive coverage for mi
     end
 
     it "returns git repository information when in git repo" do
-      result = variables.send(:collect_git_variables)
+      result = variables.send(:_collect_git_variables)
 
       expect(result).to be_a(Hash)
       # Git variables may include branch info, author info, etc.
@@ -195,7 +195,7 @@ RSpec.describe Sxn::Templates::TemplateVariables, "comprehensive coverage for mi
       # Ensure git_repository? returns false for the non-git path by stubbing find_git_directory
       allow(variables_non_git).to receive(:find_git_directory).and_return(nil)
       
-      result = variables_non_git.send(:collect_git_variables)
+      result = variables_non_git.send(:_collect_git_variables)
 
       expect(result).to eq({ available: false })
 
@@ -205,17 +205,17 @@ RSpec.describe Sxn::Templates::TemplateVariables, "comprehensive coverage for mi
     it "handles git command errors gracefully" do
       allow(variables).to receive(:execute_git_command).and_raise(StandardError, "Git error")
 
-      result = variables.send(:collect_git_variables)
+      result = variables.send(:_collect_git_variables)
       expect(result[:error]).to include("Failed to collect git variables")
     end
   end
 
-  describe "#collect_timestamp_variables" do
+  describe "#_collect_timestamp_variables" do
     it "returns timestamp information" do
       freeze_time = Time.new(2023, 6, 15, 14, 30, 0)
       allow(Time).to receive(:now).and_return(freeze_time)
 
-      result = variables.send(:collect_timestamp_variables)
+      result = variables.send(:_collect_timestamp_variables)
 
       expect(result).to include(:now, :iso8601, :today, :year, :month, :day, :epoch)
       expect(result[:today]).to eq("2023-06-15")
@@ -265,7 +265,7 @@ RSpec.describe Sxn::Templates::TemplateVariables, "comprehensive coverage for mi
       test_variables = described_class.new(mock_session, mock_project)
       allow(test_variables).to receive(:detect_project_type).and_raise(StandardError, "Detection error")
 
-      result = test_variables.send(:collect_project_variables)
+      result = test_variables.send(:_collect_project_variables)
       expect(result[:error]).to include("Failed to collect project variables")
     end
   end
