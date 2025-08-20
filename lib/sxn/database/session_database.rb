@@ -122,7 +122,7 @@ module Sxn
         filters ||= {}
         limit = limit.to_i if limit
         offset = offset.to_i if offset
-        
+
         query_parts = ["SELECT * FROM sessions"]
         params = []
 
@@ -636,7 +636,7 @@ module Sxn
             param.to_s
           end
         end
-        
+
         connection.execute(sql, sanitized_params)
       rescue SQLite3::MismatchException => e
         # Log the error with details for debugging
