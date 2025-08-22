@@ -21,6 +21,12 @@ module Sxn
 
     def current: () -> void
 
+    def remove: (?String? session_name) -> void
+
+    def archive: (?String? session_name) -> void
+
+    def activate: (?String? session_name) -> void
+
     def projects: (?String? subcommand, *String args) -> void
 
     def sessions: (?String? subcommand, *String args) -> void

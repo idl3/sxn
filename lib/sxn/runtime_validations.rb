@@ -6,6 +6,10 @@ module Sxn
     class << self
       # Validate Thor command arguments at runtime
       def validate_thor_arguments(command_name, args, options, validations)
+        # Ensure args and options are not nil
+        args ||= []
+        options ||= {}
+        
         # Validate argument count
         if validations[:args]
           count_range = validations[:args][:count]
@@ -23,7 +27,7 @@ module Sxn
         end
 
         # Validate options
-        if validations[:options]
+        if validations[:options] && options.respond_to?(:each)
           options.each do |key, value|
             validate_option_type(command_name, key, value, validations[:options][key.to_sym]) if validations[:options][key.to_sym]
           end

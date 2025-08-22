@@ -13,6 +13,42 @@ rescue LoadError
   # RSpec not available
 end
 
+# Parallel testing tasks
+begin
+  require "parallel_tests/tasks"
+rescue LoadError
+  # parallel_tests not available
+end
+
+namespace :parallel do
+  desc "Run specs in parallel"
+  task :spec do
+    sh "bundle exec parallel_rspec spec/"
+  end
+  
+  desc "Run specs in parallel with coverage"
+  task :spec_with_coverage do
+    ENV["ENABLE_SIMPLECOV"] = "true"
+    sh "bundle exec parallel_rspec spec/"
+  end
+  
+  desc "Setup parallel test databases (if needed)"
+  task :setup do
+    puts "No database setup needed for this project"
+  end
+  
+  desc "Run specs in parallel with custom processor count"
+  task :spec_custom, [:processors] do |_t, args|
+    processors = args[:processors] || 4
+    sh "bundle exec parallel_rspec -n #{processors} spec/"
+  end
+  
+  desc "Generate parallel test runtime log"
+  task :generate_runtime do
+    sh "bundle exec parallel_rspec spec/ --format ParallelTests::RSpec::RuntimeLogger --out tmp/parallel_runtime_rspec.log"
+  end
+end
+
 # Type checking tasks
 namespace :rbs do
   desc "Validate RBS files syntax"

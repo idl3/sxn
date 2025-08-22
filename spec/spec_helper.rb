@@ -8,6 +8,12 @@ if ENV["ENABLE_SIMPLECOV"] == "true"
   # Always run SimpleCov for coverage analysis
   # Fix for SimpleCov formatter errors with Ruby 3.4.5
   if defined?(SimpleCov)
+    # Configure SimpleCov for parallel tests
+    if ENV["TEST_ENV_NUMBER"]
+      SimpleCov.command_name "RSpec_#{ENV['TEST_ENV_NUMBER']}"
+      SimpleCov.merge_timeout 3600
+    end
+    
     SimpleCov.formatter = SimpleCov::Formatter::MultiFormatter.new([
                                                                      SimpleCov::Formatter::HTMLFormatter,
                                                                      SimpleCov::Formatter::Console
