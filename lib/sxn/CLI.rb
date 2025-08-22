@@ -78,6 +78,28 @@ module Sxn
       handle_error(e)
     end
 
+    desc "remove SESSION_NAME", "Remove a session (shortcut for 'sxn sessions remove')"
+    option :force, type: :boolean, aliases: "-f", desc: "Force removal even with uncommitted changes"
+    def remove(session_name)
+      Commands::Sessions.new.remove(session_name)
+    rescue Sxn::Error => e
+      handle_error(e)
+    end
+
+    desc "archive SESSION_NAME", "Archive a session (shortcut for 'sxn sessions archive')"
+    def archive(session_name)
+      Commands::Sessions.new.archive(session_name)
+    rescue Sxn::Error => e
+      handle_error(e)
+    end
+
+    desc "activate SESSION_NAME", "Activate an archived session (shortcut for 'sxn sessions activate')"
+    def activate(session_name)
+      Commands::Sessions.new.activate(session_name)
+    rescue Sxn::Error => e
+      handle_error(e)
+    end
+
     desc "projects SUBCOMMAND", "Manage project configurations"
     def projects(subcommand = nil, *args)
       Commands::Projects.start([subcommand, *args].compact)

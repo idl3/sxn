@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "thor"
+require "time"
 
 module Sxn
   module Commands
@@ -259,8 +260,8 @@ module Sxn
 
         @ui.key_value("Linear Task", session[:linear_task]) if session[:linear_task]
 
-        @ui.key_value("Created", session[:created_at] || "Unknown")
-        @ui.key_value("Updated", session[:updated_at] || "Unknown")
+        @ui.key_value("Created", format_timestamp(session[:created_at]))
+        @ui.key_value("Updated", format_timestamp(session[:updated_at]))
 
         if verbose && session[:projects]&.any?
           @ui.newline
@@ -294,6 +295,19 @@ module Sxn
       def suggest_create_session
         @ui.newline
         @ui.recovery_suggestion("Create your first session with 'sxn add <session-name>'")
+      end
+
+      def format_timestamp(timestamp)
+        return "Unknown" if timestamp.nil? || timestamp.empty?
+        
+        # Parse the ISO8601 timestamp and convert to local time
+        time = Time.parse(timestamp)
+        local_time = time.localtime
+        
+        # Format as "YYYY-MM-DD HH:MM:SS AM/PM Timezone"
+        local_time.strftime("%Y-%m-%d %I:%M:%S %p %Z")
+      rescue ArgumentError
+        timestamp # Return original if parsing fails
       end
     end
   end
