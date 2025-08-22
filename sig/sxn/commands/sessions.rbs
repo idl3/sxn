@@ -57,6 +57,10 @@ module Sxn
 
       # Suggest creating a session
       def suggest_create_session: () -> void
+
+      # Format a timestamp string to local timezone
+      # @param timestamp ISO8601 timestamp string
+      def format_timestamp: (String? timestamp) -> String
     end
   end
 end
