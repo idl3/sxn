@@ -40,7 +40,7 @@ jobs:
           CI_NODE_INDEX: ${{ matrix.ci_node_index }}
           RAILS_ENV: test
         run: |
-          bundle exec parallel_test spec/ \
+          bundle exec parallel_test spec/unit spec/integration spec/performance \
             --type rspec \
             --only-group ${{ matrix.ci_node_index + 1 }} \
             --runtime-log tmp/parallel_runtime_rspec.log

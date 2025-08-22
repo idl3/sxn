@@ -2,3 +2,4 @@
 --color
 --format documentation
 --order random
+--pattern '**/*_spec.rb'

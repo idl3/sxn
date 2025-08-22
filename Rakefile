@@ -23,13 +23,13 @@ end
 namespace :parallel do
   desc "Run specs in parallel"
   task :spec do
-    sh "bundle exec parallel_rspec spec/"
+    sh "bundle exec parallel_rspec spec/unit spec/integration spec/performance"
   end
   
   desc "Run specs in parallel with coverage"
   task :spec_with_coverage do
     ENV["ENABLE_SIMPLECOV"] = "true"
-    sh "bundle exec parallel_rspec spec/"
+    sh "bundle exec parallel_rspec spec/unit spec/integration spec/performance"
   end
   
   desc "Setup parallel test databases (if needed)"
@@ -40,12 +40,12 @@ namespace :parallel do
   desc "Run specs in parallel with custom processor count"
   task :spec_custom, [:processors] do |_t, args|
     processors = args[:processors] || 4
-    sh "bundle exec parallel_rspec -n #{processors} spec/"
+    sh "bundle exec parallel_rspec -n #{processors} spec/unit spec/integration spec/performance"
   end
   
   desc "Generate parallel test runtime log"
   task :generate_runtime do
-    sh "bundle exec parallel_rspec spec/ --format ParallelTests::RSpec::RuntimeLogger --out tmp/parallel_runtime_rspec.log"
+    sh "bundle exec parallel_rspec spec/unit spec/integration spec/performance --format ParallelTests::RSpec::RuntimeLogger --out tmp/parallel_runtime_rspec.log"
   end
 end
 

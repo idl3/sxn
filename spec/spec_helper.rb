@@ -77,6 +77,10 @@ RSpec.configure do |config|
 
   # Disable RSpec exposing methods globally on Module and main
   config.disable_monkey_patching!
+  
+  # Exclude Cucumber feature files from RSpec runs
+  config.pattern = "**/*_spec.rb"
+  config.exclude_pattern = "**/features/**/*.feature"
 
   # Use documentation format for verbose output
   config.default_formatter = "doc" if config.files_to_run.one?
