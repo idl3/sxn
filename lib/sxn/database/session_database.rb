@@ -25,7 +25,7 @@ module Sxn
     # - Bulk operations: < 100ms for 100 sessions
     class SessionDatabase
       # Current database schema version for migrations
-      SCHEMA_VERSION = 1
+      SCHEMA_VERSION = 2
 
       # Default database path relative to sxn config directory
       DEFAULT_DB_PATH = ".sxn/sessions.db"
@@ -420,12 +420,33 @@ module Sxn
       def setup_database
         current_version = get_schema_version
 
+        # Check if this is an old database without version info
+        # If sessions table exists but version is 0, it's likely an old database
+        if current_version.zero? && table_exists?("sessions")
+          # Check if it's the old schema (without worktrees/projects columns)
+          columns = connection.execute("PRAGMA table_info(sessions)").map { |col| col["name"] }
+          if !columns.include?("worktrees") || !columns.include?("projects")
+            # This is an old database, set it to version 1 so we can migrate it
+            Sxn.logger.info "Detected old database schema without version info, treating as version 1"
+            set_schema_version(1)
+            current_version = 1
+          end
+        end
+
         if current_version.zero?
           create_initial_schema
           set_schema_version(SCHEMA_VERSION)
         elsif current_version < SCHEMA_VERSION
           run_migrations(current_version)
         end
+      end
+
+      # Check if a table exists
+      def table_exists?(table_name)
+        result = connection.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", table_name)
+        !result.empty?
+      rescue SQLite3::Exception
+        false
       end
 
       # Get current schema version from database
@@ -501,10 +522,39 @@ module Sxn
       end
 
       # Run database migrations from old version to current
-      def run_migrations(_from_version)
-        # Future migrations will be implemented here
-        # For now, we only have version 1
+      def run_migrations(from_version)
+        Sxn.logger.info "Running database migrations from version #{from_version} to #{SCHEMA_VERSION}"
+
+        # Run each migration in sequence
+        migrate_to_v1 if from_version < 1
+
+        migrate_to_v2 if from_version < 2
+
         set_schema_version(SCHEMA_VERSION)
+      end
+
+      # Migration: Initial schema (v1)
+      def migrate_to_v1
+        # This is handled by create_initial_schema
+        create_initial_schema
+      end
+
+      # Migration: Add worktrees and projects columns (v2)
+      def migrate_to_v2
+        Sxn.logger.info "Migrating database to version 2: Adding worktrees and projects columns"
+
+        # Check if columns already exist
+        columns = connection.execute("PRAGMA table_info(sessions)").map { |col| col["name"] }
+
+        unless columns.include?("worktrees")
+          connection.execute("ALTER TABLE sessions ADD COLUMN worktrees TEXT")
+          Sxn.logger.info "Added worktrees column to sessions table"
+        end
+
+        return if columns.include?("projects")
+
+        connection.execute("ALTER TABLE sessions ADD COLUMN projects TEXT")
+        Sxn.logger.info "Added projects column to sessions table"
       end
 
       # Generate secure, unique session ID
