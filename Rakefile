@@ -47,7 +47,9 @@ namespace :parallel do
   task :generate_runtime do
     puts "Generating runtime log for balanced test distribution..."
     ENV["TEST_ENV_NUMBER"] = "1"
-    sh "bundle exec rspec --format progress --format ParallelTests::RSpec::RuntimeLogger --out tmp/parallel_runtime_rspec.log spec/unit spec/integration spec/performance"
+    specs = "spec/unit spec/integration spec/performance"
+    sh "bundle exec rspec --format progress --format ParallelTests::RSpec::RuntimeLogger " \
+       "--out tmp/parallel_runtime_rspec.log #{specs}"
     puts "Runtime log generated at tmp/parallel_runtime_rspec.log"
   end
 end
