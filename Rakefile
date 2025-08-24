@@ -23,29 +23,32 @@ end
 namespace :parallel do
   desc "Run specs in parallel"
   task :spec do
-    sh "bundle exec parallel_rspec spec/unit spec/integration spec/performance"
+    sh "bundle exec parallel_rspec spec/unit spec/integration spec/performance --runtime-log tmp/parallel_runtime_rspec.log"
   end
-  
+
   desc "Run specs in parallel with coverage"
   task :spec_with_coverage do
     ENV["ENABLE_SIMPLECOV"] = "true"
-    sh "bundle exec parallel_rspec spec/unit spec/integration spec/performance"
+    sh "bundle exec parallel_rspec spec/unit spec/integration spec/performance --runtime-log tmp/parallel_runtime_rspec.log"
   end
-  
+
   desc "Setup parallel test databases (if needed)"
   task :setup do
     puts "No database setup needed for this project"
   end
-  
+
   desc "Run specs in parallel with custom processor count"
   task :spec_custom, [:processors] do |_t, args|
     processors = args[:processors] || 4
-    sh "bundle exec parallel_rspec -n #{processors} spec/unit spec/integration spec/performance"
+    sh "bundle exec parallel_rspec -n #{processors} spec/unit spec/integration spec/performance --runtime-log tmp/parallel_runtime_rspec.log"
   end
-  
+
   desc "Generate parallel test runtime log"
   task :generate_runtime do
-    sh "bundle exec parallel_rspec spec/unit spec/integration spec/performance --format ParallelTests::RSpec::RuntimeLogger --out tmp/parallel_runtime_rspec.log"
+    puts "Generating runtime log for balanced test distribution..."
+    ENV["TEST_ENV_NUMBER"] = "1"
+    sh "bundle exec rspec --format progress --format ParallelTests::RSpec::RuntimeLogger --out tmp/parallel_runtime_rspec.log spec/unit spec/integration spec/performance"
+    puts "Runtime log generated at tmp/parallel_runtime_rspec.log"
   end
 end
 

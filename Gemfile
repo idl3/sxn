@@ -12,9 +12,9 @@ gem "rubocop", "~> 1.21"
 
 # Test coverage and parallel testing
 group :test do
+  gem "parallel_tests", "~> 4.0"
   gem "simplecov", "~> 0.22", require: false
   gem "simplecov-console", require: false
-  gem "parallel_tests", "~> 4.0"
 end
 
 # Type checking dependencies

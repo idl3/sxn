@@ -10,10 +10,10 @@ if ENV["ENABLE_SIMPLECOV"] == "true"
   if defined?(SimpleCov)
     # Configure SimpleCov for parallel tests
     if ENV["TEST_ENV_NUMBER"]
-      SimpleCov.command_name "RSpec_#{ENV['TEST_ENV_NUMBER']}"
+      SimpleCov.command_name "RSpec_#{ENV["TEST_ENV_NUMBER"]}"
       SimpleCov.merge_timeout 3600
     end
-    
+
     SimpleCov.formatter = SimpleCov::Formatter::MultiFormatter.new([
                                                                      SimpleCov::Formatter::HTMLFormatter,
                                                                      SimpleCov::Formatter::Console
@@ -77,7 +77,7 @@ RSpec.configure do |config|
 
   # Disable RSpec exposing methods globally on Module and main
   config.disable_monkey_patching!
-  
+
   # Exclude Cucumber feature files from RSpec runs
   config.pattern = "**/*_spec.rb"
   config.exclude_pattern = "**/features/**/*.feature"

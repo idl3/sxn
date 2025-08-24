@@ -9,7 +9,7 @@ module Sxn
         # Ensure args and options are not nil
         args ||= []
         options ||= {}
-        
+
         # Validate argument count
         if validations[:args]
           count_range = validations[:args][:count]

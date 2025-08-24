@@ -31,8 +31,27 @@ jobs:
           ruby-version: ${{ matrix.ruby }}
           bundler-cache: true
           
+      # Restore runtime log from cache for balanced test distribution
+      - name: Restore runtime log
+        uses: actions/cache@v3
+        id: runtime-cache
+        with:
+          path: tmp/parallel_runtime_rspec.log
+          key: ${{ runner.os }}-runtime-log-${{ hashFiles('spec/**/*_spec.rb') }}
+          restore-keys: |
+            ${{ runner.os }}-runtime-log-
+            
       - name: Create tmp directory for parallel tests
         run: mkdir -p tmp
+        
+      # Generate initial runtime log if not cached
+      - name: Generate runtime log if missing
+        if: steps.runtime-cache.outputs.cache-hit != 'true'
+        env:
+          TEST_ENV_NUMBER: 1
+        run: |
+          echo "No runtime log found in cache, generating initial runtime log..."
+          bundle exec rspec --format progress --format ParallelTests::RSpec::RuntimeLogger --out tmp/parallel_runtime_rspec.log spec/unit spec/integration spec/performance || true
         
       - name: Run parallel tests
         env:
@@ -54,6 +73,14 @@ jobs:
             tmp/parallel_runtime_rspec.log
             coverage/
           retention-days: 7
+          
+      # Save updated runtime log for next run (only from first node to avoid conflicts)
+      - name: Save runtime log
+        if: always() && matrix.ci_node_index == 0
+        uses: actions/cache@v3
+        with:
+          path: tmp/parallel_runtime_rspec.log
+          key: ${{ runner.os }}-runtime-log-${{ hashFiles('spec/**/*_spec.rb') }}
 
   # Separate job for linting and type checking
   lint:

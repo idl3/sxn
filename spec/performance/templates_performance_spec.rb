@@ -215,27 +215,27 @@ RSpec.describe "Templates Performance", :performance do
       # Measure multiple runs to get a more stable average
       first_times = []
       cached_times = []
-      
+
       5.times do
         # Clear cache for fresh validation
         security.instance_variable_set(:@validation_cache, {})
-        
+
         start_time = Time.now
         security.validate_template(template, variables)
         first_times << (Time.now - start_time)
-        
+
         # Second validation (should be cached)
         start_time = Time.now
         security.validate_template(template, variables)
         cached_times << (Time.now - start_time)
       end
-      
+
       avg_first = first_times.sum / first_times.size
       avg_cached = cached_times.sum / cached_times.size
-      
+
       # Allow 20% tolerance for performance variance
       expect(avg_cached).to be <= (avg_first * 1.2),
-                                "Cached validation should be reasonably fast: #{avg_cached}s vs #{avg_first}s"
+                            "Cached validation should be reasonably fast: #{avg_cached}s vs #{avg_first}s"
     end
   end
 
