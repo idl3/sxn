@@ -20,7 +20,7 @@ RSpec.describe "Database Module Comprehensive Coverage" do
     end
 
     it "has correct schema version constant" do
-      expect(Sxn::Database::SessionDatabase::SCHEMA_VERSION).to eq(1)
+      expect(Sxn::Database::SessionDatabase::SCHEMA_VERSION).to eq(2)
     end
 
     it "has correct default database path constant" do
