@@ -73,7 +73,9 @@ module Sxn
     desc "remove [SESSION_NAME]", "Remove a session (shortcut for 'sxn sessions remove')"
     option :force, type: :boolean, aliases: "-f", desc: "Force removal even with uncommitted changes"
     def remove(session_name = nil)
-      Commands::Sessions.new.remove(session_name)
+      cmd = Commands::Sessions.new
+      cmd.options = options
+      cmd.remove(session_name)
     rescue Sxn::Error => e
       handle_error(e)
     end

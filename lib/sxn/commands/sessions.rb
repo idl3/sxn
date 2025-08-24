@@ -80,7 +80,8 @@ module Sxn
           name = @prompt.select("Select session to remove:", choices)
         end
 
-        unless @prompt.confirm_deletion(name, "session")
+        # Skip confirmation if force flag is used
+        if !options[:force] && !@prompt.confirm_deletion(name, "session")
           @ui.info("Cancelled")
           return
         end
@@ -299,11 +300,11 @@ module Sxn
 
       def format_timestamp(timestamp)
         return "Unknown" if timestamp.nil? || timestamp.empty?
-        
+
         # Parse the ISO8601 timestamp and convert to local time
         time = Time.parse(timestamp)
         local_time = time.localtime
-        
+
         # Format as "YYYY-MM-DD HH:MM:SS AM/PM Timezone"
         local_time.strftime("%Y-%m-%d %I:%M:%S %p %Z")
       rescue ArgumentError
