@@ -223,3 +223,7 @@ Bug reports and pull requests are welcome on GitHub at https://github.com/yourus
 ## License
 
 The gem is available as open source under the terms of the [MIT License](LICENSE.txt).
+
+## Author's Note
+
+This is a personal project that leverages Claude Code as the primary and active developer. As we continue to refine the development process and iron out any kinks, you can expect builds to gradually become more stable. Your patience and feedback are greatly appreciated as we evolve this tool together.
