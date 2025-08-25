@@ -1,10 +1,10 @@
-# Sxn
+# sxn
 
 [![CI](https://github.com/idl3/sxn/actions/workflows/ci.yml/badge.svg)](https://github.com/idl3/sxn/actions/workflows/ci.yml)
 [![Ruby Version](https://img.shields.io/badge/ruby-3.2%2B-red)](https://www.ruby-lang.org)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE.txt)
 
-Sxn is a powerful session management tool for multi-repository development. It helps developers manage complex development environments with multiple git repositories, providing isolated workspaces, automatic project setup, and intelligent session management.
+sxn is a powerful session management tool for multi-repository development. It helps developers manage complex development environments with multiple git repositories, providing isolated workspaces, automatic project setup, and intelligent session management.
 
 ## Features
 
@@ -38,7 +38,7 @@ gem install sxn
 
 ## Quick Start
 
-### Initialize Sxn in your workspace
+### Initialize sxn in your workspace
 
 ```bash
 sxn init
@@ -135,7 +135,7 @@ sxn rules apply my-app
 
 ## Configuration
 
-Sxn stores its configuration in `.sxn/config.yml` in your workspace:
+sxn stores its configuration in `.sxn/config.yml` in your workspace:
 
 ```yaml
 sessions_folder: .sxn-sessions
@@ -168,7 +168,7 @@ rules:
 
 ## Templates
 
-Sxn includes templates for common project types:
+sxn includes templates for common project types:
 
 - **Rails**: CLAUDE.md, database.yml, session-info.md
 - **JavaScript**: README.md, session-info.md
