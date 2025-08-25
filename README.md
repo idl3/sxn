@@ -183,14 +183,17 @@ After checking out the repo, run `bin/setup` to install dependencies. Then, run 
 ### Running Tests
 
 ```bash
-# Run all tests
+# Run all tests in parallel (recommended for speed)
+bundle exec parallel_rspec spec/
+
+# Run all tests sequentially
 bundle exec rspec
 
 # Run only unit tests
 bundle exec rspec spec/unit
 
 # Run with coverage
-ENABLE_SIMPLECOV=true bundle exec rspec
+ENABLE_SIMPLECOV=true bundle exec parallel_rspec spec/
 ```
 
 ### Type Checking
