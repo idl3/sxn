@@ -161,15 +161,22 @@ RSpec.describe Sxn::Core::ConfigManager do
         config_manager.initialize_project(sessions_folder)
       end
 
-      it "returns config through discovery" do
+      it "returns config through discovery as OpenStruct" do
         discovery_double = instance_double(Sxn::Config::ConfigDiscovery)
-        expected_config = { "test" => "config" }
+        config_hash = { "test" => "config", "nested" => { "value" => "data" } }
 
         allow(Sxn::Config::ConfigDiscovery).to receive(:new).with(temp_dir).and_return(discovery_double)
-        allow(discovery_double).to receive(:discover_config).and_return(expected_config)
+        allow(discovery_double).to receive(:discover_config).and_return(config_hash)
 
         result = config_manager.get_config
-        expect(result).to eq(expected_config)
+        
+        # Verify it returns an OpenStruct
+        expect(result).to be_a(OpenStruct)
+        expect(result.test).to eq("config")
+        
+        # Verify nested values are also OpenStruct
+        expect(result.nested).to be_a(OpenStruct)
+        expect(result.nested.value).to eq("data")
       end
     end
   end

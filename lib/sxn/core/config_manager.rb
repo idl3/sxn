@@ -3,6 +3,7 @@
 require "fileutils"
 require "yaml"
 require "pathname"
+require "ostruct"
 
 module Sxn
   module Core
@@ -40,7 +41,10 @@ module Sxn
         raise Sxn::ConfigurationError, "Project not initialized. Run 'sxn init' first." unless initialized?
 
         discovery = Sxn::Config::ConfigDiscovery.new(@base_path)
-        discovery.discover_config
+        config_hash = discovery.discover_config
+
+        # Convert nested hashes to OpenStruct recursively
+        config_to_struct(config_hash)
       end
 
       def update_current_session(session_name)
@@ -193,6 +197,14 @@ module Sxn
       end
 
       private
+
+      def config_to_struct(obj)
+        return obj unless obj.is_a?(Hash)
+
+        OpenStruct.new(
+          obj.transform_values { |v| config_to_struct(v) }
+        )
+      end
 
       def sessions_folder_relative_path
         return ".sxn" unless @sessions_folder
