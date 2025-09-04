@@ -27,6 +27,15 @@ module Sxn
 
         # Use default branch if not specified
         branch ||= project[:default_branch] || "master"
+        
+        if ENV["SXN_DEBUG"]
+          puts "[DEBUG] Adding worktree:"
+          puts "  Project: #{project_name}"
+          puts "  Project path: #{project[:path]}"
+          puts "  Session: #{session_name}"
+          puts "  Session path: #{session[:path]}"
+          puts "  Branch: #{branch}"
+        end
 
         # Check if worktree already exists in this session
         existing_worktrees = @session_manager.get_session_worktrees(session_name)
@@ -37,6 +46,10 @@ module Sxn
 
         # Create worktree path
         worktree_path = File.join(session[:path], project_name)
+        
+        if ENV["SXN_DEBUG"]
+          puts "  Worktree path: #{worktree_path}"
+        end
 
         begin
           # Create the worktree
@@ -183,8 +196,39 @@ module Sxn
                   ["git", "worktree", "add", "-b", branch, worktree_path]
                 end
 
-          success = system(*cmd, out: File::NULL, err: File::NULL)
-          raise "Git worktree command failed" unless success
+          # Capture stderr for better error messages
+          require 'open3'
+          stdout, stderr, status = Open3.capture3(*cmd)
+          
+          unless status.success?
+            error_msg = stderr.empty? ? stdout : stderr
+            error_msg = "Git worktree command failed" if error_msg.strip.empty?
+            
+            # Add more context to common errors
+            if error_msg.include?("already exists")
+              error_msg += "\nTry removing the existing worktree first with: sxn worktree remove #{File.basename(worktree_path)}"
+            elsif error_msg.include?("is already checked out")
+              error_msg += "\nThis branch is already checked out in another worktree"
+            elsif error_msg.include?("not a git repository")
+              error_msg = "Project '#{File.basename(project_path)}' is not a git repository"
+            elsif error_msg.include?("fatal: invalid reference")
+              # This typically means the branch doesn't exist and we're trying to create from a non-existent base
+              error_msg += "\nMake sure the repository has at least one commit or specify an existing branch"
+            elsif error_msg.include?("fatal:")
+              # Extract just the fatal error message for cleaner output
+              error_msg = error_msg.lines.grep(/fatal:/).first&.strip || error_msg
+            end
+            
+            if ENV["SXN_DEBUG"]
+              puts "[DEBUG] Git worktree command failed:"
+              puts "  Command: #{cmd.join(' ')}"
+              puts "  Directory: #{project_path}"
+              puts "  STDOUT: #{stdout}"
+              puts "  STDERR: #{stderr}"
+            end
+            
+            raise error_msg
+          end
         end
       end
 
