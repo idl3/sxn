@@ -178,9 +178,74 @@ Templates use Liquid syntax and have access to session, project, and environment
 
 ## Development
 
-After checking out the repo, run `bin/setup` to install dependencies. Then, run `rake spec` to run the tests.
+### Setup
 
-### Running Tests
+After cloning the repository, run:
+
+```bash
+bundle install
+./script/setup-hooks  # Set up git hooks for automated checks
+```
+
+### Testing and Code Quality
+
+**Important**: All code must pass tests and linting before being pushed to the repository.
+
+#### Running Tests
+
+```bash
+# Run all tests
+bundle exec rspec
+
+# Run tests in parallel (faster)
+bundle exec rake parallel:spec
+
+# Run with coverage report
+bundle exec rake parallel:spec_with_coverage
+```
+
+#### Code Style
+
+```bash
+# Check code style
+bundle exec rubocop
+
+# Auto-fix code style issues
+bundle exec rubocop -a
+```
+
+#### Git Hooks
+
+The project includes a pre-push hook that automatically runs RuboCop and RSpec before allowing pushes. To set it up:
+
+```bash
+./script/setup-hooks
+```
+
+To bypass hooks in emergency situations (not recommended):
+```bash
+git push --no-verify
+```
+
+### Development Workflow
+
+1. Make your changes
+2. Run `bundle exec rubocop -a` to fix any style issues
+3. Run `bundle exec rspec` to ensure tests pass
+4. Commit your changes
+5. Push (pre-push hooks will run automatically)
+
+### Contributing
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Make your changes
+4. Ensure tests pass and code style is correct
+5. Commit your changes with meaningful commit messages
+6. Push to the branch (`git push origin feature/amazing-feature`)
+7. Open a Pull Request
+
+### Additional Testing Options
 
 ```bash
 # Run all tests in parallel (recommended for speed)

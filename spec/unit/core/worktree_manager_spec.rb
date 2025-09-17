@@ -737,10 +737,10 @@ RSpec.describe Sxn::Core::WorktreeManager do
         allow(worktree_manager).to receive(:`).with("git worktree list --porcelain 2>/dev/null").and_return("worktree #{worktree_path}")
         allow(worktree_manager).to receive(:system).with("git worktree remove --force #{worktree_path}", out: File::NULL, err: File::NULL).and_return(true)
         allow(FileUtils).to receive(:rm_rf)
-        
+
         # Call the private method
         worktree_manager.send(:handle_orphaned_worktree, project_path, worktree_path)
-        
+
         # Verify calls were made
         expect(worktree_manager).to have_received(:system).with("git worktree prune", out: File::NULL, err: File::NULL)
         expect(FileUtils).to have_received(:rm_rf).with(worktree_path)
@@ -760,7 +760,7 @@ RSpec.describe Sxn::Core::WorktreeManager do
           "git branch --track feature-branch origin/feature-branch",
           out: File::NULL, err: File::NULL
         ).and_return(true)
-        
+
         expect do
           worktree_manager.send(:fetch_remote_branch, project_path, "feature-branch")
         end.not_to raise_error
@@ -774,7 +774,7 @@ RSpec.describe Sxn::Core::WorktreeManager do
           "git show-ref --verify --quiet refs/remotes/origin/nonexistent",
           out: File::NULL, err: File::NULL
         ).and_return(false)
-        
+
         expect do
           worktree_manager.send(:fetch_remote_branch, project_path, "nonexistent")
         end.to raise_error("Remote branch 'nonexistent' not found on any remote")
@@ -783,7 +783,7 @@ RSpec.describe Sxn::Core::WorktreeManager do
       it "raises error when git fetch fails" do
         allow(Dir).to receive(:chdir).and_yield
         allow(worktree_manager).to receive(:system).with("git fetch --all", out: File::NULL, err: File::NULL).and_return(false)
-        
+
         expect do
           worktree_manager.send(:fetch_remote_branch, project_path, "feature-branch")
         end.to raise_error("Failed to fetch remote branches")
@@ -795,9 +795,9 @@ RSpec.describe Sxn::Core::WorktreeManager do
         allow(worktree_manager).to receive(:fetch_remote_branch)
         allow(worktree_manager).to receive(:handle_orphaned_worktree)
         allow(worktree_manager).to receive(:create_git_worktree)
-        
+
         worktree_manager.add_worktree("test-project", "remote:feature-branch")
-        
+
         expect(worktree_manager).to have_received(:fetch_remote_branch).with(project_data[:path], "feature-branch")
         expect(mock_session_manager).to have_received(:add_worktree_to_session)
           .with("test-session", "test-project", worktree_path, "feature-branch")
@@ -805,7 +805,7 @@ RSpec.describe Sxn::Core::WorktreeManager do
 
       it "wraps remote branch errors in WorktreeCreationError" do
         allow(worktree_manager).to receive(:fetch_remote_branch).and_raise("Remote error")
-        
+
         expect do
           worktree_manager.add_worktree("test-project", "remote:bad-branch")
         end.to raise_error(Sxn::WorktreeCreationError, /Failed to fetch remote branch/)
@@ -817,7 +817,7 @@ RSpec.describe Sxn::Core::WorktreeManager do
         allow(ENV).to receive(:[]).with("SXN_DEBUG").and_return("true")
         allow(worktree_manager).to receive(:handle_orphaned_worktree)
         allow(worktree_manager).to receive(:create_git_worktree)
-        
+
         expect do
           worktree_manager.add_worktree("test-project", "test-branch")
         end.to output(/\[DEBUG\] Adding worktree/).to_stdout
