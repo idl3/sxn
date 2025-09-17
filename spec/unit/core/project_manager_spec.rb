@@ -764,7 +764,7 @@ RSpec.describe Sxn::Core::ProjectManager do
           expect(%w[feature-branch master]).to include(branch)
         end
 
-        it "returns master when in empty repo (detached HEAD state)" do
+        it "returns default branch when in empty repo (detached HEAD state)" do
           empty_git_path = File.join(temp_dir, "empty_git")
           FileUtils.mkdir_p(empty_git_path)
 
@@ -776,7 +776,8 @@ RSpec.describe Sxn::Core::ProjectManager do
           end
 
           branch = project_manager.send(:detect_default_branch, empty_git_path)
-          expect(branch).to eq("master")
+          # Modern git uses "main" as default, older versions use "master"
+          expect(%w[main master]).to include(branch)
         end
 
         it "handles StandardError exceptions gracefully" do
