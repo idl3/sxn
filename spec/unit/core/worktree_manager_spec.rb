@@ -100,22 +100,23 @@ RSpec.describe Sxn::Core::WorktreeManager do
 
   describe "#add_worktree" do
     it "creates worktree successfully" do
-      result = worktree_manager.add_worktree("test-project", "main")
+      # Use a different branch name since "main" might already be checked out
+      result = worktree_manager.add_worktree("test-project", "feature-branch")
 
       expect(result[:project]).to eq("test-project")
-      expect(result[:branch]).to eq("main")
+      expect(result[:branch]).to eq("feature-branch")
       expect(result[:path]).to eq(worktree_path)
       expect(result[:session]).to eq("test-session")
 
       expect(mock_session_manager).to have_received(:add_worktree_to_session)
-        .with("test-session", "test-project", worktree_path, "main")
+        .with("test-session", "test-project", worktree_path, "feature-branch")
     end
 
-    it "uses default branch when none specified" do
+    it "uses session name as default branch when none specified" do
       worktree_manager.add_worktree("test-project")
 
       expect(mock_session_manager).to have_received(:add_worktree_to_session)
-        .with("test-session", "test-project", worktree_path, "main")
+        .with("test-session", "test-project", worktree_path, "test-session")
     end
 
     it "uses specified session" do
@@ -123,10 +124,10 @@ RSpec.describe Sxn::Core::WorktreeManager do
         { name: "custom-session", path: File.join(temp_dir, "custom_session") }
       )
 
-      worktree_manager.add_worktree("test-project", "main", session_name: "custom-session")
+      worktree_manager.add_worktree("test-project", "feature-branch", session_name: "custom-session")
 
       expect(mock_session_manager).to have_received(:add_worktree_to_session)
-        .with("custom-session", "test-project", anything, "main")
+        .with("custom-session", "test-project", anything, "feature-branch")
     end
 
     it "raises error when no active session" do
@@ -163,8 +164,18 @@ RSpec.describe Sxn::Core::WorktreeManager do
     end
 
     it "handles git worktree creation failure" do
-      # Mock system call to fail
-      allow(worktree_manager).to receive(:system).and_return(false)
+      require "open3"
+      # Mock handle_orphaned_worktree to succeed
+      allow(worktree_manager).to receive(:handle_orphaned_worktree)
+      
+      # Mock system for branch check to return false
+      allow(worktree_manager).to receive(:system).with(
+        /git show-ref/, out: File::NULL, err: File::NULL
+      ).and_return(false)
+      
+      # Mock Open3.capture3 to return failure status
+      status = double("status", success?: false)
+      allow(Open3).to receive(:capture3).and_return(["", "Git command failed", status])
 
       expect do
         worktree_manager.add_worktree("test-project")
@@ -172,16 +183,20 @@ RSpec.describe Sxn::Core::WorktreeManager do
     end
 
     it "creates new branch when branch doesn't exist" do
+      require "open3"
+      # Mock handle_orphaned_worktree
+      allow(worktree_manager).to receive(:handle_orphaned_worktree)
+      
       # Mock git show-ref to return false (branch doesn't exist)
       allow(worktree_manager).to receive(:system).with(
         /git show-ref/, out: File::NULL, err: File::NULL
       ).and_return(false)
 
-      # Mock successful worktree creation
-      allow(worktree_manager).to receive(:system).with(
-        "git", "worktree", "add", "-b", "new-branch", worktree_path,
-        out: File::NULL, err: File::NULL
-      ).and_return(true)
+      # Mock successful worktree creation with Open3
+      status = double("status", success?: true)
+      allow(Open3).to receive(:capture3).with(
+        "git", "worktree", "add", "-b", "new-branch", worktree_path
+      ).and_return(["", "", status])
 
       result = worktree_manager.add_worktree("test-project", "new-branch")
       expect(result[:branch]).to eq("new-branch")
@@ -457,20 +472,22 @@ RSpec.describe Sxn::Core::WorktreeManager do
     end
 
     describe "#add_worktree edge cases" do
-      it "uses master as default branch when project has no default_branch" do
+      it "uses session name as default branch when project has no default_branch" do
         project_without_default = project_data.merge(default_branch: nil)
         allow(mock_project_manager).to receive(:get_project).and_return(project_without_default)
 
-        # Mock git commands to succeed
-        allow(worktree_manager).to receive(:system).and_return(true)
+        # Mock the entire worktree creation process
+        allow(worktree_manager).to receive(:handle_orphaned_worktree)
+        allow(worktree_manager).to receive(:create_git_worktree)
 
         worktree_manager.add_worktree("test-project")
 
         expect(mock_session_manager).to have_received(:add_worktree_to_session)
-          .with("test-session", "test-project", worktree_path, "master")
+          .with("test-session", "test-project", worktree_path, "test-session")
       end
 
       it "cleans up on failure" do
+        allow(worktree_manager).to receive(:handle_orphaned_worktree) # Mock the new method
         allow(worktree_manager).to receive(:create_git_worktree).and_raise("Git failed")
         allow(File).to receive(:exist?).with(worktree_path).and_return(true)
         allow(FileUtils).to receive(:rm_rf)
@@ -479,7 +496,7 @@ RSpec.describe Sxn::Core::WorktreeManager do
           worktree_manager.add_worktree("test-project")
         end.to raise_error(Sxn::WorktreeCreationError)
 
-        expect(FileUtils).to have_received(:rm_rf).with(worktree_path)
+        expect(FileUtils).to have_received(:rm_rf).with(worktree_path).at_least(:once)
       end
     end
 
@@ -694,15 +711,17 @@ RSpec.describe Sxn::Core::WorktreeManager do
 
     describe "#create_git_worktree edge cases" do
       it "handles existing branch" do
-        # Mock successful branch check and worktree creation
+        require "open3"
+        # Mock successful branch check
         allow(worktree_manager).to receive(:system).with(
           /git show-ref/, out: File::NULL, err: File::NULL
         ).and_return(true) # Branch exists
 
-        allow(worktree_manager).to receive(:system).with(
-          "git", "worktree", "add", worktree_path, "existing-branch",
-          out: File::NULL, err: File::NULL
-        ).and_return(true)
+        # Mock successful worktree creation with Open3
+        status = double("status", success?: true)
+        allow(Open3).to receive(:capture3).with(
+          "git", "worktree", "add", worktree_path, "existing-branch"
+        ).and_return(["", "", status])
 
         expect do
           worktree_manager.send(:create_git_worktree, project_path, worktree_path, "existing-branch")

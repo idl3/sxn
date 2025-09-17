@@ -19,7 +19,25 @@ module Sxn
         @worktree_manager = Sxn::Core::WorktreeManager.new(@config_manager, @session_manager)
       end
 
-      desc "add PROJECT [BRANCH]", "Add worktree to current session"
+      desc "add PROJECT [BRANCH]", "Add worktree to current session (defaults branch to session name)"
+      long_desc <<-DESC
+        Add a worktree for a project to the current session.
+
+        Branch options:
+        - No branch specified: Uses the session name as the branch name
+        - Branch name: Creates or checks out the specified branch
+        - remote:<branch>: Fetches and tracks the remote branch
+
+        Examples:
+        - sxn worktree add atlas-core
+          Creates worktree with branch name matching current session
+
+        - sxn worktree add atlas-core feature-branch
+          Creates worktree with specified branch name
+
+        - sxn worktree add atlas-core remote:origin/main
+          Fetches and tracks the remote branch
+      DESC
       option :session, type: :string, aliases: "-s", desc: "Target session (defaults to current)"
       option :apply_rules, type: :boolean, default: true, desc: "Apply project rules after creation"
       option :interactive, type: :boolean, aliases: "-i", desc: "Interactive mode"
@@ -33,10 +51,11 @@ module Sxn
           return if project_name.nil?
         end
 
-        # Interactive branch selection if not provided
+        # Interactive branch selection if not provided and interactive mode
+        # Note: If branch is nil, WorktreeManager will use session name as default
         if options[:interactive] && branch.nil?
-          project = @project_manager.get_project(project_name)
-          branch = @prompt.branch_name("Enter branch name:", default: project[:default_branch])
+          session_name = options[:session] || @config_manager.current_session
+          branch = @prompt.branch_name("Enter branch name:", default: session_name)
         end
 
         session_name = options[:session] || @config_manager.current_session

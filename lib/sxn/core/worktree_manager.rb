@@ -25,9 +25,22 @@ module Sxn
         project = @project_manager.get_project(project_name)
         raise Sxn::ProjectNotFoundError, "Project '#{project_name}' not found" unless project
 
-        # Use default branch if not specified
-        branch ||= project[:default_branch] || "master"
-        
+        # Determine branch name
+        # If no branch specified, use session name as the branch name
+        # If branch starts with "remote:", handle remote branch tracking
+        if branch.nil?
+          branch = session_name
+        elsif branch.start_with?("remote:")
+          remote_branch = branch.sub("remote:", "")
+          # Fetch the remote branch first
+          begin
+            fetch_remote_branch(project[:path], remote_branch)
+            branch = remote_branch
+          rescue StandardError => e
+            raise Sxn::WorktreeCreationError, "Failed to fetch remote branch: #{e.message}"
+          end
+        end
+
         if ENV["SXN_DEBUG"]
           puts "[DEBUG] Adding worktree:"
           puts "  Project: #{project_name}"
@@ -46,12 +59,13 @@ module Sxn
 
         # Create worktree path
         worktree_path = File.join(session[:path], project_name)
-        
-        if ENV["SXN_DEBUG"]
-          puts "  Worktree path: #{worktree_path}"
-        end
+
+        puts "  Worktree path: #{worktree_path}" if ENV["SXN_DEBUG"]
 
         begin
+          # Handle orphaned worktree if it exists
+          handle_orphaned_worktree(project[:path], worktree_path)
+
           # Create the worktree
           create_git_worktree(project[:path], worktree_path, branch)
 
@@ -182,6 +196,47 @@ module Sxn
 
       private
 
+      def handle_orphaned_worktree(project_path, worktree_path)
+        Dir.chdir(project_path) do
+          # Try to prune worktrees first
+          system("git worktree prune", out: File::NULL, err: File::NULL)
+
+          # Check if this worktree is registered (whether it exists or not)
+          output = `git worktree list --porcelain 2>/dev/null`
+          if output.include?(worktree_path)
+            # Force remove the orphaned/existing worktree
+            system("git worktree remove --force #{Shellwords.escape(worktree_path)}", out: File::NULL, err: File::NULL)
+          end
+        end
+
+        # Remove the directory if it still exists
+        FileUtils.rm_rf(worktree_path)
+      end
+
+      def fetch_remote_branch(project_path, branch_name)
+        Dir.chdir(project_path) do
+          # First, fetch all remotes to ensure we have the latest branches
+          raise "Failed to fetch remote branches" unless system("git fetch --all", out: File::NULL, err: File::NULL)
+
+          # Check if the branch exists on any remote
+          remotes = `git remote`.lines.map(&:strip)
+          branch_found = false
+
+          remotes.each do |remote|
+            next unless system("git show-ref --verify --quiet refs/remotes/#{remote}/#{Shellwords.escape(branch_name)}",
+                               out: File::NULL, err: File::NULL)
+
+            branch_found = true
+            # Set up tracking for the remote branch
+            system("git branch --track #{Shellwords.escape(branch_name)} #{remote}/#{Shellwords.escape(branch_name)}",
+                   out: File::NULL, err: File::NULL)
+            break
+          end
+
+          raise "Remote branch '#{branch_name}' not found on any remote" unless branch_found
+        end
+      end
+
       def create_git_worktree(project_path, worktree_path, branch)
         Dir.chdir(project_path) do
           # Check if branch exists
@@ -197,13 +252,13 @@ module Sxn
                 end
 
           # Capture stderr for better error messages
-          require 'open3'
+          require "open3"
           stdout, stderr, status = Open3.capture3(*cmd)
-          
+
           unless status.success?
             error_msg = stderr.empty? ? stdout : stderr
             error_msg = "Git worktree command failed" if error_msg.strip.empty?
-            
+
             # Add more context to common errors
             if error_msg.include?("already exists")
               error_msg += "\nTry removing the existing worktree first with: sxn worktree remove #{File.basename(worktree_path)}"
@@ -218,15 +273,15 @@ module Sxn
               # Extract just the fatal error message for cleaner output
               error_msg = error_msg.lines.grep(/fatal:/).first&.strip || error_msg
             end
-            
+
             if ENV["SXN_DEBUG"]
               puts "[DEBUG] Git worktree command failed:"
-              puts "  Command: #{cmd.join(' ')}"
+              puts "  Command: #{cmd.join(" ")}"
               puts "  Directory: #{project_path}"
               puts "  STDOUT: #{stdout}"
               puts "  STDERR: #{stderr}"
             end
-            
+
             raise error_msg
           end
         end
