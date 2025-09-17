@@ -729,6 +729,101 @@ RSpec.describe Sxn::Core::WorktreeManager do
       end
     end
 
+    describe "#handle_orphaned_worktree" do
+      it "prunes and removes orphaned worktrees" do
+        # Setup mocks for the private method
+        allow(Dir).to receive(:chdir).and_yield
+        allow(worktree_manager).to receive(:system).with("git worktree prune", out: File::NULL, err: File::NULL).and_return(true)
+        allow(worktree_manager).to receive(:`).with("git worktree list --porcelain 2>/dev/null").and_return("worktree #{worktree_path}")
+        allow(worktree_manager).to receive(:system).with("git worktree remove --force #{worktree_path}", out: File::NULL, err: File::NULL).and_return(true)
+        allow(FileUtils).to receive(:rm_rf)
+        
+        # Call the private method
+        worktree_manager.send(:handle_orphaned_worktree, project_path, worktree_path)
+        
+        # Verify calls were made
+        expect(worktree_manager).to have_received(:system).with("git worktree prune", out: File::NULL, err: File::NULL)
+        expect(FileUtils).to have_received(:rm_rf).with(worktree_path)
+      end
+    end
+
+    describe "#fetch_remote_branch" do
+      it "fetches and tracks remote branch successfully" do
+        allow(Dir).to receive(:chdir).and_yield
+        allow(worktree_manager).to receive(:system).with("git fetch --all", out: File::NULL, err: File::NULL).and_return(true)
+        allow(worktree_manager).to receive(:`).with("git remote").and_return("origin\n")
+        allow(worktree_manager).to receive(:system).with(
+          "git show-ref --verify --quiet refs/remotes/origin/feature-branch",
+          out: File::NULL, err: File::NULL
+        ).and_return(true)
+        allow(worktree_manager).to receive(:system).with(
+          "git branch --track feature-branch origin/feature-branch",
+          out: File::NULL, err: File::NULL
+        ).and_return(true)
+        
+        expect do
+          worktree_manager.send(:fetch_remote_branch, project_path, "feature-branch")
+        end.not_to raise_error
+      end
+
+      it "raises error when remote branch not found" do
+        allow(Dir).to receive(:chdir).and_yield
+        allow(worktree_manager).to receive(:system).with("git fetch --all", out: File::NULL, err: File::NULL).and_return(true)
+        allow(worktree_manager).to receive(:`).with("git remote").and_return("origin\n")
+        allow(worktree_manager).to receive(:system).with(
+          "git show-ref --verify --quiet refs/remotes/origin/nonexistent",
+          out: File::NULL, err: File::NULL
+        ).and_return(false)
+        
+        expect do
+          worktree_manager.send(:fetch_remote_branch, project_path, "nonexistent")
+        end.to raise_error("Remote branch 'nonexistent' not found on any remote")
+      end
+
+      it "raises error when git fetch fails" do
+        allow(Dir).to receive(:chdir).and_yield
+        allow(worktree_manager).to receive(:system).with("git fetch --all", out: File::NULL, err: File::NULL).and_return(false)
+        
+        expect do
+          worktree_manager.send(:fetch_remote_branch, project_path, "feature-branch")
+        end.to raise_error("Failed to fetch remote branches")
+      end
+    end
+
+    describe "#add_worktree with remote branch" do
+      it "handles remote: prefix for branch tracking" do
+        allow(worktree_manager).to receive(:fetch_remote_branch)
+        allow(worktree_manager).to receive(:handle_orphaned_worktree)
+        allow(worktree_manager).to receive(:create_git_worktree)
+        
+        worktree_manager.add_worktree("test-project", "remote:feature-branch")
+        
+        expect(worktree_manager).to have_received(:fetch_remote_branch).with(project_data[:path], "feature-branch")
+        expect(mock_session_manager).to have_received(:add_worktree_to_session)
+          .with("test-session", "test-project", worktree_path, "feature-branch")
+      end
+
+      it "wraps remote branch errors in WorktreeCreationError" do
+        allow(worktree_manager).to receive(:fetch_remote_branch).and_raise("Remote error")
+        
+        expect do
+          worktree_manager.add_worktree("test-project", "remote:bad-branch")
+        end.to raise_error(Sxn::WorktreeCreationError, /Failed to fetch remote branch/)
+      end
+    end
+
+    describe "#add_worktree with debug output" do
+      it "outputs debug information when SXN_DEBUG is set" do
+        allow(ENV).to receive(:[]).with("SXN_DEBUG").and_return("true")
+        allow(worktree_manager).to receive(:handle_orphaned_worktree)
+        allow(worktree_manager).to receive(:create_git_worktree)
+        
+        expect do
+          worktree_manager.add_worktree("test-project", "test-branch")
+        end.to output(/\[DEBUG\] Adding worktree/).to_stdout
+      end
+    end
+
     describe "#check_git_status edge cases" do
       it "detects detached HEAD state" do
         test_path = File.join(temp_dir, "detached_head_test")
