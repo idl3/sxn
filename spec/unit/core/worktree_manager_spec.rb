@@ -167,12 +167,12 @@ RSpec.describe Sxn::Core::WorktreeManager do
       require "open3"
       # Mock handle_orphaned_worktree to succeed
       allow(worktree_manager).to receive(:handle_orphaned_worktree)
-      
+
       # Mock system for branch check to return false
       allow(worktree_manager).to receive(:system).with(
         /git show-ref/, out: File::NULL, err: File::NULL
       ).and_return(false)
-      
+
       # Mock Open3.capture3 to return failure status
       status = double("status", success?: false)
       allow(Open3).to receive(:capture3).and_return(["", "Git command failed", status])
@@ -186,7 +186,7 @@ RSpec.describe Sxn::Core::WorktreeManager do
       require "open3"
       # Mock handle_orphaned_worktree
       allow(worktree_manager).to receive(:handle_orphaned_worktree)
-      
+
       # Mock git show-ref to return false (branch doesn't exist)
       allow(worktree_manager).to receive(:system).with(
         /git show-ref/, out: File::NULL, err: File::NULL

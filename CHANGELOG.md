@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.3] - 2025-09-16
+
+### Added
+- Smart branch defaults: worktrees now use session name as default branch
+- Remote branch tracking with `remote:` prefix syntax (e.g., `sxn worktree add project remote:origin/feature`)
+- Automatic orphaned worktree recovery and cleanup
+- Enhanced error messages with actionable suggestions
+
+### Changed
+- Improved worktree creation logic to handle existing/orphaned states
+- Better error handling for remote branch operations
+- Updated CLI documentation with new branch options
+
+### Fixed
+- Orphaned worktree cleanup now works for both existing and missing directories
+- Worktree creation properly handles branch conflicts
+- Test suite compatibility with new worktree features
+
 ## [0.2.1] - 2025-01-20
 
 ### Fixed
@@ -53,5 +71,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial placeholder release
 - Basic gem structure
 
+[0.2.3]: https://github.com/idl3/sxn/compare/v0.2.1...v0.2.3
+[0.2.1]: https://github.com/idl3/sxn/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/idl3/sxn/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/idl3/sxn/releases/tag/v0.1.0

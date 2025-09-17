@@ -169,11 +169,11 @@ RSpec.describe Sxn::Core::ConfigManager do
         allow(discovery_double).to receive(:discover_config).and_return(config_hash)
 
         result = config_manager.get_config
-        
+
         # Verify it returns an OpenStruct
         expect(result).to be_a(OpenStruct)
         expect(result.test).to eq("config")
-        
+
         # Verify nested values are also OpenStruct
         expect(result.nested).to be_a(OpenStruct)
         expect(result.nested.value).to eq("data")
