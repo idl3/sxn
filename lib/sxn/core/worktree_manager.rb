@@ -14,7 +14,7 @@ module Sxn
         @project_manager = ProjectManager.new(@config_manager)
       end
 
-      def add_worktree(project_name, branch = nil, session_name: nil)
+      def add_worktree(project_name, branch = nil, session_name: nil, verbose: false)
         # Use current session if not specified
         session_name ||= @config_manager.current_session
         raise Sxn::NoActiveSessionError, "No active session. Use 'sxn use <session>' first." unless session_name
@@ -67,7 +67,7 @@ module Sxn
           handle_orphaned_worktree(project[:path], worktree_path)
 
           # Create the worktree
-          create_git_worktree(project[:path], worktree_path, branch)
+          create_git_worktree(project[:path], worktree_path, branch, verbose: verbose)
 
           # Register worktree with session
           @session_manager.add_worktree_to_session(session_name, project_name, worktree_path, branch)
@@ -81,6 +81,11 @@ module Sxn
         rescue StandardError => e
           # Clean up on failure
           FileUtils.rm_rf(worktree_path)
+
+          # If it's already our error with details, re-raise it
+          raise e if e.is_a?(Sxn::WorktreeCreationError)
+
+          # Otherwise wrap it
           raise Sxn::WorktreeCreationError, "Failed to create worktree: #{e.message}"
         end
       end
@@ -237,7 +242,7 @@ module Sxn
         end
       end
 
-      def create_git_worktree(project_path, worktree_path, branch)
+      def create_git_worktree(project_path, worktree_path, branch, verbose: false)
         Dir.chdir(project_path) do
           # Check if branch exists
           branch_exists = system("git show-ref --verify --quiet refs/heads/#{Shellwords.escape(branch)}",
@@ -274,15 +279,35 @@ module Sxn
               error_msg = error_msg.lines.grep(/fatal:/).first&.strip || error_msg
             end
 
-            if ENV["SXN_DEBUG"]
-              puts "[DEBUG] Git worktree command failed:"
-              puts "  Command: #{cmd.join(" ")}"
-              puts "  Directory: #{project_path}"
-              puts "  STDOUT: #{stdout}"
-              puts "  STDERR: #{stderr}"
+            details = []
+            details << "Command: #{cmd.join(" ")}"
+            details << "Working directory: #{project_path}"
+            details << "Target path: #{worktree_path}"
+            details << "Branch: #{branch}"
+            details << ""
+            details << "Git output:"
+            details << "STDOUT: #{stdout.strip.empty? ? "(empty)" : stdout}"
+            details << "STDERR: #{stderr.strip.empty? ? "(empty)" : stderr}"
+            details << "Exit status: #{status.exitstatus}"
+
+            # Check for common issues
+            if !File.directory?(project_path)
+              details << "\n⚠️  Project directory does not exist: #{project_path}"
+            elsif !File.directory?(File.join(project_path, ".git"))
+              details << "\n⚠️  Not a git repository: #{project_path}"
+              details << "    This might be a git submodule. Try:"
+              details << "    1. Ensure the project path points to the submodule directory"
+              details << "    2. Check if 'git submodule update --init' has been run"
             end
 
-            raise error_msg
+            details << "\n⚠️  Target path already exists: #{worktree_path}" if File.exist?(worktree_path)
+
+            if ENV["SXN_DEBUG"] || verbose
+              puts "[DEBUG] Git worktree command failed:"
+              details.each { |line| puts "  #{line}" }
+            end
+
+            raise Sxn::WorktreeCreationError.new(error_msg, details: details.join("\n"))
           end
         end
       end

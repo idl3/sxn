@@ -41,6 +41,7 @@ module Sxn
       option :session, type: :string, aliases: "-s", desc: "Target session (defaults to current)"
       option :apply_rules, type: :boolean, default: true, desc: "Apply project rules after creation"
       option :interactive, type: :boolean, aliases: "-i", desc: "Interactive mode"
+      option :verbose, type: :boolean, aliases: "-v", desc: "Show detailed output for debugging"
 
       def add(project_name = nil, branch = nil)
         ensure_initialized!
@@ -66,12 +67,16 @@ module Sxn
         end
 
         begin
+          # Enable debug mode if verbose flag is set
+          ENV["SXN_DEBUG"] = "true" if options[:verbose]
+
           @ui.progress_start("Creating worktree for #{project_name}")
 
           worktree = @worktree_manager.add_worktree(
             project_name,
             branch,
-            session_name: session_name
+            session_name: session_name,
+            verbose: options[:verbose]
           )
 
           @ui.progress_done
@@ -84,7 +89,18 @@ module Sxn
         rescue Sxn::Error => e
           @ui.progress_failed
           @ui.error(e.message)
+
+          if options[:verbose] && e.respond_to?(:details)
+            @ui.newline
+            @ui.subsection("Debug Information")
+            @ui.info(e.details)
+          elsif !options[:verbose]
+            @ui.recovery_suggestion("Run with --verbose flag for more details")
+          end
+
           exit(e.exit_code)
+        ensure
+          ENV.delete("SXN_DEBUG") if options[:verbose]
         end
       end
 

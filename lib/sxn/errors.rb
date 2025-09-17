@@ -37,7 +37,16 @@ module Sxn
   class WorktreeError < GitError; end
   class WorktreeExistsError < WorktreeError; end
   class WorktreeNotFoundError < WorktreeError; end
-  class WorktreeCreationError < WorktreeError; end
+
+  class WorktreeCreationError < WorktreeError
+    attr_reader :details
+
+    def initialize(message, details: nil)
+      super(message)
+      @details = details
+    end
+  end
+
   class WorktreeRemovalError < WorktreeError; end
   class BranchError < GitError; end
 
