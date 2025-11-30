@@ -10,6 +10,8 @@ RSpec.describe Sxn::Commands::Sessions do
   let(:mock_table) { instance_double(Sxn::UI::Table) }
   let(:config_manager) { instance_double(Sxn::Core::ConfigManager) }
   let(:session_manager) { instance_double(Sxn::Core::SessionManager) }
+  let(:project_manager) { instance_double(Sxn::Core::ProjectManager) }
+  let(:worktree_manager) { instance_double(Sxn::Core::WorktreeManager) }
 
   let(:sample_session) do
     {
@@ -32,6 +34,11 @@ RSpec.describe Sxn::Commands::Sessions do
     allow(Sxn::UI::Table).to receive(:new).and_return(mock_table)
     allow(Sxn::Core::ConfigManager).to receive(:new).and_return(config_manager)
     allow(Sxn::Core::SessionManager).to receive(:new).and_return(session_manager)
+    allow(Sxn::Core::ProjectManager).to receive(:new).and_return(project_manager)
+    allow(Sxn::Core::WorktreeManager).to receive(:new).and_return(worktree_manager)
+
+    # Default project manager setup - empty projects means wizard is skipped
+    allow(project_manager).to receive(:list_projects).and_return([])
 
     # Default mock setup
     allow(config_manager).to receive(:initialized?).and_return(true)
@@ -95,11 +102,13 @@ RSpec.describe Sxn::Commands::Sessions do
         )
         expect(session_manager).to have_received(:use_session).with("test-session")
         expect(mock_ui).to have_received(:success).with("Created session 'test-session'")
-        expect(mock_ui).to have_received(:success).with("Activated session 'test-session'")
+        expect(mock_ui).to have_received(:success).with("Switched to session 'test-session'")
       end
 
-      it "creates session without activation when --no-activate option" do
+      it "always activates session even when --no-activate option is used" do
+        # New behavior: sessions are always activated when created
         allow(session_manager).to receive(:create_session).and_return(sample_session)
+        allow(session_manager).to receive(:use_session)
         allow(session_manager).to receive(:get_session).and_return(sample_session)
 
         options = Thor::CoreExt::HashWithIndifferentAccess.new
@@ -111,8 +120,9 @@ RSpec.describe Sxn::Commands::Sessions do
         command.add("test-session")
 
         expect(session_manager).to have_received(:create_session)
-        expect(session_manager).not_to have_received(:use_session)
+        expect(session_manager).to have_received(:use_session).with("test-session")
         expect(mock_ui).to have_received(:success).with("Created session 'test-session'")
+        expect(mock_ui).to have_received(:success).with("Switched to session 'test-session'")
       end
 
       it "creates session with description and linear task options" do

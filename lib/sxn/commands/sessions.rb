@@ -16,12 +16,15 @@ module Sxn
         @table = Sxn::UI::Table.new
         @config_manager = Sxn::Core::ConfigManager.new
         @session_manager = Sxn::Core::SessionManager.new(@config_manager)
+        @project_manager = Sxn::Core::ProjectManager.new(@config_manager)
+        @worktree_manager = Sxn::Core::WorktreeManager.new(@config_manager, @session_manager)
       end
 
       desc "add NAME", "Create a new session"
       option :description, type: :string, aliases: "-d", desc: "Session description"
       option :linear_task, type: :string, aliases: "-l", desc: "Linear task ID"
       option :activate, type: :boolean, default: true, desc: "Activate session after creation"
+      option :skip_worktree, type: :boolean, default: false, desc: "Skip worktree creation wizard"
 
       def add(name = nil)
         ensure_initialized!
@@ -44,12 +47,14 @@ module Sxn
           @ui.progress_done
           @ui.success("Created session '#{name}'")
 
-          if options[:activate]
-            @session_manager.use_session(name)
-            @ui.success("Activated session '#{name}'")
-          end
+          # Always activate the new session (this is the expected behavior)
+          @session_manager.use_session(name)
+          @ui.success("Switched to session '#{name}'")
 
           display_session_info(session)
+
+          # Offer to add a worktree unless skipped
+          offer_worktree_wizard(name) unless options[:skip_worktree]
         rescue Sxn::Error => e
           @ui.progress_failed
           @ui.error(e.message)
@@ -309,6 +314,124 @@ module Sxn
         local_time.strftime("%Y-%m-%d %I:%M:%S %p %Z")
       rescue ArgumentError
         timestamp # Return original if parsing fails
+      end
+
+      def offer_worktree_wizard(session_name)
+        @ui.newline
+        @ui.section("Add Worktree")
+
+        # Check if there are any projects configured
+        projects = @project_manager.list_projects
+        if projects.empty?
+          @ui.info("No projects configured yet.")
+          @ui.recovery_suggestion("Add projects with 'sxn projects add <name> <path>'")
+          return
+        end
+
+        # Ask if user wants to add a worktree
+        return unless @prompt.ask_yes_no("Would you like to add a worktree to this session?", default: true)
+
+        # Step 1: Select project with descriptions
+        @ui.newline
+        @ui.info("A worktree is a linked copy of a project that allows you to work on a branch")
+        @ui.info("without affecting the main repository. Select which project to add:")
+        @ui.newline
+
+        project_choices = projects.map do |p|
+          {
+            name: "#{p[:name]} (#{p[:type]}) - #{p[:path]}",
+            value: p[:name]
+          }
+        end
+        project_name = @prompt.select("Select project:", project_choices)
+
+        # Step 2: Get branch name with explanation
+        @ui.newline
+        @ui.info("Enter the branch name for this worktree.")
+        @ui.info("This can be an existing branch or a new one to create.")
+        @ui.info("Tip: Use 'remote:<branch>' to track a remote branch (e.g., 'remote:origin/main')")
+        @ui.newline
+
+        branch = @prompt.branch_name(
+          "Branch name:",
+          default: session_name
+        )
+
+        # Step 3: Create the worktree
+        create_worktree_for_session(project_name, branch, session_name)
+
+        # Offer to add more worktrees
+        add_more_worktrees(session_name)
+      end
+
+      def create_worktree_for_session(project_name, branch, session_name)
+        @ui.newline
+        @ui.progress_start("Creating worktree for #{project_name}")
+
+        worktree = @worktree_manager.add_worktree(
+          project_name,
+          branch,
+          session_name: session_name
+        )
+
+        @ui.progress_done
+        @ui.success("Created worktree for #{project_name}")
+
+        display_worktree_info(worktree)
+
+        # Apply rules
+        apply_project_rules(project_name, session_name)
+      rescue Sxn::Error => e
+        @ui.progress_failed
+        @ui.error(e.message)
+        @ui.recovery_suggestion("You can try again with 'sxn worktree add #{project_name}'")
+      end
+
+      def add_more_worktrees(session_name)
+        projects = @project_manager.list_projects
+        return if projects.empty?
+
+        while @prompt.ask_yes_no("Would you like to add another worktree?", default: false)
+          @ui.newline
+
+          project_choices = projects.map do |p|
+            {
+              name: "#{p[:name]} (#{p[:type]}) - #{p[:path]}",
+              value: p[:name]
+            }
+          end
+          project_name = @prompt.select("Select project:", project_choices)
+
+          branch = @prompt.branch_name(
+            "Branch name:",
+            default: session_name
+          )
+
+          create_worktree_for_session(project_name, branch, session_name)
+        end
+      end
+
+      def display_worktree_info(worktree)
+        @ui.newline
+        @ui.key_value("Project", worktree[:project])
+        @ui.key_value("Branch", worktree[:branch])
+        @ui.key_value("Path", worktree[:path])
+      end
+
+      def apply_project_rules(project_name, session_name)
+        rules_manager = Sxn::Core::RulesManager.new(@config_manager, @project_manager)
+
+        @ui.progress_start("Applying rules for #{project_name}")
+        results = rules_manager.apply_rules(project_name, session_name)
+        @ui.progress_done
+
+        if results[:success]
+          @ui.success("Applied #{results[:applied_count]} rules") if results[:applied_count].positive?
+        else
+          @ui.warning("Some rules failed to apply")
+        end
+      rescue StandardError => e
+        @ui.warning("Could not apply rules: #{e.message}")
       end
     end
   end
