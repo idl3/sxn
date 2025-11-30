@@ -8,7 +8,8 @@ RSpec.describe Sxn::VERSION do
   end
 
   it "follows semantic versioning format" do
-    expect(Sxn::VERSION).to match(/\A\d+\.\d+\.\d+(\.\w+)?\z/)
+    # Supports standard semver with optional pre-release suffix (e.g., 0.2.3, 0.2.3-alpha)
+    expect(Sxn::VERSION).to match(/\A\d+\.\d+\.\d+(-[\w.]+)?\z/)
   end
 
   it "is not empty" do
@@ -20,7 +21,7 @@ RSpec.describe Sxn::VERSION do
   end
 
   it "has a valid version value" do
-    expect(Sxn::VERSION).to eq("0.2.3")
+    expect(Sxn::VERSION).to eq("0.2.3-alpha")
   end
 end
 

@@ -193,7 +193,7 @@ module Sxn
 
         # Get project-specific rules from config
         config = @config_manager.get_config
-        project_config = config.projects[name]
+        project_config = config.projects&.fetch(name, nil)
 
         rules = project_config&.dig("rules") || {}
 

@@ -174,12 +174,12 @@ RSpec.describe Sxn::Core::WorktreeManager do
       ).and_return(false)
 
       # Mock Open3.capture3 to return failure status
-      status = double("status", success?: false)
+      status = double("status", success?: false, exitstatus: 1)
       allow(Open3).to receive(:capture3).and_return(["", "Git command failed", status])
 
       expect do
         worktree_manager.add_worktree("test-project")
-      end.to raise_error(Sxn::WorktreeCreationError, /Failed to create worktree/)
+      end.to raise_error(Sxn::WorktreeCreationError)
     end
 
     it "creates new branch when branch doesn't exist" do

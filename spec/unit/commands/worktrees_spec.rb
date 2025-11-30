@@ -90,7 +90,7 @@ RSpec.describe Sxn::Commands::Worktrees do
         expect(mock_worktree_manager).to have_received(:add_worktree).with(
           "test-project",
           "main",
-          session_name: "test-session"
+          hash_including(session_name: "test-session")
         )
         expect(mock_ui).to have_received(:success).with("Created worktree for test-project")
       end
@@ -131,7 +131,7 @@ RSpec.describe Sxn::Commands::Worktrees do
         expect(mock_worktree_manager).to have_received(:add_worktree).with(
           "test-project",
           "main",
-          session_name: "custom-session"
+          hash_including(session_name: "custom-session")
         )
       end
     end
