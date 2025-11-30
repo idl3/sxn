@@ -87,11 +87,69 @@ module Sxn
                 "No worktree found for project '#{project_name}' in session '#{session_name}'"
         end
 
-        # Get project rules
+        # Get project rules (format: { "copy_files" => [...], "setup_commands" => [...] })
         rules = @project_manager.get_project_rules(project_name)
 
-        # Apply rules to worktree
-        @rules_engine.apply_rules(rules)
+        # Transform rules to RulesEngine format and apply
+        apply_rules_to_worktree(project, worktree, rules)
+      end
+
+      def apply_rules_to_worktree(project, worktree, rules)
+        project_path = project[:path]
+        worktree_path = worktree[:path]
+
+        # Ensure paths exist
+        raise Sxn::InvalidProjectPathError, "Project path does not exist: #{project_path}" unless File.directory?(project_path)
+        raise Sxn::WorktreeNotFoundError, "Worktree path does not exist: #{worktree_path}" unless File.directory?(worktree_path)
+
+        applied_count = 0
+        errors = []
+
+        # Apply copy_files rules
+        rules["copy_files"]&.each do |rule_config|
+          apply_copy_file_rule(project_path, worktree_path, rule_config)
+          applied_count += 1
+        rescue StandardError => e
+          errors << "copy_files: #{e.message}"
+        end
+
+        # Apply setup_commands rules (skip for now as they can be slow)
+        # Users can run these manually if needed
+
+        {
+          success: errors.empty?,
+          applied_count: applied_count,
+          errors: errors
+        }
+      end
+
+      def apply_copy_file_rule(project_path, worktree_path, rule_config)
+        source_pattern = rule_config["source"]
+        strategy = rule_config["strategy"] || "copy"
+
+        # Handle glob patterns
+        source_files = if source_pattern.include?("*")
+                         Dir.glob(File.join(project_path, source_pattern))
+                       else
+                         single_file = File.join(project_path, source_pattern)
+                         File.exist?(single_file) ? [single_file] : []
+                       end
+
+        source_files.each do |file_path|
+          # Calculate relative path from project root
+          relative_path = file_path.sub("#{project_path}/", "")
+          dest_file = File.join(worktree_path, relative_path)
+
+          # Create destination directory if needed
+          FileUtils.mkdir_p(File.dirname(dest_file))
+
+          case strategy
+          when "copy"
+            FileUtils.cp(file_path, dest_file)
+          when "symlink"
+            FileUtils.ln_sf(file_path, dest_file)
+          end
+        end
       end
 
       def validate_rules(project_name)

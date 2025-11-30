@@ -193,9 +193,26 @@ module Sxn
 
         # Get project-specific rules from config
         config = @config_manager.get_config
-        project_config = config.projects&.fetch(name, nil)
 
-        rules = project_config&.dig("rules") || {}
+        # Handle both OpenStruct and Hash for projects config
+        projects = config.projects
+        project_config = if projects.is_a?(OpenStruct)
+                           projects.to_h[name.to_sym] || projects.to_h[name]
+                         elsif projects.is_a?(Hash)
+                           projects[name]
+                         end
+
+        # Extract rules, handling both OpenStruct and Hash
+        rules = if project_config.is_a?(OpenStruct)
+                  project_config.to_h[:rules] || project_config.to_h["rules"] || {}
+                elsif project_config.is_a?(Hash)
+                  project_config["rules"] || project_config[:rules] || {}
+                else
+                  {}
+                end
+
+        # Convert OpenStruct rules to hash if needed
+        rules = rules.to_h if rules.is_a?(OpenStruct)
 
         # Add default rules based on project type
         default_rules = get_default_rules_for_type(project[:type])

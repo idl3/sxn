@@ -259,8 +259,10 @@ RSpec.describe Sxn::Core::RulesManager do
   end
 
   describe "#apply_rules" do
+    let(:temp_project_dir) { Dir.mktmpdir("project") }
+    let(:temp_worktree_dir) { Dir.mktmpdir("worktree") }
     let(:session_data) { { name: "test-session", path: "/session/path" } }
-    let(:worktree_data) { { project: "test-project", path: "/worktree/path" } }
+    let(:worktree_data) { { project: "test-project", path: temp_worktree_dir } }
     let(:mock_session_manager) do
       instance_double(Sxn::Core::SessionManager).tap do |mgr|
         allow(mgr).to receive(:get_session).and_return(session_data)
@@ -275,20 +277,35 @@ RSpec.describe Sxn::Core::RulesManager do
     before do
       allow(Sxn::Core::SessionManager).to receive(:new).and_return(mock_session_manager)
       allow(Sxn::Core::WorktreeManager).to receive(:new).and_return(mock_worktree_manager)
-    end
-
-    it "applies rules successfully" do
-      project_rules = { "copy_files" => [{ "source" => "test.txt" }] }
-      allow(mock_project_manager).to receive(:get_project_rules).and_return(project_rules)
-
-      rules_manager.apply_rules("test-project")
-
-      expect(mock_rules_engine).to have_received(:apply_rules).with(
-        project_rules
+      # Update project_data to use temp directory
+      allow(mock_project_manager).to receive(:get_project).and_return(
+        { name: "test-project", path: temp_project_dir, type: "rails" }
       )
     end
 
+    after do
+      FileUtils.rm_rf(temp_project_dir)
+      FileUtils.rm_rf(temp_worktree_dir)
+    end
+
+    it "applies rules successfully" do
+      # Create a test file in the project directory
+      File.write(File.join(temp_project_dir, "test.txt"), "test content")
+
+      project_rules = { "copy_files" => [{ "source" => "test.txt" }] }
+      allow(mock_project_manager).to receive(:get_project_rules).and_return(project_rules)
+
+      result = rules_manager.apply_rules("test-project")
+
+      expect(result[:success]).to be true
+      expect(result[:applied_count]).to eq(1)
+      expect(File.exist?(File.join(temp_worktree_dir, "test.txt"))).to be true
+    end
+
     it "uses specified session" do
+      project_rules = { "copy_files" => [] }
+      allow(mock_project_manager).to receive(:get_project_rules).and_return(project_rules)
+
       rules_manager.apply_rules("test-project", "custom-session")
 
       expect(mock_session_manager).to have_received(:get_session).with("custom-session")
