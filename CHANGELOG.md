@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.4] - 2025-11-30
+
+### Added
+- Interactive worktree wizard after session creation
+  - Prompts to add worktrees with descriptive explanations
+  - Supports adding multiple worktrees in sequence
+  - Explains branch options including remote tracking syntax
+- `--skip-worktree` flag to bypass the wizard when creating sessions
+- `--verbose` flag for worktree debugging with detailed git output
+
+### Changed
+- Sessions now automatically switch to newly created session (no need to run `sxn use` afterwards)
+- Improved project manager to safely handle nil projects configuration
+
+### Fixed
+- Fixed test mocks for verbose parameter in worktree operations
+- Fixed version spec to support semver pre-release format
+
 ## [0.2.3] - 2025-09-16
 
 ### Added
@@ -71,6 +89,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial placeholder release
 - Basic gem structure
 
+[0.2.4]: https://github.com/idl3/sxn/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/idl3/sxn/compare/v0.2.1...v0.2.3
 [0.2.1]: https://github.com/idl3/sxn/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/idl3/sxn/compare/v0.1.0...v0.2.0

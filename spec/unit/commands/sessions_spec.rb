@@ -195,6 +195,129 @@ RSpec.describe Sxn::Commands::Sessions do
         expect(mock_ui).to have_received(:error).with("Session already exists")
       end
     end
+
+    context "with worktree wizard" do
+      let(:sample_projects) do
+        [
+          { name: "project1", type: "rails", path: "/path/to/project1" },
+          { name: "project2", type: "node", path: "/path/to/project2" }
+        ]
+      end
+
+      let(:sample_worktree) do
+        { project: "project1", branch: "test-session", path: "/path/to/worktree" }
+      end
+
+      before do
+        allow(session_manager).to receive(:create_session).and_return(sample_session)
+        allow(session_manager).to receive(:use_session)
+        allow(session_manager).to receive(:get_session).and_return(sample_session)
+      end
+
+      it "offers worktree wizard when projects exist" do
+        allow(project_manager).to receive(:list_projects).and_return(sample_projects)
+        allow(mock_prompt).to receive(:ask_yes_no).and_return(false)
+
+        options = Thor::CoreExt::HashWithIndifferentAccess.new
+        options[:activate] = true
+        allow(command).to receive(:options).and_return(options)
+
+        command.add("test-session")
+
+        expect(mock_ui).to have_received(:section).with("Add Worktree")
+        expect(mock_prompt).to have_received(:ask_yes_no).with(
+          "Would you like to add a worktree to this session?",
+          default: true
+        )
+      end
+
+      it "skips wizard when no projects configured" do
+        allow(project_manager).to receive(:list_projects).and_return([])
+
+        options = Thor::CoreExt::HashWithIndifferentAccess.new
+        allow(command).to receive(:options).and_return(options)
+
+        command.add("test-session")
+
+        expect(mock_ui).to have_received(:info).with("No projects configured yet.")
+        expect(mock_ui).to have_received(:recovery_suggestion).with("Add projects with 'sxn projects add <name> <path>'")
+      end
+
+      it "skips wizard when --skip-worktree option is used" do
+        allow(project_manager).to receive(:list_projects).and_return(sample_projects)
+
+        options = Thor::CoreExt::HashWithIndifferentAccess.new
+        options[:skip_worktree] = true
+        allow(command).to receive(:options).and_return(options)
+
+        command.add("test-session")
+
+        expect(mock_ui).not_to have_received(:section).with("Add Worktree")
+      end
+
+      it "creates worktree when user confirms" do
+        allow(project_manager).to receive(:list_projects).and_return(sample_projects)
+        allow(mock_prompt).to receive(:ask_yes_no).and_return(true, false) # yes to first, no to "add more"
+        allow(mock_prompt).to receive(:select).and_return("project1")
+        allow(mock_prompt).to receive(:branch_name).and_return("test-session")
+        allow(worktree_manager).to receive(:add_worktree).and_return(sample_worktree)
+
+        rules_manager = instance_double(Sxn::Core::RulesManager)
+        allow(Sxn::Core::RulesManager).to receive(:new).and_return(rules_manager)
+        allow(rules_manager).to receive(:apply_rules).and_return({ success: true, applied_count: 0 })
+
+        options = Thor::CoreExt::HashWithIndifferentAccess.new
+        allow(command).to receive(:options).and_return(options)
+
+        command.add("test-session")
+
+        expect(worktree_manager).to have_received(:add_worktree).with(
+          "project1",
+          "test-session",
+          session_name: "test-session"
+        )
+        expect(mock_ui).to have_received(:success).with("Created worktree for project1")
+      end
+
+      it "allows adding multiple worktrees" do
+        allow(project_manager).to receive(:list_projects).and_return(sample_projects)
+        allow(mock_prompt).to receive(:ask_yes_no).and_return(true, true, false) # yes, yes to add more, then no
+        allow(mock_prompt).to receive(:select).and_return("project1", "project2")
+        allow(mock_prompt).to receive(:branch_name).and_return("test-session")
+        allow(worktree_manager).to receive(:add_worktree).and_return(sample_worktree)
+
+        rules_manager = instance_double(Sxn::Core::RulesManager)
+        allow(Sxn::Core::RulesManager).to receive(:new).and_return(rules_manager)
+        allow(rules_manager).to receive(:apply_rules).and_return({ success: true, applied_count: 0 })
+
+        options = Thor::CoreExt::HashWithIndifferentAccess.new
+        allow(command).to receive(:options).and_return(options)
+
+        command.add("test-session")
+
+        expect(worktree_manager).to have_received(:add_worktree).twice
+      end
+
+      it "handles worktree creation errors gracefully" do
+        allow(project_manager).to receive(:list_projects).and_return(sample_projects)
+        allow(mock_prompt).to receive(:ask_yes_no).and_return(true, false)
+        allow(mock_prompt).to receive(:select).and_return("project1")
+        allow(mock_prompt).to receive(:branch_name).and_return("test-session")
+
+        error = Sxn::WorktreeCreationError.new("Failed to create worktree")
+        allow(worktree_manager).to receive(:add_worktree).and_raise(error)
+
+        options = Thor::CoreExt::HashWithIndifferentAccess.new
+        allow(command).to receive(:options).and_return(options)
+
+        # Should not raise - error is handled gracefully
+        command.add("test-session")
+
+        expect(mock_ui).to have_received(:progress_failed)
+        expect(mock_ui).to have_received(:error).with("Failed to create worktree")
+        expect(mock_ui).to have_received(:recovery_suggestion).with("You can try again with 'sxn worktree add project1'")
+      end
+    end
   end
 
   describe "#list" do
