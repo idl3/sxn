@@ -177,6 +177,194 @@ RSpec.describe Sxn::CLI do
     end
   end
 
+  describe "#enter" do
+    let(:sessions_command) { instance_double(Sxn::Commands::Sessions) }
+
+    before do
+      allow(Sxn::Commands::Sessions).to receive(:new).and_return(sessions_command)
+      allow(sessions_command).to receive(:enter)
+    end
+
+    it "enters the current session directory" do
+      expect(sessions_command).to receive(:enter)
+      cli.enter
+    end
+
+    it "handles enter errors" do
+      allow(sessions_command).to receive(:enter).and_raise(Sxn::SessionError, "Test error")
+      allow(cli).to receive(:exit)
+      expect(cli).to receive(:handle_error).with(instance_of(Sxn::SessionError))
+      cli.enter
+    end
+  end
+
+  describe "#up" do
+    context "when in a session directory" do
+      let(:session_config) { instance_double(Sxn::Core::SessionConfig, project_root: "/path/to/project") }
+      let(:up_cli) { described_class.new }
+
+      before do
+        allow(Sxn::Core::SessionConfig).to receive(:find_from_path).and_return(session_config)
+        allow(File).to receive(:directory?).with("/path/to/project").and_return(true)
+      end
+
+      it "outputs the cd command to project root" do
+        expect { up_cli.up }.to output(%r{cd /path/to/project}).to_stdout
+      end
+    end
+
+    context "when not in a session directory" do
+      before do
+        allow(Sxn::Core::SessionConfig).to receive(:find_from_path).and_return(nil)
+        allow(cli).to receive(:warn)
+        allow(cli).to receive(:exit).and_raise(SystemExit)
+      end
+
+      it "shows error message and exits" do
+        expect(cli).to receive(:warn).with("Not in a session directory.")
+        expect { cli.up }.to raise_error(SystemExit)
+      end
+    end
+
+    context "when project root is missing" do
+      let(:session_config) { instance_double(Sxn::Core::SessionConfig, project_root: nil, parent_sxn_path: nil) }
+
+      before do
+        allow(Sxn::Core::SessionConfig).to receive(:find_from_path).and_return(session_config)
+        allow(cli).to receive(:warn)
+        allow(cli).to receive(:exit).and_raise(SystemExit)
+      end
+
+      it "shows error message about missing project root" do
+        expect(cli).to receive(:warn).with("Could not determine project root from .sxnrc")
+        expect { cli.up }.to raise_error(SystemExit)
+      end
+    end
+
+    context "when project root directory does not exist" do
+      let(:session_config) { instance_double(Sxn::Core::SessionConfig, project_root: "/nonexistent/path", parent_sxn_path: "/some/path") }
+
+      before do
+        allow(Sxn::Core::SessionConfig).to receive(:find_from_path).and_return(session_config)
+        allow(File).to receive(:directory?).with("/nonexistent/path").and_return(false)
+        allow(cli).to receive(:warn)
+        allow(cli).to receive(:exit).and_raise(SystemExit)
+      end
+
+      it "shows error message and exits" do
+        expect(cli).to receive(:warn).with("Could not determine project root from .sxnrc")
+        expect { cli.up }.to raise_error(SystemExit)
+      end
+    end
+
+    it "handles errors gracefully" do
+      allow(Sxn::Core::SessionConfig).to receive(:find_from_path).and_raise(Sxn::SessionError, "Test error")
+      allow(cli).to receive(:exit)
+      expect(cli).to receive(:handle_error).with(instance_of(Sxn::SessionError))
+      cli.up
+    end
+  end
+
+  describe "#install_shell_wrapper" do
+    let(:init_command) { instance_double(Sxn::Commands::Init) }
+
+    before do
+      allow(Sxn::Commands::Init).to receive(:new).and_return(init_command)
+      allow(init_command).to receive(:invoke)
+    end
+
+    it "delegates to init command's install_shell" do
+      expect(init_command).to receive(:invoke).with(:install_shell, [], anything)
+      cli.install_shell_wrapper
+    end
+
+    it "handles shell installation errors" do
+      allow(init_command).to receive(:invoke).and_raise(Sxn::ConfigurationError, "Test error")
+      allow(cli).to receive(:exit)
+      expect(cli).to receive(:handle_error).with(instance_of(Sxn::ConfigurationError))
+      cli.install_shell_wrapper
+    end
+  end
+
+  describe "#remove" do
+    let(:sessions_command) { instance_double(Sxn::Commands::Sessions) }
+
+    before do
+      allow(Sxn::Commands::Sessions).to receive(:new).and_return(sessions_command)
+      allow(sessions_command).to receive(:options=)
+      allow(sessions_command).to receive(:remove)
+    end
+
+    it "removes a session by name" do
+      expect(sessions_command).to receive(:remove).with("test-session")
+      cli.remove("test-session")
+    end
+
+    it "removes a session without name (interactive)" do
+      expect(sessions_command).to receive(:remove).with(nil)
+      cli.remove
+    end
+
+    it "handles remove errors" do
+      allow(sessions_command).to receive(:remove).and_raise(Sxn::SessionError, "Test error")
+      allow(cli).to receive(:exit)
+      expect(cli).to receive(:handle_error).with(instance_of(Sxn::SessionError))
+      cli.remove("test-session")
+    end
+  end
+
+  describe "#archive" do
+    let(:sessions_command) { instance_double(Sxn::Commands::Sessions) }
+
+    before do
+      allow(Sxn::Commands::Sessions).to receive(:new).and_return(sessions_command)
+      allow(sessions_command).to receive(:archive)
+    end
+
+    it "archives a session by name" do
+      expect(sessions_command).to receive(:archive).with("test-session")
+      cli.archive("test-session")
+    end
+
+    it "archives a session without name (interactive)" do
+      expect(sessions_command).to receive(:archive).with(nil)
+      cli.archive
+    end
+
+    it "handles archive errors" do
+      allow(sessions_command).to receive(:archive).and_raise(Sxn::SessionError, "Test error")
+      allow(cli).to receive(:exit)
+      expect(cli).to receive(:handle_error).with(instance_of(Sxn::SessionError))
+      cli.archive("test-session")
+    end
+  end
+
+  describe "#activate" do
+    let(:sessions_command) { instance_double(Sxn::Commands::Sessions) }
+
+    before do
+      allow(Sxn::Commands::Sessions).to receive(:new).and_return(sessions_command)
+      allow(sessions_command).to receive(:activate)
+    end
+
+    it "activates a session by name" do
+      expect(sessions_command).to receive(:activate).with("test-session")
+      cli.activate("test-session")
+    end
+
+    it "activates a session without name (interactive)" do
+      expect(sessions_command).to receive(:activate).with(nil)
+      cli.activate
+    end
+
+    it "handles activate errors" do
+      allow(sessions_command).to receive(:activate).and_raise(Sxn::SessionError, "Test error")
+      allow(cli).to receive(:exit)
+      expect(cli).to receive(:handle_error).with(instance_of(Sxn::SessionError))
+      cli.activate("test-session")
+    end
+  end
+
   describe "#projects" do
     before do
       allow(Sxn::Commands::Projects).to receive(:start)
