@@ -8,6 +8,34 @@ module Sxn
     class Init < Thor
       include Thor::Actions
 
+      # Shell integration marker - used to identify sxn shell functions
+      SHELL_MARKER = "# sxn shell integration"
+      SHELL_MARKER_END = "# end sxn shell integration"
+
+      # Shell function that gets installed
+      SHELL_FUNCTION = <<~SHELL.freeze
+        #{SHELL_MARKER}
+        sxn-enter() {
+          local cmd
+          cmd="$(sxn enter 2>/dev/null)"
+          if [ $? -eq 0 ] && [ -n "$cmd" ]; then
+            eval "$cmd"
+          else
+            sxn enter
+          fi
+        }
+        sxn-up() {
+          local cmd
+          cmd="$(sxn up 2>/dev/null)"
+          if [ $? -eq 0 ] && [ -n "$cmd" ]; then
+            eval "$cmd"
+          else
+            sxn up
+          fi
+        }
+        #{SHELL_MARKER_END}
+      SHELL
+
       desc "init [FOLDER]", "Initialize sxn in a project folder"
       option :force, type: :boolean, desc: "Force initialization even if already initialized"
       option :auto_detect, type: :boolean, default: true, desc: "Automatically detect and register projects"
@@ -55,7 +83,115 @@ module Sxn
         end
       end
 
+      desc "install_shell", "Install shell integration (sxn-enter function)"
+      option :shell_type, type: :string, enum: %w[bash zsh auto], default: "auto",
+                          desc: "Shell type (bash, zsh, or auto-detect)"
+      option :uninstall, type: :boolean, default: false, desc: "Remove shell integration"
+      def install_shell
+        @ui.section("Shell Integration")
+
+        shell_type = detect_shell_type
+        rc_file = shell_rc_file(shell_type)
+
+        unless rc_file
+          @ui.error("Could not determine shell configuration file")
+          @ui.info("Supported shells: bash, zsh")
+          exit(1)
+        end
+
+        if options[:uninstall]
+          uninstall_shell_integration(rc_file, shell_type)
+        else
+          install_shell_integration(rc_file, shell_type)
+        end
+      end
+
       private
+
+      def detect_shell_type
+        shell_opt = options[:shell_type] || options[:shell] || "auto"
+        return shell_opt unless shell_opt == "auto"
+
+        # Check SHELL environment variable
+        current_shell = ENV.fetch("SHELL", "")
+        if current_shell.include?("zsh")
+          "zsh"
+        elsif current_shell.include?("bash")
+          "bash"
+        else
+          # Default to bash
+          "bash"
+        end
+      end
+
+      def shell_rc_file(shell_type)
+        home = Dir.home
+        case shell_type
+        when "zsh"
+          File.join(home, ".zshrc")
+        when "bash"
+          # Prefer .bashrc, fall back to .bash_profile on macOS
+          bashrc = File.join(home, ".bashrc")
+          bash_profile = File.join(home, ".bash_profile")
+          File.exist?(bashrc) ? bashrc : bash_profile
+        end
+      end
+
+      def shell_integration_installed?(rc_file)
+        return false unless File.exist?(rc_file)
+
+        content = File.read(rc_file)
+        content.include?(SHELL_MARKER)
+      end
+
+      def install_shell_integration(rc_file, _shell_type)
+        if shell_integration_installed?(rc_file)
+          @ui.info("Shell integration already installed in #{rc_file}")
+          @ui.info("Use --uninstall to remove it first if you want to reinstall")
+          return
+        end
+
+        # Ensure rc file exists
+        FileUtils.touch(rc_file) unless File.exist?(rc_file)
+
+        # Append shell function
+        File.open(rc_file, "a") do |f|
+          f.puts "" # Add blank line before
+          f.puts SHELL_FUNCTION
+        end
+
+        @ui.success("Installed shell integration to #{rc_file}")
+        @ui.newline
+        @ui.info("The following functions were added:")
+        @ui.newline
+        puts "  sxn-enter  - Navigate to current session directory"
+        puts "  sxn-up     - Navigate to project root from session"
+        @ui.newline
+        @ui.recovery_suggestion("Run 'source #{rc_file}' or restart your shell to use them")
+      end
+
+      def uninstall_shell_integration(rc_file, _shell_type)
+        unless File.exist?(rc_file)
+          @ui.info("Shell configuration file not found: #{rc_file}")
+          return
+        end
+
+        unless shell_integration_installed?(rc_file)
+          @ui.info("Shell integration not installed in #{rc_file}")
+          return
+        end
+
+        # Read file and remove sxn block
+        content = File.read(rc_file)
+        # Remove the block between markers (including blank line before)
+        pattern = /\n?#{Regexp.escape(SHELL_MARKER)}.*?#{Regexp.escape(SHELL_MARKER_END)}\n?/m
+        new_content = content.gsub(pattern, "\n")
+
+        File.write(rc_file, new_content)
+
+        @ui.success("Removed shell integration from #{rc_file}")
+        @ui.recovery_suggestion("Run 'source #{rc_file}' or restart your shell")
+      end
 
       def determine_sessions_folder(folder)
         return folder if folder && !options[:quiet]

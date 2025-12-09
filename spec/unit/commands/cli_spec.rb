@@ -55,6 +55,7 @@ RSpec.describe Sxn::CLI do
     it "provides add shortcut for sessions" do
       sessions_command = instance_double(Sxn::Commands::Sessions)
       expect(Sxn::Commands::Sessions).to receive(:new).and_return(sessions_command)
+      expect(sessions_command).to receive(:options=)
       expect(sessions_command).to receive(:add).with("test-session")
 
       cli.add("test-session")

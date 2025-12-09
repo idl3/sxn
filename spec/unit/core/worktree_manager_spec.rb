@@ -112,11 +112,26 @@ RSpec.describe Sxn::Core::WorktreeManager do
         .with("test-session", "test-project", worktree_path, "feature-branch")
     end
 
-    it "uses session name as default branch when none specified" do
+    it "uses session name as default branch when none specified and no .sxnrc exists" do
       worktree_manager.add_worktree("test-project")
 
       expect(mock_session_manager).to have_received(:add_worktree_to_session)
         .with("test-session", "test-project", worktree_path, "test-session")
+    end
+
+    it "uses default branch from .sxnrc when no branch specified" do
+      # Create .sxnrc file with default branch
+      session_config = Sxn::Core::SessionConfig.new(session_path)
+      session_config.create(
+        parent_sxn_path: "/path/to/.sxn",
+        default_branch: "feature/from-sxnrc",
+        session_name: "test-session"
+      )
+
+      worktree_manager.add_worktree("test-project")
+
+      expect(mock_session_manager).to have_received(:add_worktree_to_session)
+        .with("test-session", "test-project", worktree_path, "feature/from-sxnrc")
     end
 
     it "uses specified session" do
@@ -489,6 +504,8 @@ RSpec.describe Sxn::Core::WorktreeManager do
       it "cleans up on failure" do
         allow(worktree_manager).to receive(:handle_orphaned_worktree) # Mock the new method
         allow(worktree_manager).to receive(:create_git_worktree).and_raise("Git failed")
+        # Allow all File.exist? calls and return false for .sxnrc, true for worktree_path
+        allow(File).to receive(:exist?).and_call_original
         allow(File).to receive(:exist?).with(worktree_path).and_return(true)
         allow(FileUtils).to receive(:rm_rf)
 

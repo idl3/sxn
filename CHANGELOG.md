@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.5] - 2025-11-30
+
+### Added
+- `sxn enter` command to quickly navigate to current session directory
+- `sxn current enter` subcommand as alternative way to enter session
+- `--path` option for `sxn current` to output only the session path
+- `sxn shell` command to install shell integration (idempotent)
+  - Auto-detects shell type (bash/zsh)
+  - Installs `sxn-enter` function to shell config
+  - Supports `--uninstall` to remove integration
+  - Supports `--shell-type` to specify shell explicitly
+
 ## [0.2.4] - 2025-11-30
 
 ### Added

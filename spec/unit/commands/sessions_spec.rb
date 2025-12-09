@@ -21,6 +21,7 @@ RSpec.describe Sxn::Commands::Sessions do
       status: "active",
       description: "Test session",
       linear_task: "ATL-123",
+      default_branch: "test-session",
       created_at: Time.now.iso8601,
       updated_at: Time.now.iso8601,
       projects: %w[project1 project2]
@@ -63,6 +64,7 @@ RSpec.describe Sxn::Commands::Sessions do
     allow(mock_prompt).to receive(:select).and_return("test-selection")
     allow(mock_prompt).to receive(:ask).and_return("test-input")
     allow(mock_prompt).to receive(:ask_yes_no).and_return(true)
+    allow(mock_prompt).to receive(:default_branch).and_return("test-session")
     allow(command).to receive(:options).and_return(Thor::CoreExt::HashWithIndifferentAccess.new)
 
     # Default session manager spies for methods that might not be called
@@ -98,7 +100,8 @@ RSpec.describe Sxn::Commands::Sessions do
         expect(session_manager).to have_received(:create_session).with(
           "test-session",
           description: nil,
-          linear_task: nil
+          linear_task: nil,
+          default_branch: "test-session"
         )
         expect(session_manager).to have_received(:use_session).with("test-session")
         expect(mock_ui).to have_received(:success).with("Created session 'test-session'")
@@ -115,6 +118,7 @@ RSpec.describe Sxn::Commands::Sessions do
         options[:activate] = false
         options[:description] = nil
         options[:linear_task] = nil
+        options[:branch] = nil
         allow(command).to receive(:options).and_return(options)
 
         command.add("test-session")
@@ -134,6 +138,7 @@ RSpec.describe Sxn::Commands::Sessions do
         options[:description] = "Test description"
         options[:linear_task] = "ATL-456"
         options[:activate] = true
+        options[:branch] = nil
         allow(command).to receive(:options).and_return(options)
 
         command.add("test-session")
@@ -141,7 +146,8 @@ RSpec.describe Sxn::Commands::Sessions do
         expect(session_manager).to have_received(:create_session).with(
           "test-session",
           description: "Test description",
-          linear_task: "ATL-456"
+          linear_task: "ATL-456",
+          default_branch: "test-session"
         )
       end
     end
@@ -151,6 +157,7 @@ RSpec.describe Sxn::Commands::Sessions do
         existing_sessions = [{ name: "existing1" }, { name: "existing2" }]
         allow(session_manager).to receive(:list_sessions).and_return(existing_sessions)
         allow(mock_prompt).to receive(:session_name).and_return("interactive-session")
+        allow(mock_prompt).to receive(:default_branch).with(session_name: "interactive-session").and_return("interactive-session")
         allow(session_manager).to receive(:create_session).and_return(sample_session)
         allow(session_manager).to receive(:use_session)
         allow(session_manager).to receive(:get_session).and_return(sample_session)
@@ -159,6 +166,7 @@ RSpec.describe Sxn::Commands::Sessions do
         options[:activate] = true
         options[:description] = nil
         options[:linear_task] = nil
+        options[:branch] = nil
         allow(command).to receive(:options).and_return(options)
 
         command.add
@@ -169,7 +177,8 @@ RSpec.describe Sxn::Commands::Sessions do
         expect(session_manager).to have_received(:create_session).with(
           "interactive-session",
           description: nil,
-          linear_task: nil
+          linear_task: nil,
+          default_branch: "interactive-session"
         )
       end
     end
@@ -550,6 +559,82 @@ RSpec.describe Sxn::Commands::Sessions do
 
         expect { command.current }.to raise_error(SystemExit)
         expect(mock_ui).to have_received(:error).with("Session lookup failed")
+      end
+    end
+
+    context "with enter subcommand" do
+      it "outputs cd command for active session" do
+        session_with_real_path = sample_session.merge(path: temp_dir)
+        allow(session_manager).to receive(:current_session).and_return(session_with_real_path)
+
+        expect { command.current("enter") }.to output("cd #{temp_dir}\n").to_stdout
+      end
+
+      it "exits with error when no active session" do
+        allow(session_manager).to receive(:current_session).and_return(nil)
+
+        expect { command.current("enter") }.to raise_error(SystemExit).and output(/No active session/).to_stderr
+      end
+
+      it "exits with error for unknown subcommand" do
+        expect { command.current("unknown") }.to raise_error(SystemExit)
+        expect(mock_ui).to have_received(:error).with("Unknown subcommand: unknown")
+      end
+    end
+
+    context "with --path option" do
+      it "outputs only the session path" do
+        session_with_path = sample_session.merge(path: "/some/session/path")
+        allow(session_manager).to receive(:current_session).and_return(session_with_path)
+
+        options = Thor::CoreExt::HashWithIndifferentAccess.new
+        options[:path] = true
+        allow(command).to receive(:options).and_return(options)
+
+        expect { command.current }.to output("/some/session/path\n").to_stdout
+      end
+    end
+  end
+
+  describe "#enter" do
+    context "with active session" do
+      it "outputs cd command to session directory" do
+        session_with_real_path = sample_session.merge(path: temp_dir)
+        allow(session_manager).to receive(:current_session).and_return(session_with_real_path)
+
+        expect { command.enter }.to output("cd #{temp_dir}\n").to_stdout
+      end
+
+      it "escapes paths with spaces" do
+        path_with_spaces = File.join(temp_dir, "path with spaces")
+        FileUtils.mkdir_p(path_with_spaces)
+        session_with_spaces = sample_session.merge(path: path_with_spaces)
+        allow(session_manager).to receive(:current_session).and_return(session_with_spaces)
+
+        expect { command.enter }.to output(/cd .*path\\ with\\ spaces/).to_stdout
+      end
+    end
+
+    context "without active session" do
+      it "exits with error and shows helpful message" do
+        allow(session_manager).to receive(:current_session).and_return(nil)
+
+        expect { command.enter }.to raise_error(SystemExit).and output(/No active session/).to_stderr
+      end
+
+      it "shows shell function tip" do
+        allow(session_manager).to receive(:current_session).and_return(nil)
+
+        expect { command.enter }.to raise_error(SystemExit).and output(/sxn-enter/).to_stderr
+      end
+    end
+
+    context "when session directory does not exist" do
+      it "exits with error" do
+        session_with_missing_path = sample_session.merge(path: "/nonexistent/path")
+        allow(session_manager).to receive(:current_session).and_return(session_with_missing_path)
+
+        expect { command.enter }.to raise_error(SystemExit).and output(/does not exist/).to_stderr
       end
     end
   end

@@ -13,7 +13,7 @@ module Sxn
         @database = initialize_database
       end
 
-      def create_session(name, description: nil, linear_task: nil)
+      def create_session(name, description: nil, linear_task: nil, default_branch: nil)
         validate_session_name!(name)
         ensure_sessions_folder_exists!
 
@@ -21,9 +21,18 @@ module Sxn
 
         session_id = SecureRandom.uuid
         session_path = File.join(@config_manager.sessions_folder_path, name)
+        branch = default_branch || name
 
         # Create session directory
         FileUtils.mkdir_p(session_path)
+
+        # Create .sxnrc configuration file
+        session_config = SessionConfig.new(session_path)
+        session_config.create(
+          parent_sxn_path: @config_manager.sxn_folder_path,
+          default_branch: branch,
+          session_name: name
+        )
 
         # Create session record
         session_data = {
@@ -35,6 +44,7 @@ module Sxn
           status: "active",
           description: description,
           linear_task: linear_task,
+          default_branch: branch,
           projects: [],
           worktrees: {}
         }
@@ -162,6 +172,15 @@ module Sxn
         session_data[:worktrees] || {}
       end
 
+      def get_session_default_branch(session_name)
+        session = get_session(session_name)
+        return nil unless session
+
+        # Read from .sxnrc file in session directory
+        session_config = SessionConfig.new(session[:path])
+        session_config.default_branch
+      end
+
       def archive_session(name)
         update_session_status_by_name(name, "archived")
         true
@@ -224,6 +243,7 @@ module Sxn
           status: db_row[:status],
           description: metadata["description"] || db_row[:description],
           linear_task: metadata["linear_task"] || db_row[:linear_task],
+          default_branch: metadata["default_branch"] || db_row[:default_branch],
           # Support both metadata and database columns for backward compatibility
           projects: db_row[:projects] || metadata["projects"] || [],
           worktrees: db_row[:worktrees] || metadata["worktrees"] || {}

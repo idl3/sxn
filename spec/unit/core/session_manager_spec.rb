@@ -15,6 +15,7 @@ RSpec.describe Sxn::Core::SessionManager do
       allow(mgr).to receive(:initialized?).and_return(true)
       allow(mgr).to receive(:config_path).and_return(File.join(config_dir, "config.yml"))
       allow(mgr).to receive(:sessions_folder_path).and_return(sessions_dir)
+      allow(mgr).to receive(:sxn_folder_path).and_return(config_dir)
       allow(mgr).to receive(:current_session).and_return(nil)
       allow(mgr).to receive(:update_current_session)
     end
@@ -100,6 +101,52 @@ RSpec.describe Sxn::Core::SessionManager do
       session_manager.create_session("test-session")
 
       expect(File.directory?(non_existent_sessions_dir)).to be(true)
+    end
+
+    it "creates .sxnrc file in session directory" do
+      session = session_manager.create_session("with-sxnrc")
+
+      sxnrc_path = File.join(session[:path], ".sxnrc")
+      expect(File.exist?(sxnrc_path)).to be(true)
+    end
+
+    it "stores session name as default branch when not specified" do
+      session = session_manager.create_session("my-branch")
+
+      expect(session[:default_branch]).to eq("my-branch")
+
+      session_config = Sxn::Core::SessionConfig.new(session[:path])
+      expect(session_config.default_branch).to eq("my-branch")
+    end
+
+    it "uses provided default_branch when specified" do
+      session = session_manager.create_session("my-session", default_branch: "feature/custom")
+
+      expect(session[:default_branch]).to eq("feature/custom")
+
+      session_config = Sxn::Core::SessionConfig.new(session[:path])
+      expect(session_config.default_branch).to eq("feature/custom")
+    end
+
+    it "stores parent_sxn_path in .sxnrc" do
+      session = session_manager.create_session("test-session")
+
+      session_config = Sxn::Core::SessionConfig.new(session[:path])
+      expect(session_config.parent_sxn_path).to eq(config_dir)
+    end
+  end
+
+  describe "#get_session_default_branch" do
+    let!(:session) { session_manager.create_session("branch-test", default_branch: "develop") }
+
+    it "returns default branch from .sxnrc" do
+      branch = session_manager.get_session_default_branch("branch-test")
+      expect(branch).to eq("develop")
+    end
+
+    it "returns nil for non-existent session" do
+      branch = session_manager.get_session_default_branch("non-existent")
+      expect(branch).to be_nil
     end
   end
 

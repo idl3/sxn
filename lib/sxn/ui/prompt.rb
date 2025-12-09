@@ -68,6 +68,10 @@ module Sxn
         end
       end
 
+      def default_branch(session_name:)
+        branch_name("Default branch for worktrees:", default: session_name)
+      end
+
       def confirm_deletion(item_name, item_type = "item")
         ask_yes_no("Are you sure you want to delete #{item_type} '#{item_name}'? This action cannot be undone.",
                    default: false)

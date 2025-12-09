@@ -62,6 +62,10 @@ module Sxn
         @sessions_folder || (load_config && @sessions_folder)
       end
 
+      def sxn_folder_path
+        File.dirname(@config_path)
+      end
+
       def add_project(name, path, type: nil, default_branch: nil)
         config = load_config_file
         config["projects"] ||= {}

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "core/config_manager"
+require_relative "core/session_config"
 require_relative "core/session_manager"
 require_relative "core/project_manager"
 require_relative "core/worktree_manager"

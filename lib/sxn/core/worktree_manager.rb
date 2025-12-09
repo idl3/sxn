@@ -26,10 +26,12 @@ module Sxn
         raise Sxn::ProjectNotFoundError, "Project '#{project_name}' not found" unless project
 
         # Determine branch name
-        # If no branch specified, use session name as the branch name
+        # If no branch specified, use session's default branch from .sxnrc, then fallback to session name
         # If branch starts with "remote:", handle remote branch tracking
         if branch.nil?
-          branch = session_name
+          session_config = SessionConfig.new(session[:path])
+          branch = session_config.default_branch if session_config.exists?
+          branch ||= session_name
         elsif branch.start_with?("remote:")
           remote_branch = branch.sub("remote:", "")
           # Fetch the remote branch first

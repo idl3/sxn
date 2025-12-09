@@ -41,8 +41,11 @@ module Sxn
     desc "add SESSION_NAME", "Create a new session (shortcut for 'sxn sessions add')"
     option :description, type: :string, aliases: "-d", desc: "Session description"
     option :linear_task, type: :string, aliases: "-l", desc: "Linear task ID"
+    option :branch, type: :string, aliases: "-b", desc: "Default branch for worktrees"
     def add(session_name)
-      Commands::Sessions.new.add(session_name)
+      cmd = Commands::Sessions.new
+      cmd.options = options
+      cmd.add(session_name)
     rescue Sxn::Error => e
       handle_error(e)
     end
@@ -62,10 +65,102 @@ module Sxn
       handle_error(e)
     end
 
-    desc "current", "Show current session (shortcut for 'sxn sessions current')"
+    desc "current [SUBCOMMAND]", "Show current session (shortcut for 'sxn sessions current')"
     option :verbose, type: :boolean, aliases: "-v", desc: "Show detailed information"
-    def current
-      Commands::Sessions.new.current
+    option :path, type: :boolean, aliases: "-p", desc: "Output only the session path"
+    def current(subcommand = nil)
+      Commands::Sessions.new.current(subcommand)
+    rescue Sxn::Error => e
+      handle_error(e)
+    end
+
+    desc "enter", "Enter current session directory (outputs cd command for shell eval)"
+    long_desc <<-LONGDESC
+      Outputs a cd command to navigate to the current session directory.
+
+      Usage with shell eval:
+        eval "$(sxn enter)"
+
+      Or install shell integration for easier use:
+        sxn shell
+
+      Then simply run:
+        sxn-enter
+    LONGDESC
+    def enter
+      Commands::Sessions.new.enter
+    rescue Sxn::Error => e
+      handle_error(e)
+    end
+
+    desc "up", "Navigate to project root from session (outputs cd command for shell eval)"
+    long_desc <<-LONGDESC
+      Outputs a cd command to navigate to the project root from within a session.
+
+      The project root is determined from the .sxnrc file in the session directory,
+      which points back to the parent .sxn folder.
+
+      Usage with shell eval:
+        eval "$(sxn up)"
+
+      Or install shell integration for easier use:
+        sxn shell
+
+      Then simply run:
+        sxn-up
+    LONGDESC
+    def up
+      require "shellwords"
+
+      session_config = Sxn::Core::SessionConfig.find_from_path(Dir.pwd)
+
+      unless session_config
+        warn "Not in a session directory."
+        warn ""
+        warn "This command works when run from within a session folder."
+        warn "Session folders contain a .sxnrc file that points back to the project."
+        warn ""
+        warn "Tip: Add this function to your shell profile for easier navigation:"
+        warn ""
+        warn "  sxn-up() { eval \"$(sxn up 2>/dev/null)\" || sxn up; }"
+        exit(1)
+      end
+
+      project_root = session_config.project_root
+
+      unless project_root && File.directory?(project_root)
+        warn "Could not determine project root from .sxnrc"
+        warn "parent_sxn_path: #{session_config.parent_sxn_path || "nil"}"
+        exit(1)
+      end
+
+      # Output the cd command for shell integration
+      puts "cd #{Shellwords.escape(project_root)}"
+    rescue Sxn::Error => e
+      handle_error(e)
+    end
+
+    desc "shell", "Install shell integration (sxn-enter function)"
+    option :shell_type, type: :string, enum: %w[bash zsh auto], default: "auto",
+                        desc: "Shell type (bash, zsh, or auto-detect)"
+    option :uninstall, type: :boolean, default: false, desc: "Remove shell integration"
+    long_desc <<-LONGDESC
+      Installs shell integration to your shell configuration file (.zshrc or .bashrc).
+
+      This adds the sxn-enter function which allows you to quickly navigate
+      to your current session directory.
+
+      The installation is idempotent - running it multiple times will not
+      add duplicate entries.
+
+      Examples:
+        sxn shell                   # Auto-detect shell and install
+        sxn shell --shell-type=zsh  # Install for zsh specifically
+        sxn shell --uninstall       # Remove shell integration
+    LONGDESC
+    map "shell" => :install_shell_wrapper
+    def install_shell_wrapper
+      Commands::Init.new.invoke(:install_shell, [], options)
     rescue Sxn::Error => e
       handle_error(e)
     end

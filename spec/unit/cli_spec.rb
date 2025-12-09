@@ -97,6 +97,7 @@ RSpec.describe Sxn::CLI do
 
     before do
       allow(Sxn::Commands::Sessions).to receive(:new).and_return(sessions_command)
+      allow(sessions_command).to receive(:options=)
       allow(sessions_command).to receive(:add)
     end
 

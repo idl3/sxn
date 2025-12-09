@@ -589,4 +589,196 @@ RSpec.describe Sxn::Commands::Init do
       end
     end
   end
+
+  describe "#install_shell" do
+    let(:temp_home) { Dir.mktmpdir }
+    let(:zshrc_path) { File.join(temp_home, ".zshrc") }
+    let(:bashrc_path) { File.join(temp_home, ".bashrc") }
+
+    before do
+      allow(Dir).to receive(:home).and_return(temp_home)
+      allow(ENV).to receive(:fetch).with("SHELL", "").and_return("/bin/zsh")
+
+      # Mock UI methods
+      allow_any_instance_of(Sxn::UI::Output).to receive(:section)
+      allow_any_instance_of(Sxn::UI::Output).to receive(:success)
+      allow_any_instance_of(Sxn::UI::Output).to receive(:info)
+      allow_any_instance_of(Sxn::UI::Output).to receive(:newline)
+      allow_any_instance_of(Sxn::UI::Output).to receive(:recovery_suggestion)
+    end
+
+    after do
+      FileUtils.rm_rf(temp_home)
+    end
+
+    context "installing shell integration" do
+      it "installs shell function to zshrc" do
+        options_hash = Thor::CoreExt::HashWithIndifferentAccess.new
+        options_hash["shell_type"] = "auto"
+        options_hash["uninstall"] = false
+        command.instance_variable_set(:@options, options_hash)
+
+        command.install_shell
+
+        expect(File).to exist(zshrc_path)
+        content = File.read(zshrc_path)
+        expect(content).to include("# sxn shell integration")
+        expect(content).to include("sxn-enter()")
+        expect(content).to include("# end sxn shell integration")
+      end
+
+      it "installs shell function to bashrc when specified" do
+        allow(ENV).to receive(:fetch).with("SHELL", "").and_return("/bin/bash")
+        FileUtils.touch(bashrc_path) # Create .bashrc so it's preferred
+
+        options_hash = Thor::CoreExt::HashWithIndifferentAccess.new
+        options_hash["shell_type"] = "bash"
+        options_hash["uninstall"] = false
+        command.instance_variable_set(:@options, options_hash)
+
+        command.install_shell
+
+        expect(File).to exist(bashrc_path)
+        content = File.read(bashrc_path)
+        expect(content).to include("# sxn shell integration")
+        expect(content).to include("sxn-enter()")
+      end
+
+      it "is idempotent - does not add duplicate entries" do
+        options_hash = Thor::CoreExt::HashWithIndifferentAccess.new
+        options_hash["shell_type"] = "zsh"
+        options_hash["uninstall"] = false
+        command.instance_variable_set(:@options, options_hash)
+
+        # Install twice
+        command.install_shell
+        command.install_shell
+
+        content = File.read(zshrc_path)
+        # Count occurrences of marker
+        count = content.scan("# sxn shell integration").count
+        expect(count).to eq(1)
+      end
+
+      it "shows message when already installed" do
+        # First install
+        options_hash = Thor::CoreExt::HashWithIndifferentAccess.new
+        options_hash["shell_type"] = "zsh"
+        options_hash["uninstall"] = false
+        command.instance_variable_set(:@options, options_hash)
+
+        command.install_shell
+
+        # Second install should show info message
+        expect_any_instance_of(Sxn::UI::Output).to receive(:info)
+          .with(/already installed/)
+
+        command.install_shell
+      end
+    end
+
+    context "uninstalling shell integration" do
+      before do
+        # First install shell integration
+        options_hash = Thor::CoreExt::HashWithIndifferentAccess.new
+        options_hash["shell_type"] = "zsh"
+        options_hash["uninstall"] = false
+        command.instance_variable_set(:@options, options_hash)
+        command.install_shell
+      end
+
+      it "removes shell integration from rc file" do
+        expect(File.read(zshrc_path)).to include("# sxn shell integration")
+
+        options_hash = Thor::CoreExt::HashWithIndifferentAccess.new
+        options_hash["shell_type"] = "zsh"
+        options_hash["uninstall"] = true
+        command.instance_variable_set(:@options, options_hash)
+
+        command.install_shell
+
+        content = File.read(zshrc_path)
+        expect(content).not_to include("# sxn shell integration")
+        expect(content).not_to include("sxn-enter()")
+      end
+
+      it "shows message when not installed" do
+        # First uninstall
+        options_hash = Thor::CoreExt::HashWithIndifferentAccess.new
+        options_hash["shell_type"] = "zsh"
+        options_hash["uninstall"] = true
+        command.instance_variable_set(:@options, options_hash)
+        command.install_shell
+
+        # Second uninstall should show info message
+        expect_any_instance_of(Sxn::UI::Output).to receive(:info)
+          .with(/not installed/)
+
+        command.install_shell
+      end
+    end
+
+    context "shell type detection" do
+      it "detects zsh from SHELL environment" do
+        allow(ENV).to receive(:fetch).with("SHELL", "").and_return("/bin/zsh")
+
+        options_hash = Thor::CoreExt::HashWithIndifferentAccess.new
+        options_hash["shell_type"] = "auto"
+        options_hash["uninstall"] = false
+        command.instance_variable_set(:@options, options_hash)
+
+        command.install_shell
+
+        expect(File).to exist(zshrc_path)
+      end
+
+      it "detects bash from SHELL environment" do
+        allow(ENV).to receive(:fetch).with("SHELL", "").and_return("/bin/bash")
+        FileUtils.touch(bashrc_path)
+
+        options_hash = Thor::CoreExt::HashWithIndifferentAccess.new
+        options_hash["shell_type"] = "auto"
+        options_hash["uninstall"] = false
+        command.instance_variable_set(:@options, options_hash)
+
+        command.install_shell
+
+        expect(File).to exist(bashrc_path)
+        content = File.read(bashrc_path)
+        expect(content).to include("sxn-enter()")
+      end
+
+      it "defaults to bash for unknown shell" do
+        allow(ENV).to receive(:fetch).with("SHELL", "").and_return("/bin/fish")
+
+        options_hash = Thor::CoreExt::HashWithIndifferentAccess.new
+        options_hash["shell_type"] = "auto"
+        options_hash["uninstall"] = false
+        command.instance_variable_set(:@options, options_hash)
+
+        # Since bash_profile doesn't exist and bashrc doesn't exist, it will use bash_profile
+        command.install_shell
+
+        bash_profile_path = File.join(temp_home, ".bash_profile")
+        expect(File).to exist(bash_profile_path)
+      end
+    end
+
+    context "error handling" do
+      it "exits with error for unsupported shell rc file" do
+        # Force shell_rc_file to return nil
+        allow(command).to receive(:shell_rc_file).and_return(nil)
+
+        options_hash = Thor::CoreExt::HashWithIndifferentAccess.new
+        options_hash["shell_type"] = "auto"
+        options_hash["uninstall"] = false
+        command.instance_variable_set(:@options, options_hash)
+
+        expect_any_instance_of(Sxn::UI::Output).to receive(:error)
+          .with("Could not determine shell configuration file")
+
+        expect { command.install_shell }.to raise_error(SystemExit)
+      end
+    end
+  end
 end

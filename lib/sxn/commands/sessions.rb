@@ -2,6 +2,7 @@
 
 require "thor"
 require "time"
+require "shellwords"
 
 module Sxn
   module Commands
@@ -23,6 +24,7 @@ module Sxn
       desc "add NAME", "Create a new session"
       option :description, type: :string, aliases: "-d", desc: "Session description"
       option :linear_task, type: :string, aliases: "-l", desc: "Linear task ID"
+      option :branch, type: :string, aliases: "-b", desc: "Default branch for worktrees"
       option :activate, type: :boolean, default: true, desc: "Activate session after creation"
       option :skip_worktree, type: :boolean, default: false, desc: "Skip worktree creation wizard"
 
@@ -35,13 +37,18 @@ module Sxn
           name = @prompt.session_name(existing_sessions: existing_sessions)
         end
 
+        # Get default branch - use provided option, or prompt interactively
+        default_branch = options[:branch]
+        default_branch ||= @prompt.default_branch(session_name: name)
+
         begin
           @ui.progress_start("Creating session '#{name}'")
 
           session = @session_manager.create_session(
             name,
             description: options[:description],
-            linear_task: options[:linear_task]
+            linear_task: options[:linear_task],
+            default_branch: default_branch
           )
 
           @ui.progress_done
@@ -173,11 +180,22 @@ module Sxn
         end
       end
 
-      desc "current", "Show current session"
+      desc "current [SUBCOMMAND]", "Show current session or enter its directory"
       option :verbose, type: :boolean, aliases: "-v", desc: "Show detailed information"
+      option :path, type: :boolean, aliases: "-p", desc: "Output only the session path (for shell integration)"
 
-      def current
+      def current(subcommand = nil)
         ensure_initialized!
+
+        # Handle 'sxn current enter' subcommand
+        if subcommand == "enter"
+          enter_session
+          return
+        elsif subcommand
+          @ui.error("Unknown subcommand: #{subcommand}")
+          @ui.info("Available: enter")
+          exit(1)
+        end
 
         begin
           session = @session_manager.current_session
@@ -188,12 +206,23 @@ module Sxn
             return
           end
 
+          # If --path flag, just output the path for shell integration
+          if options[:path]
+            puts session[:path]
+            return
+          end
+
           @ui.section("Current Session")
           display_session_info(session, verbose: options[:verbose])
         rescue Sxn::Error => e
           @ui.error(e.message)
           exit(e.exit_code)
         end
+      end
+
+      desc "enter", "Enter the current session directory (outputs cd command)"
+      def enter
+        enter_session
       end
 
       desc "archive NAME", "Archive a session"
@@ -261,6 +290,7 @@ module Sxn
         @ui.key_value("Name", session[:name] || "Unknown")
         @ui.key_value("Status", (session[:status] || "unknown").capitalize)
         @ui.key_value("Path", session[:path] || "Unknown")
+        @ui.key_value("Default Branch", session[:default_branch]) if session[:default_branch]
 
         @ui.key_value("Description", session[:description]) if session[:description]
 
@@ -346,6 +376,10 @@ module Sxn
         project_name = @prompt.select("Select project:", project_choices)
 
         # Step 2: Get branch name with explanation
+        # Get session's default branch for the default value
+        session = @session_manager.get_session(session_name)
+        default_branch_for_worktree = session[:default_branch] || session_name
+
         @ui.newline
         @ui.info("Enter the branch name for this worktree.")
         @ui.info("This can be an existing branch or a new one to create.")
@@ -354,7 +388,7 @@ module Sxn
 
         branch = @prompt.branch_name(
           "Branch name:",
-          default: session_name
+          default: default_branch_for_worktree
         )
 
         # Step 3: Create the worktree
@@ -391,6 +425,10 @@ module Sxn
         projects = @project_manager.list_projects
         return if projects.empty?
 
+        # Get session's default branch for the default value
+        session = @session_manager.get_session(session_name)
+        default_branch_for_worktree = session[:default_branch] || session_name
+
         while @prompt.ask_yes_no("Would you like to add another worktree?", default: false)
           @ui.newline
 
@@ -404,7 +442,7 @@ module Sxn
 
           branch = @prompt.branch_name(
             "Branch name:",
-            default: session_name
+            default: default_branch_for_worktree
           )
 
           create_worktree_for_session(project_name, branch, session_name)
@@ -416,6 +454,35 @@ module Sxn
         @ui.key_value("Project", worktree[:project])
         @ui.key_value("Branch", worktree[:branch])
         @ui.key_value("Path", worktree[:path])
+      end
+
+      def enter_session
+        session = @session_manager.current_session
+
+        if session.nil?
+          # When no session, provide helpful guidance instead of just a cd command
+          warn "No active session. Use 'sxn use <session>' to activate a session first."
+          warn ""
+          warn "Tip: Add this function to your shell profile for easier navigation:"
+          warn ""
+          warn "  sxn-enter() { eval \"$(sxn enter 2>/dev/null)\" || sxn enter; }"
+          warn ""
+          exit(1)
+        end
+
+        session_path = session[:path]
+
+        unless session_path && File.directory?(session_path)
+          warn "Session directory does not exist: #{session_path || "nil"}"
+          exit(1)
+        end
+
+        # Output the cd command for shell integration
+        # Users can use: eval "$(sxn enter)" or the sxn-enter shell function
+        puts "cd #{Shellwords.escape(session_path)}"
+      rescue Sxn::Error => e
+        warn e.message
+        exit(e.exit_code)
       end
 
       def apply_project_rules(project_name, session_name)
