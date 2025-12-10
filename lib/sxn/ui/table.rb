@@ -89,6 +89,21 @@ module Sxn
         render_table(headers, rows)
       end
 
+      def templates(templates)
+        return empty_table("No templates defined") if templates.empty?
+
+        headers = %w[Name Description Projects]
+        rows = templates.map do |template|
+          [
+            template[:name],
+            template[:description] || "-",
+            template[:project_count].to_s
+          ]
+        end
+
+        render_table(headers, rows)
+      end
+
       # Add a header to the table output
       def header(title)
         puts "\n#{@pastel.bold.underline(title)}"
@@ -99,7 +114,9 @@ module Sxn
 
       def render_table(headers, rows)
         table = TTY::Table.new(header: headers, rows: rows)
-        puts table.render(:unicode, padding: [0, 1])
+        # Use basic renderer to avoid terminal width detection issues
+        renderer = $stdout.tty? ? :unicode : :basic
+        puts table.render(renderer, padding: [0, 1])
       end
 
       def empty_table(message)

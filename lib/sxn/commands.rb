@@ -5,6 +5,7 @@ require_relative "commands/sessions"
 require_relative "commands/projects"
 require_relative "commands/worktrees"
 require_relative "commands/rules"
+require_relative "commands/templates"
 
 module Sxn
   # Commands namespace for all CLI command implementations

@@ -217,6 +217,13 @@ module Sxn
       handle_error(e)
     end
 
+    desc "templates SUBCOMMAND", "Manage session templates"
+    def templates(subcommand = nil, *args)
+      Commands::Templates.start([subcommand, *args].compact)
+    rescue Sxn::Error => e
+      handle_error(e)
+    end
+
     desc "status", "Show overall sxn status"
     def status
       show_status

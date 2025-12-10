@@ -500,7 +500,7 @@ RSpec.describe Sxn::UI::Table do
     end
 
     describe "#render_table" do
-      it "creates TTY::Table and renders with unicode style" do
+      it "creates TTY::Table and renders with appropriate style based on terminal" do
         headers = %w[Col1 Col2]
         rows = [%w[val1 val2]]
 
@@ -509,7 +509,9 @@ RSpec.describe Sxn::UI::Table do
         end.to output("rendered_table\n").to_stdout
 
         expect(TTY::Table).to have_received(:new).with(header: headers, rows: rows)
-        expect(mock_tty_table).to have_received(:render).with(:unicode, padding: [0, 1])
+        # Uses :basic when stdout is not a TTY (in tests), :unicode when it is
+        expected_renderer = $stdout.tty? ? :unicode : :basic
+        expect(mock_tty_table).to have_received(:render).with(expected_renderer, padding: [0, 1])
       end
     end
 
