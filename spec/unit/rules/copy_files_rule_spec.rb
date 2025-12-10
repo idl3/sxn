@@ -182,6 +182,27 @@ RSpec.describe Sxn::Rules::CopyFilesRule do
       end
     end
 
+    context "with non-string non-integer permissions" do
+      let(:invalid_perms_config) do
+        {
+          "files" => [
+            {
+              "source" => "config/master.key",
+              "strategy" => "copy",
+              "permissions" => %w[not valid]
+            }
+          ]
+        }
+      end
+      let(:invalid_perms_rule) { described_class.new(project_path, session_path, invalid_perms_config) }
+
+      it "fails validation with invalid permissions type" do
+        expect do
+          invalid_perms_rule.validate
+        end.to raise_error(Sxn::Rules::ValidationError, /invalid permissions/)
+      end
+    end
+
     context "with missing required source file" do
       let(:config_with_missing_file) do
         {
@@ -200,6 +221,31 @@ RSpec.describe Sxn::Rules::CopyFilesRule do
         expect do
           invalid_rule.validate
         end.to raise_error(Sxn::Rules::ValidationError, /Required source file does not exist/)
+      end
+    end
+
+    context "with encryption warning and symlink strategy" do
+      let(:encrypt_symlink_config) do
+        {
+          "files" => [
+            {
+              "source" => "config/master.key",
+              "strategy" => "symlink",
+              "encrypt" => true
+            }
+          ]
+        }
+      end
+      let(:warning_rule) { described_class.new(project_path, session_path, encrypt_symlink_config) }
+
+      it "warns about encryption with symlink strategy" do
+        logger = instance_double("Logger", debug: nil, info: nil, warn: nil, error: nil, level: nil)
+        allow(Sxn).to receive(:logger).and_return(logger)
+        allow(warning_rule).to receive(:logger).and_return(logger)
+
+        expect(logger).to receive(:warn).with(/encryption is not supported with symlink strategy/)
+
+        warning_rule.validate
       end
     end
 

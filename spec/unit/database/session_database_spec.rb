@@ -173,6 +173,20 @@ RSpec.describe Sxn::Database::SessionDatabase do
           "Session with name 'test-session-01' already exists"
         )
       end
+
+      it "re-raises non-duplicate constraint exceptions" do
+        # Create a session first
+        db.create_session(valid_session_data)
+
+        # Trigger a different constraint violation by attempting a direct SQL insert with invalid data
+        # that violates the status constraint (not a duplicate name)
+        expect do
+          db.connection.execute(
+            "INSERT INTO sessions (id, name, created_at, updated_at, status) VALUES (?, ?, ?, ?, ?)",
+            ["test-id", "unique-name-123", Time.now.utc.iso8601(6), Time.now.utc.iso8601(6), "invalid_status"]
+          )
+        end.to raise_error(SQLite3::ConstraintException, /CHECK constraint failed/)
+      end
     end
   end
 
@@ -313,6 +327,35 @@ RSpec.describe Sxn::Database::SessionDatabase do
         db.update_session(fake_id, { status: "inactive" })
       end.to raise_error(Sxn::Database::SessionNotFoundError, "Session with ID 'nonexistent' not found")
     end
+
+    context "validation edge cases" do
+      it "validates name format in updates" do
+        expect do
+          db.update_session(session_id, { name: "invalid name with spaces" })
+        end.to raise_error(ArgumentError, "Session name must contain only letters, numbers, dashes, and underscores")
+      end
+
+      it "raises error for unknown update fields" do
+        expect do
+          db.update_session(session_id, { unknown_field: "value", another_unknown: "data" })
+        end.to raise_error(ArgumentError, /Unknown keywords: (unknown_field, another_unknown|another_unknown, unknown_field)/)
+      end
+
+      it "allows valid update fields" do
+        valid_updates = {
+          status: "inactive",
+          name: "new-name",
+          description: "New description",
+          linear_task: "ATL-999",
+          tags: ["new-tag"],
+          metadata: { new: "metadata" },
+          projects: ["project1"],
+          worktrees: { project1: { path: "/path", branch: "main" } }
+        }
+
+        expect { db.update_session(session_id, valid_updates) }.not_to raise_error
+      end
+    end
   end
 
   describe "#delete_session" do
@@ -405,6 +448,52 @@ RSpec.describe Sxn::Database::SessionDatabase do
     end
   end
 
+  describe "#get_session_by_name" do
+    let!(:session_id) { db.create_session(name: "test-session", description: "A test session") }
+
+    it "returns session data for valid name" do
+      session = db.get_session_by_name("test-session")
+      expect(session).not_to be_nil
+      expect(session[:id]).to eq(session_id)
+      expect(session[:name]).to eq("test-session")
+      expect(session[:description]).to eq("A test session")
+    end
+
+    it "returns nil for non-existent session" do
+      session = db.get_session_by_name("nonexistent-session")
+      expect(session).to be_nil
+    end
+
+    it "returns nil for empty name" do
+      session = db.get_session_by_name("")
+      expect(session).to be_nil
+    end
+  end
+
+  describe "#update_session_status (private)" do
+    let(:session_id) { db.create_session(name: "status-test", status: "active") }
+
+    it "updates session status successfully" do
+      result = db.send(:update_session_status, session_id, "inactive")
+      expect(result).to be true
+
+      session = db.get_session(session_id)
+      expect(session[:status]).to eq("inactive")
+    end
+
+    it "validates the new status" do
+      expect do
+        db.send(:update_session_status, session_id, "invalid_status")
+      end.to raise_error(ArgumentError, "Invalid status. Must be one of: active, inactive, archived")
+    end
+
+    it "raises error for non-existent session" do
+      expect do
+        db.send(:update_session_status, "nonexistent", "inactive")
+      end.to raise_error(Sxn::Database::SessionNotFoundError)
+    end
+  end
+
   describe "#statistics" do
     before do
       db.create_session(name: "session-1", status: "active")
@@ -488,15 +577,26 @@ RSpec.describe Sxn::Database::SessionDatabase do
     end
 
     it "handles concurrent writes with proper locking" do
-      session_id = db.create_session(name: "concurrent-test")
+      session_id = db.create_session(name: "concurrent-test-2")
 
-      # Multiple connections updating different fields should work
+      # First update from connection 1
       db.update_session(session_id, { status: "inactive" })
+
+      # Second connection should be able to see the update and make its own update
+      # Need to ensure WAL checkpoint happens for db2 to see changes
+      session_from_db2 = db2.get_session(session_id)
+      expect(session_from_db2).not_to be_nil
+
       db2.update_session(session_id, { description: "Updated from second connection" })
 
-      final_session = db.get_session(session_id)
-      expect(final_session[:status]).to eq("inactive")
-      expect(final_session[:description]).to eq("Updated from second connection")
+      # Verify final state from both connections
+      final_session_db1 = db.get_session(session_id)
+      final_session_db2 = db2.get_session(session_id)
+
+      expect(final_session_db1[:status]).to eq("inactive")
+      expect(final_session_db1[:description]).to eq("Updated from second connection")
+      expect(final_session_db2[:status]).to eq("inactive")
+      expect(final_session_db2[:description]).to eq("Updated from second connection")
     end
   end
 
@@ -739,6 +839,32 @@ RSpec.describe Sxn::Database::SessionDatabase do
         expect(result.length).to eq(1)
         expect(result.first["name"]).to eq("test-session")
       end
+
+      it "converts boolean parameters to integers" do
+        # Test that true is converted to 1
+        result = db.send(:execute_query, "SELECT ? as value", [true])
+        expect(result.first["value"]).to eq(1)
+
+        # Test that false is converted to 0
+        result = db.send(:execute_query, "SELECT ? as value", [false])
+        expect(result.first["value"]).to eq(0)
+      end
+
+      it "handles various parameter types correctly" do
+        # Test Integer, Float, String, and NilClass
+        result = db.send(:execute_query, "SELECT ? as int_val, ? as float_val, ? as str_val, ? as nil_val",
+                         [42, 3.14, "test", nil])
+        expect(result.first["int_val"]).to eq(42)
+        expect(result.first["float_val"]).to eq(3.14)
+        expect(result.first["str_val"]).to eq("test")
+        expect(result.first["nil_val"]).to be_nil
+      end
+
+      it "converts other types to strings" do
+        # Test that objects are converted to strings via to_s
+        result = db.send(:execute_query, "SELECT ? as value", [[:symbol]])
+        expect(result.first["value"]).to eq("[:symbol]")
+      end
     end
 
     describe "#with_transaction" do
@@ -896,6 +1022,109 @@ RSpec.describe Sxn::Database::SessionDatabase do
         schema_db.send(:set_schema_version, 2)
         version = schema_db.send(:get_schema_version)
         expect(version).to eq(2)
+      end
+    end
+
+    describe "schema migration from v1" do
+      let(:v1_db_path) { Tempfile.new(["v1_schema", ".db"]).path }
+      let(:v1_db) { SQLite3::Database.new(v1_db_path) }
+
+      after do
+        v1_db.close
+        FileUtils.rm_f(v1_db_path)
+      end
+
+      it "detects old database schema and migrates from v1 to v2" do
+        # Create a v1 database schema (without worktrees/projects columns and without version)
+        v1_db.execute_batch(<<~SQL)
+          CREATE TABLE sessions (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL UNIQUE,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'active',
+            linear_task TEXT,
+            description TEXT,
+            tags TEXT,
+            metadata TEXT
+          );
+
+          CREATE TABLE session_worktrees (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT NOT NULL,
+            project_name TEXT NOT NULL,
+            path TEXT NOT NULL,
+            branch TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+          );
+
+          CREATE TABLE session_files (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT NOT NULL,
+            file_path TEXT NOT NULL,
+            file_type TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+          );
+        SQL
+
+        # Insert a test session in the v1 format
+        v1_db.execute(<<~SQL, ["test-id", "v1-session", Time.now.utc.iso8601(6), Time.now.utc.iso8601(6)])
+          INSERT INTO sessions (id, name, created_at, updated_at, status)
+          VALUES (?, ?, ?, ?, 'active')
+        SQL
+
+        v1_db.close
+
+        # Open with SessionDatabase - it should detect v1 schema and migrate
+        migrated_db = described_class.new(v1_db_path)
+
+        # Verify migration occurred
+        columns = migrated_db.connection.execute("PRAGMA table_info(sessions)").map { |col| col["name"] }
+        expect(columns).to include("worktrees", "projects")
+
+        # Verify schema version was updated
+        version = migrated_db.send(:get_schema_version)
+        expect(version).to eq(2)
+
+        # Verify existing data was preserved
+        session = migrated_db.get_session_by_name("v1-session")
+        expect(session).not_to be_nil
+        expect(session[:id]).to eq("test-id")
+
+        migrated_db.close
+      end
+    end
+
+    describe "migration execution" do
+      it "runs migrate_to_v2 to add worktrees and projects columns" do
+        # Create a fresh database and manually call migrate_to_v2
+        migration_db = described_class.new(custom_db_path)
+
+        # First, remove the columns if they exist to test migration
+        # Get current columns
+        columns_before = migration_db.connection.execute("PRAGMA table_info(sessions)").map { |col| col["name"] }
+
+        # Verify columns already exist (since new database)
+        expect(columns_before).to include("worktrees", "projects")
+
+        # Test that migrate_to_v2 is idempotent (can be run multiple times safely)
+        expect { migration_db.send(:migrate_to_v2) }.not_to raise_error
+
+        # Verify columns still exist
+        columns_after = migration_db.connection.execute("PRAGMA table_info(sessions)").map { |col| col["name"] }
+        expect(columns_after).to include("worktrees", "projects")
+
+        migration_db.close
+      end
+
+      it "handles table_exists? check correctly" do
+        # Test that table_exists? returns true for existing table
+        expect(schema_db.send(:table_exists?, "sessions")).to be true
+
+        # Test that table_exists? returns false for non-existent table
+        expect(schema_db.send(:table_exists?, "nonexistent_table")).to be false
       end
     end
 

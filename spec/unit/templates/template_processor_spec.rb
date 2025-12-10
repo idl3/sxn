@@ -417,5 +417,86 @@ RSpec.describe Sxn::Templates::TemplateProcessor do
         processor.process("test", simple_variables)
       end.to raise_error(Sxn::Templates::Errors::TemplateProcessingError, /Test error/)
     end
+
+    it "collects Liquid rendering errors" do
+      # Create a template with a Liquid error (e.g., undefined variable in strict mode)
+      template = "{{ undefined_variable }}"
+
+      # Mock the template to have errors
+      mock_template = double("Liquid::Template")
+      allow(mock_template).to receive(:render).and_return("")
+      allow(mock_template).to receive(:errors).and_return(["Liquid error: undefined variable 'undefined_variable'"])
+      allow(Liquid::Template).to receive(:parse).and_return(mock_template)
+
+      expect do
+        processor.process(template, simple_variables)
+      end.to raise_error(Sxn::Templates::Errors::TemplateRenderError, /Template rendering errors/)
+    end
+  end
+
+  describe "actual timeout mechanism" do
+    it "raises TemplateTimeoutError when template exceeds max render time" do
+      # Create a template that sleeps longer than MAX_RENDER_TIME
+      # We'll mock the sleep to happen in the timeout thread
+      template = "{{ user.name }}"
+
+      # Mock render to take too long
+      allow_any_instance_of(Liquid::Template).to receive(:render) do
+        sleep(described_class::MAX_RENDER_TIME + 1)
+        "result"
+      end
+
+      expect do
+        processor.process(template, simple_variables)
+      end.to raise_error(Sxn::Templates::Errors::TemplateTimeoutError, /exceeded/)
+    end
+
+    it "ensures timeout thread is cleaned up after render" do
+      template = "{{ user.name }}"
+
+      # Simply verify that processing completes without leaving hanging threads
+      initial_thread_count = Thread.list.size
+
+      processor.process(template, simple_variables)
+
+      # Give threads time to clean up
+      sleep 0.2
+
+      # The timeout thread should have been killed
+      final_thread_count = Thread.list.size
+      expect(final_thread_count).to be <= initial_thread_count
+    end
+  end
+
+  describe "re-raising specific template errors" do
+    it "re-raises TemplateTooLargeError without wrapping" do
+      large_template = "x" * (described_class::MAX_TEMPLATE_SIZE + 1)
+
+      expect do
+        processor.process(large_template, simple_variables)
+      end.to raise_error(Sxn::Templates::Errors::TemplateTooLargeError)
+    end
+
+    it "re-raises TemplateTimeoutError without wrapping" do
+      # Mock render_with_timeout to raise timeout error
+      allow(processor).to receive(:render_with_timeout).and_raise(
+        Sxn::Templates::Errors::TemplateTimeoutError, "Timeout"
+      )
+
+      expect do
+        processor.process("{{ user.name }}", simple_variables)
+      end.to raise_error(Sxn::Templates::Errors::TemplateTimeoutError, /Timeout/)
+    end
+
+    it "re-raises TemplateRenderError without wrapping" do
+      # Mock render_with_timeout to raise render error
+      allow(processor).to receive(:render_with_timeout).and_raise(
+        Sxn::Templates::Errors::TemplateRenderError, "Render error"
+      )
+
+      expect do
+        processor.process("{{ user.name }}", simple_variables)
+      end.to raise_error(Sxn::Templates::Errors::TemplateRenderError, /Render error/)
+    end
   end
 end

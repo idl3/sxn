@@ -465,6 +465,154 @@ RSpec.describe Sxn::Core::SessionManager do
     end
   end
 
+  describe "#cleanup_old_sessions" do
+    before do
+      # Create sessions with different timestamps
+      @recent_session = session_manager.create_session("recent-session")
+      @old_session = session_manager.create_session("old-session")
+    end
+
+    it "removes sessions older than specified days" do
+      # Mock the database to return a session with an old timestamp
+      old_time = (Time.now - (31 * 24 * 60 * 60)).iso8601
+      allow(session_manager.instance_variable_get(:@database)).to receive(:list_sessions).and_return([
+                                                                                                       { id: @old_session[:id], name: "old-session", updated_at: old_time, status: "active", created_at: old_time }
+                                                                                                     ])
+
+      # Ensure get_session returns the session data
+      allow(session_manager).to receive(:get_session).with("old-session").and_return(@old_session)
+
+      count = session_manager.cleanup_old_sessions(30)
+      expect(count).to eq(1)
+    end
+
+    it "does not remove recent sessions" do
+      count = session_manager.cleanup_old_sessions(30)
+      expect(count).to eq(0)
+      expect(session_manager.session_exists?("recent-session")).to be(true)
+    end
+
+    it "handles unparseable timestamps gracefully" do
+      allow(session_manager.instance_variable_get(:@database)).to receive(:list_sessions).and_return([
+                                                                                                       { id: @recent_session[:id], name: "recent-session", updated_at: "invalid-date", status: "active", created_at: Time.now.iso8601 }
+                                                                                                     ])
+
+      expect do
+        count = session_manager.cleanup_old_sessions(30)
+        expect(count).to eq(0)
+      end.not_to raise_error
+    end
+  end
+
+  describe "error conversion and handling" do
+    let(:database) { session_manager.instance_variable_get(:@database) }
+
+    it "converts database duplicate error to SessionAlreadyExistsError" do
+      allow(database).to receive(:create_session).and_raise(Sxn::Database::DuplicateSessionError, "duplicate")
+
+      expect do
+        session_manager.create_session("test")
+      end.to raise_error(Sxn::SessionAlreadyExistsError)
+    end
+
+    it "returns nil when database raises SessionNotFoundError" do
+      allow(database).to receive(:get_session_by_name).and_raise(Sxn::Database::SessionNotFoundError)
+
+      expect(session_manager.get_session("missing")).to be_nil
+    end
+  end
+
+  describe "#update_session_status with metadata" do
+    let!(:session) { session_manager.create_session("test-session") }
+    let(:database) { session_manager.instance_variable_get(:@database) }
+
+    it "updates status with additional options in metadata" do
+      # Get the session to get its ID
+      session_data = session_manager.get_session("test-session")
+
+      # Mock the database calls
+      allow(database).to receive(:get_session).with(session_data[:id]).and_return(
+        { id: session_data[:id], metadata: {} }
+      )
+      allow(database).to receive(:update_session)
+
+      # Call the private method
+      session_manager.send(:update_session_status, session_data[:id], "completed", custom_field: "value")
+
+      # Verify update_session was called with metadata
+      expect(database).to have_received(:update_session).with(
+        session_data[:id],
+        hash_including(:status, :metadata)
+      )
+    end
+  end
+
+  describe "#update_session_status_by_name with metadata" do
+    let!(:session) { session_manager.create_session("test-session") }
+    let(:database) { session_manager.instance_variable_get(:@database) }
+
+    it "updates status by name with additional options in metadata" do
+      session_data = session_manager.get_session("test-session")
+
+      allow(database).to receive(:get_session).with(session_data[:id]).and_return(
+        { id: session_data[:id], metadata: { existing: "data" } }
+      )
+      allow(database).to receive(:update_session)
+
+      session_manager.send(:update_session_status_by_name, "test-session", "archived", new_field: "test")
+
+      expect(database).to have_received(:update_session).with(
+        session_data[:id],
+        hash_including(:status, :metadata)
+      )
+    end
+  end
+
+  describe "#remove_session_worktrees git failures" do
+    let!(:session) { session_manager.create_session("test-session") }
+    let(:worktree_path) { File.join(sessions_dir, "test-session", "worktree") }
+
+    before do
+      session_manager.add_worktree_to_session("test-session", "test-project", worktree_path, "main")
+      FileUtils.mkdir_p(worktree_path)
+      File.write(File.join(worktree_path, ".git"), "gitdir: /fake/repo/.git/worktrees/test-project")
+    end
+
+    it "logs warning but continues when git worktree remove fails" do
+      # Mock find_parent_repository to return a valid path
+      allow(session_manager).to receive(:find_parent_repository).and_return("/fake/repo/.git")
+
+      # Mock Dir.chdir to yield but system to fail
+      allow(Dir).to receive(:chdir).with("/fake/repo/.git").and_yield
+      allow(session_manager).to receive(:system).and_return(false)
+
+      expect do
+        session_manager.send(:remove_session_worktrees, session_manager.get_session("test-session"))
+      end.to output(/Warning: Could not cleanly remove git worktree/).to_stderr
+    end
+
+    it "logs warning but continues when git command raises exception" do
+      allow(session_manager).to receive(:find_parent_repository).and_raise(StandardError.new("Git error"))
+
+      expect do
+        session_manager.send(:remove_session_worktrees, session_manager.get_session("test-session"))
+      end.to output(/Warning: Could not cleanly remove git worktree/).to_stderr
+    end
+
+    it "removes directory even when git operations fail" do
+      allow(session_manager).to receive(:find_parent_repository).and_return("/fake/repo/.git")
+      allow(Dir).to receive(:chdir).and_raise(StandardError.new("Cannot chdir"))
+
+      # We don't need to mock FileUtils.rm_rf, just verify directory is removed
+      expect do
+        session_manager.send(:remove_session_worktrees, session_manager.get_session("test-session"))
+      end.to output(/Warning/).to_stderr
+
+      # Verify directory was removed
+      expect(File.exist?(worktree_path)).to be(false)
+    end
+  end
+
   describe "private methods" do
     let!(:session) { session_manager.create_session("test-session") }
 

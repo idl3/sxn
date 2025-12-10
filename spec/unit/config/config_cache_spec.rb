@@ -196,6 +196,12 @@ RSpec.describe Sxn::Config::ConfigCache do
       cache.invalidate
       expect(cache.invalidate).to be true
     end
+
+    it "returns false and warns when cache invalidation fails" do
+      allow(File).to receive(:delete).and_raise(Errno::EACCES, "Permission denied")
+      expect { cache.invalidate }.to output(/Warning: Failed to invalidate cache/).to_stderr
+      expect(cache.invalidate).to be false
+    end
   end
 
   describe "#stats" do
@@ -235,6 +241,21 @@ RSpec.describe Sxn::Config::ConfigCache do
         expect(stats[:invalid]).to be true
       end
     end
+
+    context "when cache parsing fails during stats" do
+      before do
+        cache.set(sample_config, config_files)
+        allow(cache).to receive(:load_cache).and_raise(StandardError, "Unexpected error")
+      end
+
+      it "returns error status" do
+        stats = cache.stats(config_files)
+        expect(stats[:exists]).to be true
+        expect(stats[:valid]).to be false
+        expect(stats[:invalid]).to be true
+        expect(stats[:error]).to be true
+      end
+    end
   end
 
   describe "atomic operations" do
@@ -263,6 +284,35 @@ RSpec.describe Sxn::Config::ConfigCache do
       # No temp files should remain
       temp_files = Dir.glob(File.join(cache_dir, "*.tmp"))
       expect(temp_files).to be_empty
+    end
+
+    it "retries cache write on ENOENT errors during file rename" do
+      call_count = 0
+      allow(File).to receive(:rename).and_wrap_original do |original_method, *args|
+        call_count += 1
+        raise Errno::ENOENT, "No such file or directory" if call_count < 3
+
+        original_method.call(*args)
+      end
+
+      expect(cache.set(sample_config, config_files)).to be true
+      expect(call_count).to eq 3
+    end
+
+    it "handles directory creation race conditions" do
+      # Simulate directory being removed between checks
+      original_mkdir_p = FileUtils.method(:mkdir_p)
+      call_count = 0
+
+      allow(FileUtils).to receive(:mkdir_p).and_wrap_original do |_original_method, *args|
+        call_count += 1
+        # Track call count for race condition simulation
+        original_mkdir_p.call(*args)
+      end
+
+      # Set cache multiple times to trigger multiple directory creation attempts
+      expect(cache.set(sample_config, config_files)).to be true
+      expect(cache.set(sample_config.merge("updated" => true), config_files)).to be true
     end
   end
 

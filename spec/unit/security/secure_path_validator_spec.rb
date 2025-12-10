@@ -513,4 +513,199 @@ RSpec.describe Sxn::Security::SecurePathValidator do
       end.to raise_error(ArgumentError, /cannot be nil or empty/)
     end
   end
+
+  describe "boundary validation error handling" do
+    it "handles ArgumentError when paths don't share common ancestor" do
+      # Mock relative_path_from to raise ArgumentError
+      allow_any_instance_of(Pathname).to receive(:relative_path_from).and_raise(ArgumentError, "different prefix")
+
+      expect do
+        validator.validate_path("/some/path", allow_creation: true)
+      end.to raise_error(Sxn::PathValidationError, /outside project boundaries/)
+    end
+  end
+
+  describe "symlink validation error handling" do
+    let(:subdir) { File.join(temp_dir, "subdir") }
+    let(:symlink_path) { File.join(subdir, "test_link") }
+
+    before do
+      FileUtils.mkdir_p(subdir)
+    end
+
+    context "when symlink validation raises ArgumentError" do
+      it "handles ArgumentError in absolute path symlink validation" do
+        # Create a symlink with absolute target
+        target_file = File.join(temp_dir, "target.txt")
+        File.write(target_file, "content")
+        File.symlink(target_file, symlink_path)
+
+        # Mock relative_path_from to raise ArgumentError on symlink validation
+        call_count = 0
+        allow_any_instance_of(Pathname).to receive(:relative_path_from) do |instance, base|
+          call_count += 1
+          # Allow the first call (in validate_within_boundaries!) to succeed
+          raise ArgumentError, "different prefix" unless call_count == 1
+
+          instance.relative_path_from_without_mock(base)
+
+          # Subsequent calls in validate_symlink_safety! should raise
+        end
+
+        # This is tricky to test as we need to get past the first boundary check
+        # but fail in symlink validation. Let's use a different approach:
+        # We'll test the path that triggers line 180 by mocking at a different level
+
+        # Actually, let's create a scenario that would naturally trigger this
+        # Create a symlink pointing outside, then mock the validation
+        parent_temp = Dir.mktmpdir("sxn_parent_test")
+        project_dir = File.join(parent_temp, "project")
+        FileUtils.mkdir_p(project_dir)
+
+        local_validator = described_class.new(project_dir)
+
+        # Create a subdirectory with a symlink
+        local_subdir = File.join(project_dir, "subdir")
+        FileUtils.mkdir_p(local_subdir)
+        local_symlink = File.join(local_subdir, "link")
+
+        # Create symlink pointing to absolute path
+        File.symlink(project_dir, local_symlink)
+
+        # Now mock to trigger ArgumentError in symlink validation
+        original_method = Pathname.instance_method(:relative_path_from)
+        allow_any_instance_of(Pathname).to receive(:relative_path_from) do |instance, base|
+          # Let initial boundary check pass
+          raise ArgumentError, "different prefix" unless instance.to_s.include?("subdir/link")
+
+          original_method.bind(instance).call(base)
+
+          # Raise error when checking symlink target
+        end
+
+        expect do
+          local_validator.validate_path("subdir/link")
+        end.to raise_error(Sxn::PathValidationError, /outside project boundaries/)
+
+        FileUtils.rm_rf(parent_temp)
+      end
+    end
+
+    context "with relative symlink paths" do
+      it "validates relative paths in symlink checking" do
+        # Create a relative symlink
+        target_file = File.join(temp_dir, "target.txt")
+        File.write(target_file, "content")
+
+        relative_link = File.join(subdir, "relative_link")
+        File.symlink("../target.txt", relative_link)
+
+        expect do
+          validator.validate_path("subdir/relative_link")
+        end.not_to raise_error
+      end
+    end
+
+    context "with absolute symlink targets" do
+      it "validates existing absolute symlink targets" do
+        # Create a symlink with absolute target within project
+        target_file = File.join(temp_dir, "target.txt")
+        File.write(target_file, "content")
+
+        absolute_link = File.join(subdir, "absolute_link")
+        File.symlink(target_file, absolute_link)
+
+        expect do
+          validator.validate_path("subdir/absolute_link")
+        end.not_to raise_error
+      end
+
+      it "validates non-existent absolute symlink targets" do
+        # Create a symlink with absolute target that doesn't exist (but within project)
+        non_existent_target = File.join(temp_dir, "non_existent.txt")
+
+        absolute_link = File.join(subdir, "link_to_nonexistent")
+        File.symlink(non_existent_target, absolute_link)
+
+        # This should still validate the boundary even though target doesn't exist
+        # Use allow_creation: true since the symlink target doesn't exist
+        expect do
+          validator.validate_path("subdir/link_to_nonexistent", allow_creation: true)
+        end.not_to raise_error
+      end
+
+      it "rejects absolute symlink targets outside project" do
+        # Create a symlink with absolute target outside project
+        # Create the target first so the symlink validation runs
+        outside_target = "/tmp/outside_target_test.txt"
+        File.write(outside_target, "outside content")
+
+        absolute_link = File.join(subdir, "outside_link")
+        File.symlink(outside_target, absolute_link)
+
+        begin
+          expect do
+            validator.validate_path("subdir/outside_link")
+          end.to raise_error(Sxn::PathValidationError, /outside project boundaries/)
+        ensure
+          FileUtils.rm_f(outside_target)
+        end
+      end
+    end
+
+    context "with relative symlink resolution" do
+      it "validates relative symlinks pointing to existing targets" do
+        # Create target file
+        target_file = File.join(temp_dir, "target.txt")
+        File.write(target_file, "content")
+
+        # Create relative symlink
+        relative_link = File.join(subdir, "relative_link")
+        File.symlink("../target.txt", relative_link)
+
+        expect do
+          validator.validate_path("subdir/relative_link")
+        end.not_to raise_error
+      end
+
+      it "validates relative symlinks pointing to non-existent targets" do
+        # Create relative symlink to non-existent file (but within project bounds)
+        non_existent_relative = File.join(subdir, "link_to_nonexistent")
+        File.symlink("../nonexistent.txt", non_existent_relative)
+
+        # This should validate boundaries even if target doesn't exist
+        # Use allow_creation: true since the symlink target doesn't exist
+        expect do
+          validator.validate_path("subdir/link_to_nonexistent", allow_creation: true)
+        end.not_to raise_error
+      end
+
+      it "rejects relative symlinks that resolve outside project" do
+        # Create a parent temp directory
+        parent_temp = Dir.mktmpdir("sxn_parent_test")
+        project_dir = File.join(parent_temp, "project")
+        FileUtils.mkdir_p(project_dir)
+
+        # Create target file outside project but within parent
+        outside_file = File.join(parent_temp, "outside.txt")
+        File.write(outside_file, "outside content")
+
+        local_validator = described_class.new(project_dir)
+
+        # Create subdirectory
+        local_subdir = File.join(project_dir, "subdir")
+        FileUtils.mkdir_p(local_subdir)
+
+        # Create relative symlink that goes outside
+        outside_link = File.join(local_subdir, "outside_link")
+        File.symlink("../../outside.txt", outside_link)
+
+        expect do
+          local_validator.validate_path("subdir/outside_link")
+        end.to raise_error(Sxn::PathValidationError, /outside project boundaries/)
+
+        FileUtils.rm_rf(parent_temp)
+      end
+    end
+  end
 end

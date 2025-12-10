@@ -397,4 +397,187 @@ RSpec.describe Sxn::Security::SecureCommandExecutor do
       expect(executor.command_allowed?(["bin/not_executable"])).to be false
     end
   end
+
+  describe "command validation edge cases" do
+    it "raises error for non-executable whitelisted command" do
+      # Create a file without execute permission
+      non_exec = File.join(temp_dir, "non_exec")
+      File.write(non_exec, "#!/bin/sh\necho test")
+      File.chmod(0o644, non_exec)
+
+      # Mock whitelist to include this file
+      allow_any_instance_of(described_class).to receive(:build_command_whitelist).and_return({ "test" => non_exec })
+
+      test_executor = described_class.new(temp_dir)
+
+      expect do
+        test_executor.execute(["test"])
+      end.to raise_error(Sxn::CommandExecutionError, /not executable/)
+    end
+
+    it "handles string path in whitelist building" do
+      # Create an executable
+      exec_path = File.join(temp_dir, "test_exec")
+      File.write(exec_path, "#!/bin/sh\necho test")
+      File.chmod(0o755, exec_path)
+
+      # Mock ALLOWED_COMMANDS to include a string path specification
+      stub_const("#{described_class}::ALLOWED_COMMANDS", {
+                   "test_cmd" => exec_path
+                 })
+
+      test_executor = described_class.new(temp_dir)
+
+      expect(test_executor.allowed_commands).to include("test_cmd")
+      expect(test_executor.command_allowed?(["test_cmd"])).to be true
+    end
+  end
+
+  describe "timeout error handling" do
+    it "handles errors when killing timed-out process with TERM signal" do
+      skip "sleep command not available" unless File.executable?("/bin/sleep")
+
+      # Mock the command whitelist to include sleep
+      whitelist = { "sleep" => "/bin/sleep" }
+      allow_any_instance_of(described_class).to receive(:build_command_whitelist).and_return(whitelist)
+
+      test_executor = described_class.new(temp_dir)
+
+      # Mock Process.kill to raise an error on TERM
+      # This error is NOT in a rescue block, so it will be caught by the outer rescue StandardError
+      allow(Process).to receive(:kill) do |signal, _pid|
+        raise Errno::ESRCH, "No such process" if signal == "TERM"
+
+        # Raise error which will be caught by outer rescue StandardError on line 159
+
+        # This will be the KILL signal - let it succeed
+        nil
+      end
+
+      # The execute will raise CommandExecutionError but with the error message, not timeout
+      expect do
+        test_executor.execute(%w[sleep 10], timeout: 1)
+      end.to raise_error(Sxn::CommandExecutionError, /Command execution failed/)
+    end
+
+    it "handles errors when killing timed-out process with KILL signal" do
+      skip "sleep command not available" unless File.executable?("/bin/sleep")
+
+      # Mock the command whitelist to include sleep
+      whitelist = { "sleep" => "/bin/sleep" }
+      allow_any_instance_of(described_class).to receive(:build_command_whitelist).and_return(whitelist)
+
+      test_executor = described_class.new(temp_dir)
+
+      # Mock Process.kill to succeed on TERM but fail on KILL
+      allow(Process).to receive(:kill) do |signal, _pid|
+        raise Errno::ESRCH, "No such process" if signal == "KILL"
+
+        # Raise error which should be caught by rescue StandardError
+
+        # TERM succeeds
+        nil
+      end
+
+      # The execute should still raise the timeout error
+      expect do
+        test_executor.execute(%w[sleep 10], timeout: 1)
+      end.to raise_error(Sxn::CommandExecutionError, /timed out/)
+    end
+
+    it "handles errors when waiting for killed process" do
+      skip "sleep command not available" unless File.executable?("/bin/sleep")
+
+      # Mock the command whitelist to include sleep
+      whitelist = { "sleep" => "/bin/sleep" }
+      allow_any_instance_of(described_class).to receive(:build_command_whitelist).and_return(whitelist)
+
+      test_executor = described_class.new(temp_dir)
+
+      # Mock Process.wait to raise an error after timeout
+      original_wait = Process.method(:wait)
+      wait_count = 0
+      allow(Process).to receive(:wait) do |pid|
+        wait_count += 1
+        raise Errno::ECHILD, "No child processes" if wait_count > 1
+
+        # Second call (after timeout in rescue block) should raise
+
+        # First call should timeout normally
+        original_wait.call(pid)
+      end
+
+      # The execute should still raise the timeout error
+      expect do
+        test_executor.execute(%w[sleep 10], timeout: 1)
+      end.to raise_error(Sxn::CommandExecutionError, /timed out/)
+    end
+  end
+
+  describe "IO cleanup error handling" do
+    it "handles graceful handling of IO close errors" do
+      # Mock echo command for this test
+      echo_path = %w[/bin/echo /usr/bin/echo].find { |path| File.executable?(path) }
+      skip "echo not available" unless echo_path
+
+      whitelist = { "echo" => echo_path }
+      allow_any_instance_of(described_class).to receive(:build_command_whitelist).and_return(whitelist)
+
+      test_executor = described_class.new(temp_dir)
+
+      # Track close calls and only raise errors in the ensure block
+      close_count = 0
+      original_close = IO.instance_method(:close)
+
+      allow_any_instance_of(IO).to receive(:close) do |io|
+        close_count += 1
+        # Allow the first few closes (the write ends), but raise errors in the ensure block
+        raise IOError, "closed stream" if close_count > 2
+
+        # Raise error which should be caught by rescue StandardError in ensure block
+
+        original_close.bind(io).call
+      end
+
+      # The execute should still succeed despite IO close errors in ensure block
+      expect do
+        result = test_executor.execute(%w[echo test])
+        expect(result).to be_a(described_class::CommandResult)
+      end.not_to raise_error
+    end
+
+    it "handles IO close errors in cleanup block" do
+      # Mock echo command for this test
+      echo_path = %w[/bin/echo /usr/bin/echo].find { |path| File.executable?(path) }
+      skip "echo not available" unless echo_path
+
+      whitelist = { "echo" => echo_path }
+      allow_any_instance_of(described_class).to receive(:build_command_whitelist).and_return(whitelist)
+
+      test_executor = described_class.new(temp_dir)
+
+      # Track how many times close is called
+      close_count = 0
+      original_close = IO.instance_method(:close)
+      close_errors = []
+
+      allow_any_instance_of(IO).to receive(:close) do |io|
+        close_count += 1
+        if close_count >= 3
+          # Raise error on subsequent closes (in the ensure block)
+          # This error should be rescued and not propagate
+          close_errors << close_count
+          raise IOError, "closed stream"
+        else
+          original_close.bind(io).call
+        end
+      end
+
+      # The execute should complete without propagating IO errors
+      result = test_executor.execute(%w[echo test])
+      expect(result).to be_a(described_class::CommandResult)
+      # Verify that at least some close operations raised errors (that were handled)
+      expect(close_errors).not_to be_empty
+    end
+  end
 end

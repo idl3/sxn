@@ -517,4 +517,130 @@ RSpec.describe Sxn::Templates::TemplateEngine do
       expect(variables[:sxn][:template_engine]).to eq("liquid")
     end
   end
+
+  describe "Hash#deep_merge" do
+    it "deeply merges nested hashes" do
+      h1 = { a: { b: 1 } }
+      h2 = { a: { c: 2 } }
+      result = h1.deep_merge(h2)
+      expect(result).to eq({ a: { b: 1, c: 2 } })
+    end
+
+    it "overwrites non-hash values" do
+      h1 = { a: 1, b: { c: 2 } }
+      h2 = { a: 3, b: { d: 4 } }
+      result = h1.deep_merge(h2)
+      expect(result).to eq({ a: 3, b: { c: 2, d: 4 } })
+    end
+
+    it "handles deeply nested structures" do
+      h1 = { a: { b: { c: 1, d: 2 } } }
+      h2 = { a: { b: { c: 3, e: 4 } } }
+      result = h1.deep_merge(h2)
+      expect(result).to eq({ a: { b: { c: 3, d: 2, e: 4 } } })
+    end
+  end
+
+  describe "security error handling" do
+    let(:template_path) { File.join(temp_dir, "test.liquid") }
+    let(:output_path) { File.join(temp_dir, "output.md") }
+
+    it "re-raises TemplateSecurityError without wrapping in process_template" do
+      File.write(template_path, "{{ user.name }}")
+      allow(engine).to receive(:find_template).with("test", nil).and_return(template_path)
+
+      # Mock security validator to raise a security error
+      mock_security = engine.instance_variable_get(:@security)
+      allow(mock_security).to receive(:validate_template).and_raise(
+        Sxn::Templates::Errors::TemplateSecurityError, "Dangerous pattern detected"
+      )
+
+      expect do
+        engine.process_template("test", output_path)
+      end.to raise_error(Sxn::Templates::Errors::TemplateSecurityError, /Dangerous pattern detected/)
+    end
+
+    it "re-raises TemplateSecurityError without wrapping in render_template" do
+      template_path = File.join(temp_dir, "test.liquid")
+      File.write(template_path, "{{ user.name }}")
+      allow(engine).to receive(:find_template).with("test", nil).and_return(template_path)
+
+      # Mock security validator to raise a security error
+      mock_security = engine.instance_variable_get(:@security)
+      allow(mock_security).to receive(:validate_template).and_raise(
+        Sxn::Templates::Errors::TemplateSecurityError, "Dangerous pattern detected"
+      )
+
+      expect do
+        engine.render_template("test")
+      end.to raise_error(Sxn::Templates::Errors::TemplateSecurityError, /Dangerous pattern detected/)
+    end
+  end
+
+  describe "validate_template_syntax fallback cases" do
+    it "treats multiline content as template content" do
+      multiline_template = "Line 1\n{{ user.name }}\nLine 3"
+      mock_processor = engine.instance_variable_get(:@processor)
+      allow(mock_processor).to receive(:validate_syntax).with(multiline_template).and_return(true)
+
+      expect(engine.validate_template_syntax(multiline_template)).to be true
+    end
+
+    it "handles ambiguous input with Liquid syntax as content" do
+      # Input with Liquid syntax but no path separators
+      template = "{{ user.name }}"
+      mock_processor = engine.instance_variable_get(:@processor)
+      allow(mock_processor).to receive(:validate_syntax).with(template).and_return(true)
+
+      expect(engine.validate_template_syntax(template)).to be true
+    end
+
+    it "handles ambiguous input without Liquid syntax as filename" do
+      # Create a simple template file
+      template_path = File.join(temp_dir, "simple.liquid")
+      File.write(template_path, "Hello World")
+
+      # Set up template finding
+      allow(engine).to receive(:find_template).with("simple", nil).and_return(template_path)
+      mock_processor = engine.instance_variable_get(:@processor)
+      allow(mock_processor).to receive(:validate_syntax).with("Hello World").and_return(true)
+
+      expect(engine.validate_template_syntax("simple")).to be true
+    end
+  end
+
+  describe "render_template error handling" do
+    it "raises TemplateNotFoundError for non-existent template" do
+      allow(engine).to receive(:find_template).with("nonexistent", nil).and_raise(
+        Sxn::Templates::Errors::TemplateNotFoundError, "Template not found"
+      )
+
+      expect do
+        engine.render_template("nonexistent")
+      end.to raise_error(Sxn::Templates::Errors::TemplateProcessingError, /Failed to render template/)
+    end
+
+    it "wraps processing errors with context" do
+      template_path = File.join(temp_dir, "error.liquid")
+      File.write(template_path, "{{ user.name }}")
+      allow(engine).to receive(:find_template).with("error", nil).and_return(template_path)
+
+      # Mock processor to raise an error
+      mock_processor = engine.instance_variable_get(:@processor)
+      allow(mock_processor).to receive(:process).and_raise(StandardError, "Processing failed")
+
+      expect do
+        engine.render_template("error")
+      end.to raise_error(Sxn::Templates::Errors::TemplateProcessingError, /Failed to render template 'error'/)
+    end
+
+    it "handles file read errors gracefully" do
+      allow(engine).to receive(:find_template).with("test", nil).and_return("/nonexistent/path.liquid")
+      allow(File).to receive(:read).with("/nonexistent/path.liquid").and_raise(Errno::ENOENT, "No such file")
+
+      expect do
+        engine.render_template("test")
+      end.to raise_error(Sxn::Templates::Errors::TemplateProcessingError)
+    end
+  end
 end

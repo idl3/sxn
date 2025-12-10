@@ -62,6 +62,20 @@ RSpec.describe Sxn::Rules::BaseRule do
       expect(rule.errors).to be_empty
     end
 
+    it "initializes with alternative constructor signature (config, project_path, session_path, name)" do
+      alt_rule = test_rule_class.new(config, project_path, session_path, "custom_name")
+      expect(alt_rule.name).to eq("custom_name")
+      expect(alt_rule.config).to eq(config)
+      expect(alt_rule.project_path).to eq(File.realpath(project_path))
+      expect(alt_rule.session_path).to eq(File.realpath(session_path))
+    end
+
+    it "raises error with invalid argument combinations" do
+      expect do
+        test_rule_class.new("invalid", 123, "args", "here")
+      end.to raise_error(ArgumentError, /Invalid arguments/)
+    end
+
     it "raises error for non-existent project path" do
       expect do
         test_rule_class.new("/non/existent", session_path, config)
@@ -165,6 +179,16 @@ RSpec.describe Sxn::Rules::BaseRule do
       rule.apply
       expect(rule.duration).to be_a(Float)
       expect(rule.duration).to be > 0
+    end
+
+    it "raises NotImplementedError when calling apply on BaseRule directly" do
+      # Create a BaseRule instance directly (not a subclass)
+      base_rule = described_class.new(project_path, session_path, config)
+      base_rule.validate
+
+      expect do
+        base_rule.apply
+      end.to raise_error(NotImplementedError, /must implement #apply/)
     end
   end
 

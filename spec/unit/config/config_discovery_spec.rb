@@ -318,6 +318,53 @@ RSpec.describe Sxn::Config::ConfigDiscovery do
         end.to output(/Warning: Failed to load local config/).to_stderr
       end
     end
+
+    context "with errors loading global config" do
+      let(:global_config_file) { File.expand_path("~/.sxn/config.yml") }
+
+      before do
+        allow(File).to receive(:exist?).and_call_original
+        allow(File).to receive(:exist?).with(global_config_file).and_return(true)
+        allow(File).to receive(:read).and_call_original
+        allow(File).to receive(:read).with(global_config_file).and_raise(StandardError, "Read failed")
+      end
+
+      it "handles errors when loading global config" do
+        expect do
+          discovery.discover_config
+        end.to output(/Warning: Failed to load global config/).to_stderr
+      end
+
+      it "continues with other configs when global config fails" do
+        config = nil
+        expect do
+          config = discovery.discover_config
+        end.to output(/Warning: Failed to load global config/).to_stderr
+
+        # Should still return defaults
+        expect(config["version"]).to eq 1
+        expect(config["sessions_folder"]).to eq ".sessions"
+      end
+    end
+
+    context "with errors loading workspace config" do
+      let(:workspace_config_dir) { File.join(temp_dir, ".sxn-workspace") }
+      let(:workspace_config_file) { File.join(workspace_config_dir, "config.yml") }
+
+      before do
+        FileUtils.mkdir_p(workspace_config_dir)
+        File.write(workspace_config_file, "version: 1")
+
+        allow(File).to receive(:read).and_call_original
+        allow(File).to receive(:read).with(workspace_config_file).and_raise(StandardError, "Read failed")
+      end
+
+      it "handles errors when loading workspace config" do
+        expect do
+          discovery.discover_config
+        end.to output(/Warning: Failed to load workspace config/).to_stderr
+      end
+    end
   end
 
   describe "performance" do

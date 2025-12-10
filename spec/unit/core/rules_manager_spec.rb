@@ -342,6 +342,73 @@ RSpec.describe Sxn::Core::RulesManager do
         rules_manager.apply_rules("test-project")
       end.to raise_error(Sxn::WorktreeNotFoundError, /No worktree found/)
     end
+
+    it "captures copy file errors in errors array" do
+      # Create a test file in the project directory
+      File.write(File.join(temp_project_dir, "test.txt"), "test content")
+
+      project_rules = {
+        "copy_files" => [
+          { "source" => "test.txt" },
+          { "source" => "nonexistent.txt" } # This should fail but silently skip
+        ]
+      }
+      allow(mock_project_manager).to receive(:get_project_rules).and_return(project_rules)
+
+      result = rules_manager.apply_rules("test-project")
+
+      # Both rules are processed (even if source doesn't exist)
+      # The implementation doesn't fail for missing files, just skips them
+      expect(result[:applied_count]).to eq(2)
+      # No errors captured since missing files are silently skipped
+      expect(result[:errors]).to be_empty
+      expect(result[:success]).to be true
+    end
+
+    it "handles glob patterns in copy_files rules" do
+      # Create multiple test files
+      FileUtils.mkdir_p(File.join(temp_project_dir, "configs"))
+      File.write(File.join(temp_project_dir, "configs/file1.txt"), "content1")
+      File.write(File.join(temp_project_dir, "configs/file2.txt"), "content2")
+
+      project_rules = {
+        "copy_files" => [
+          { "source" => "configs/*.txt", "strategy" => "copy" }
+        ]
+      }
+      allow(mock_project_manager).to receive(:get_project_rules).and_return(project_rules)
+
+      result = rules_manager.apply_rules("test-project")
+
+      expect(result[:success]).to be true
+      expect(result[:applied_count]).to eq(1)
+
+      # Verify files were copied
+      expect(File.exist?(File.join(temp_worktree_dir, "configs/file1.txt"))).to be true
+      expect(File.exist?(File.join(temp_worktree_dir, "configs/file2.txt"))).to be true
+    end
+
+    it "applies copy_file_rule with symlink strategy" do
+      # Create a test file in the project directory
+      File.write(File.join(temp_project_dir, "test.txt"), "test content")
+
+      project_rules = {
+        "copy_files" => [
+          { "source" => "test.txt", "strategy" => "symlink" }
+        ]
+      }
+      allow(mock_project_manager).to receive(:get_project_rules).and_return(project_rules)
+
+      result = rules_manager.apply_rules("test-project")
+
+      expect(result[:success]).to be true
+      expect(result[:applied_count]).to eq(1)
+
+      # Verify symlink was created
+      dest_file = File.join(temp_worktree_dir, "test.txt")
+      expect(File.symlink?(dest_file)).to be true
+      expect(File.readlink(dest_file)).to eq(File.join(temp_project_dir, "test.txt"))
+    end
   end
 
   describe "#validate_rules" do

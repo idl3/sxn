@@ -761,4 +761,147 @@ RSpec.describe Sxn::Templates::TemplateVariables do
       expect(variables).not_to have_key(:project)
     end
   end
+
+  describe "validation error handling" do
+    it "logs warning for Proc variables" do
+      mock_logger = double("Logger")
+      allow(Sxn).to receive(:logger).and_return(mock_logger)
+      allow(mock_logger).to receive(:warn)
+
+      variables = { test: { dangerous: proc { "dangerous" } } }
+      collector.send(:validate_collected_variables, variables)
+
+      expect(mock_logger).to have_received(:warn).with(/contains executable code/)
+    end
+
+    it "logs warning for Method variables" do
+      mock_logger = double("Logger")
+      allow(Sxn).to receive(:logger).and_return(mock_logger)
+      allow(mock_logger).to receive(:warn)
+
+      variables = { test: { dangerous: method(:puts) } }
+      collector.send(:validate_collected_variables, variables)
+
+      expect(mock_logger).to have_received(:warn).with(/contains executable code/)
+    end
+
+    it "handles validation errors gracefully" do
+      mock_logger = double("Logger")
+      allow(Sxn).to receive(:logger).and_return(mock_logger)
+      allow(mock_logger).to receive(:error)
+
+      # Create variables that will cause an error during validation
+      variables = { test: { key: "value" } }
+      allow(variables).to receive(:each).and_raise(StandardError, "Validation error")
+
+      result = collector.send(:validate_collected_variables, variables)
+
+      expect(mock_logger).to have_received(:error).with(/Template variable validation failed/)
+      expect(result).to eq(variables)
+    end
+  end
+
+  describe "exception handling in detection methods" do
+    it "handles detect_project_type exceptions" do
+      # Stub Pathname.new to raise an error
+      allow(Pathname).to receive(:new).and_raise(StandardError, "Path error")
+
+      result = collector.send(:detect_project_type, "/some/path")
+      expect(result).to eq("unknown")
+    end
+
+    it "handles rails_available? exceptions" do
+      allow(collector).to receive(:collect_rails_version).and_raise(StandardError, "Rails error")
+
+      result = collector.send(:rails_available?)
+      expect(result).to be false
+    end
+
+    it "handles node_available? exceptions" do
+      allow(collector).to receive(:system).and_raise(StandardError, "System error")
+
+      result = collector.send(:node_available?)
+      expect(result).to be false
+    end
+
+    it "handles collect_node_version exceptions" do
+      allow(collector).to receive(:node_available?).and_return(true)
+      allow(collector).to receive(:`).and_raise(StandardError, "Command error")
+
+      result = collector.send(:collect_node_version)
+      expect(result).to eq({})
+    end
+
+    it "handles collect_database_info PostgreSQL exceptions" do
+      allow(collector).to receive(:`).with("psql --version 2>/dev/null").and_raise(StandardError)
+
+      result = collector.send(:collect_database_info)
+      expect(result).to be_a(Hash)
+    end
+
+    it "handles collect_database_info MySQL exceptions" do
+      allow(collector).to receive(:`).with("psql --version 2>/dev/null").and_return("")
+      allow(collector).to receive(:`).with("mysql --version 2>/dev/null").and_raise(StandardError)
+
+      result = collector.send(:collect_database_info)
+      expect(result).to be_a(Hash)
+    end
+
+    it "handles collect_database_info SQLite exceptions" do
+      allow(collector).to receive(:`).with("psql --version 2>/dev/null").and_return("")
+      allow(collector).to receive(:`).with("mysql --version 2>/dev/null").and_return("")
+      allow(collector).to receive(:`).with("sqlite3 --version 2>/dev/null").and_raise(StandardError)
+
+      result = collector.send(:collect_database_info)
+      expect(result).to be_a(Hash)
+    end
+
+    it "handles collect_js_project_info JSON parsing errors" do
+      allow(collector).to receive(:detect_project_type).and_return("javascript")
+      package_json_path = double("Pathname")
+      allow(package_json_path).to receive(:exist?).and_return(true)
+      allow(package_json_path).to receive(:read).and_return("invalid json")
+
+      project_path = double("Pathname")
+      allow(project_path).to receive(:/).with("package.json").and_return(package_json_path)
+      allow(Pathname).to receive(:new).with(mock_project.path).and_return(project_path)
+
+      allow(JSON).to receive(:parse).and_raise(JSON::ParserError)
+
+      result = collector.send(:collect_js_project_info)
+      expect(result).to be_a(Hash)
+    end
+
+    it "handles collect_rails_project_info YAML parsing errors" do
+      allow(collector).to receive(:detect_project_type).and_return("rails")
+      db_config_path = double("Pathname")
+      allow(db_config_path).to receive(:exist?).and_return(true)
+
+      config_path = double("Pathname")
+      allow(config_path).to receive(:/).with("database.yml").and_return(db_config_path)
+
+      project_path = double("Pathname")
+      allow(project_path).to receive(:/).with("config").and_return(config_path)
+      allow(Pathname).to receive(:new).with(mock_project.path).and_return(project_path)
+
+      allow(YAML).to receive(:load_file).and_raise(Psych::SyntaxError.new("", 0, 0, 0, "", ""))
+
+      result = collector.send(:collect_rails_project_info)
+      expect(result).to be_a(Hash)
+    end
+
+    it "handles collect_ruby_project_info bundler command errors" do
+      gemfile_path = double("Pathname")
+      allow(gemfile_path).to receive(:exist?).and_return(true)
+
+      project_path = double("Pathname")
+      allow(project_path).to receive(:/).with("Gemfile").and_return(gemfile_path)
+      allow(Pathname).to receive(:new).with(mock_project.path).and_return(project_path)
+
+      allow(collector).to receive(:`).with("bundle version").and_raise(Errno::ENOENT)
+
+      result = collector.send(:collect_ruby_project_info)
+      expect(result).to be_a(Hash)
+    end
+  end
 end

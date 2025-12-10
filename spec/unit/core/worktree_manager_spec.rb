@@ -877,4 +877,222 @@ RSpec.describe Sxn::Core::WorktreeManager do
       end
     end
   end
+
+  describe "helper methods for coverage" do
+    describe "#worktree_exists?" do
+      let(:worktrees_data) do
+        {
+          "existing-project" => { path: File.join(session_path, "existing-project"), branch: "main" }
+        }
+      end
+
+      before do
+        allow(mock_session_manager).to receive(:get_session_worktrees).and_return(worktrees_data)
+      end
+
+      it "returns true when worktree exists" do
+        expect(worktree_manager.worktree_exists?("existing-project")).to be(true)
+      end
+
+      it "returns false when worktree does not exist" do
+        expect(worktree_manager.worktree_exists?("non-existent")).to be(false)
+      end
+    end
+
+    describe "#worktree_path" do
+      let(:test_path) { File.join(session_path, "test-project") }
+      let(:worktrees_data) do
+        {
+          "test-project" => { path: test_path, branch: "main" }
+        }
+      end
+
+      before do
+        allow(mock_session_manager).to receive(:get_session_worktrees).and_return(worktrees_data)
+      end
+
+      it "returns path when worktree exists" do
+        expect(worktree_manager.worktree_path("test-project")).to eq(test_path)
+      end
+
+      it "returns nil when worktree does not exist" do
+        expect(worktree_manager.worktree_path("non-existent")).to be_nil
+      end
+    end
+
+    describe "#validate_worktree_name" do
+      it "accepts valid worktree names" do
+        expect(worktree_manager.validate_worktree_name("valid-name")).to be(true)
+        expect(worktree_manager.validate_worktree_name("valid_name")).to be(true)
+        expect(worktree_manager.validate_worktree_name("valid123")).to be(true)
+      end
+
+      it "rejects invalid worktree names" do
+        expect do
+          worktree_manager.validate_worktree_name("invalid name")
+        end.to raise_error(Sxn::WorktreeError, /Invalid worktree name/)
+      end
+
+      it "rejects names with special characters" do
+        expect do
+          worktree_manager.validate_worktree_name("invalid@name")
+        end.to raise_error(Sxn::WorktreeError, /Invalid worktree name/)
+      end
+
+      it "rejects names with slashes" do
+        expect do
+          worktree_manager.validate_worktree_name("invalid/name")
+        end.to raise_error(Sxn::WorktreeError, /Invalid worktree name/)
+      end
+    end
+  end
+
+  describe "#create_git_worktree enhanced error messages" do
+    let(:test_worktree_path) { File.join(session_path, "error-test") }
+
+    it "provides helpful message for 'already exists' error" do
+      require "open3"
+      status = double("status", success?: false, exitstatus: 128)
+      allow(Open3).to receive(:capture3).and_return(["", "fatal: 'path' already exists", status])
+      allow(worktree_manager).to receive(:system).and_return(false)
+
+      expect do
+        worktree_manager.send(:create_git_worktree, project_path, test_worktree_path, "test-branch")
+      end.to raise_error(Sxn::WorktreeCreationError) do |error|
+        expect(error.message).to match(/already exists/)
+        expect(error.message).to match(/Try removing/)
+      end
+    end
+
+    it "provides helpful message for 'already checked out' error" do
+      require "open3"
+      status = double("status", success?: false, exitstatus: 128)
+      allow(Open3).to receive(:capture3).and_return(["", "fatal: 'branch' is already checked out at '/some/path'", status])
+      allow(worktree_manager).to receive(:system).and_return(false)
+
+      expect do
+        worktree_manager.send(:create_git_worktree, project_path, test_worktree_path, "test-branch")
+      end.to raise_error(Sxn::WorktreeCreationError, /already checked out in another worktree/)
+    end
+
+    it "provides helpful message for 'not a git repository' error" do
+      require "open3"
+      status = double("status", success?: false, exitstatus: 128)
+      allow(Open3).to receive(:capture3).and_return(["", "fatal: not a git repository", status])
+      allow(worktree_manager).to receive(:system).and_return(false)
+
+      expect do
+        worktree_manager.send(:create_git_worktree, project_path, test_worktree_path, "test-branch")
+      end.to raise_error(Sxn::WorktreeCreationError, /is not a git repository/)
+    end
+
+    it "provides helpful message for 'invalid reference' error" do
+      require "open3"
+      status = double("status", success?: false, exitstatus: 128)
+      allow(Open3).to receive(:capture3).and_return(["", "fatal: invalid reference: main", status])
+      allow(worktree_manager).to receive(:system).and_return(false)
+
+      expect do
+        worktree_manager.send(:create_git_worktree, project_path, test_worktree_path, "test-branch")
+      end.to raise_error(Sxn::WorktreeCreationError, /Make sure the repository has at least one commit/)
+    end
+
+    it "extracts and displays fatal error messages cleanly" do
+      require "open3"
+      status = double("status", success?: false, exitstatus: 128)
+      stderr = "Some other output\nfatal: some specific error\nmore output"
+      allow(Open3).to receive(:capture3).and_return(["", stderr, status])
+      allow(worktree_manager).to receive(:system).and_return(false)
+
+      expect do
+        worktree_manager.send(:create_git_worktree, project_path, test_worktree_path, "test-branch")
+      end.to raise_error(Sxn::WorktreeCreationError, /fatal: some specific error/)
+    end
+  end
+
+  describe "#create_git_worktree debug output" do
+    let(:test_worktree_path) { File.join(session_path, "debug-test") }
+
+    it "outputs debug information when SXN_DEBUG is set and command fails" do
+      require "open3"
+      status = double("status", success?: false, exitstatus: 128)
+      allow(Open3).to receive(:capture3).and_return(["stdout output", "stderr output", status])
+      allow(worktree_manager).to receive(:system).and_return(false)
+      allow(ENV).to receive(:[]).with("SXN_DEBUG").and_return("true")
+      allow(ENV).to receive(:[]).with(anything).and_call_original
+
+      expect do
+        expect do
+          worktree_manager.send(:create_git_worktree, project_path, test_worktree_path, "test-branch")
+        end.to output(/\[DEBUG\] Git worktree command failed/).to_stdout
+      end.to raise_error(Sxn::WorktreeCreationError)
+    end
+
+    it "outputs debug info when project directory does not exist" do
+      require "open3"
+      status = double("status", success?: false, exitstatus: 128)
+      allow(Open3).to receive(:capture3).and_return(["", "error", status])
+      allow(worktree_manager).to receive(:system).and_return(false)
+      allow(ENV).to receive(:[]).with("SXN_DEBUG").and_return("true")
+      allow(ENV).to receive(:[]).with(anything).and_call_original
+      allow(File).to receive(:directory?).with("/non/existent/path").and_return(false)
+      allow(File).to receive(:directory?).and_call_original
+      # Mock Dir.chdir to avoid raising ENOENT
+      allow(Dir).to receive(:chdir).with("/non/existent/path").and_yield
+
+      expect do
+        expect do
+          worktree_manager.send(:create_git_worktree, "/non/existent/path", test_worktree_path, "test-branch")
+        end.to output(/Project directory does not exist/).to_stdout
+      end.to raise_error(Sxn::WorktreeCreationError)
+    end
+
+    it "outputs debug info when target is not a git repository" do
+      require "open3"
+      non_git_dir = File.join(temp_dir, "non_git_dir")
+      FileUtils.mkdir_p(non_git_dir)
+      status = double("status", success?: false, exitstatus: 128)
+      allow(Open3).to receive(:capture3).and_return(["", "error", status])
+      allow(worktree_manager).to receive(:system).and_return(false)
+      allow(ENV).to receive(:[]).with("SXN_DEBUG").and_return("true")
+      allow(ENV).to receive(:[]).with(anything).and_call_original
+
+      expect do
+        expect do
+          worktree_manager.send(:create_git_worktree, non_git_dir, test_worktree_path, "test-branch")
+        end.to output(/Not a git repository/).to_stdout
+      end.to raise_error(Sxn::WorktreeCreationError)
+    end
+
+    it "outputs debug info when target path already exists" do
+      require "open3"
+      FileUtils.mkdir_p(test_worktree_path)
+      status = double("status", success?: false, exitstatus: 128)
+      allow(Open3).to receive(:capture3).and_return(["", "error", status])
+      allow(worktree_manager).to receive(:system).and_return(false)
+      allow(ENV).to receive(:[]).with("SXN_DEBUG").and_return("true")
+      allow(ENV).to receive(:[]).with(anything).and_call_original
+
+      expect do
+        expect do
+          worktree_manager.send(:create_git_worktree, project_path, test_worktree_path, "test-branch")
+        end.to output(/Target path already exists/).to_stdout
+      end.to raise_error(Sxn::WorktreeCreationError)
+    end
+
+    it "outputs debug info with verbose flag" do
+      require "open3"
+      status = double("status", success?: false, exitstatus: 128)
+      allow(Open3).to receive(:capture3).and_return(["", "error", status])
+      allow(worktree_manager).to receive(:system).and_return(false)
+      allow(ENV).to receive(:[]).with("SXN_DEBUG").and_return(nil)
+      allow(ENV).to receive(:[]).with(anything).and_call_original
+
+      expect do
+        expect do
+          worktree_manager.send(:create_git_worktree, project_path, test_worktree_path, "test-branch", verbose: true)
+        end.to output(/\[DEBUG\] Git worktree command failed/).to_stdout
+      end.to raise_error(Sxn::WorktreeCreationError)
+    end
+  end
 end
