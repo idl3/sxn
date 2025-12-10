@@ -6,6 +6,7 @@ require_relative "core/session_manager"
 require_relative "core/project_manager"
 require_relative "core/worktree_manager"
 require_relative "core/rules_manager"
+require_relative "core/template_manager"
 
 module Sxn
   # Core business logic namespace
