@@ -68,10 +68,33 @@ module Sxn
   class ApplicationError < Error; end
   class RollbackError < Error; end
 
-  # Template processing errors
+  # Template processing errors (Liquid templates)
   class TemplateError < Error; end
   class TemplateNotFoundError < TemplateError; end
   class TemplateProcessingError < TemplateError; end
+
+  # Session template errors (worktree templates)
+  class SessionTemplateError < Error; end
+
+  class SessionTemplateNotFoundError < SessionTemplateError
+    def initialize(name, available: [])
+      message = "Session template '#{name}' not found"
+      message += ". Available templates: #{available.join(", ")}" if available.any?
+      super(message)
+    end
+  end
+
+  class SessionTemplateValidationError < SessionTemplateError
+    def initialize(name, message)
+      super("Invalid session template '#{name}': #{message}")
+    end
+  end
+
+  class SessionTemplateApplicationError < SessionTemplateError
+    def initialize(template_name, message)
+      super("Failed to apply template '#{template_name}': #{message}. Session has been rolled back.")
+    end
+  end
 
   # Database errors
   class DatabaseError < Error; end

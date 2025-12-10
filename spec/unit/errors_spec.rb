@@ -244,6 +244,90 @@ RSpec.describe "Rule Errors" do
   end
 end
 
+RSpec.describe "Session Template Errors" do
+  describe Sxn::SessionTemplateError do
+    it "inherits from Sxn::Error" do
+      expect(described_class).to be < Sxn::Error
+    end
+  end
+
+  describe Sxn::SessionTemplateNotFoundError do
+    it "inherits from Sxn::SessionTemplateError" do
+      expect(described_class).to be < Sxn::SessionTemplateError
+    end
+
+    it "generates message with template name" do
+      error = described_class.new("kiosk")
+      expect(error.message).to include("Session template 'kiosk' not found")
+    end
+
+    it "includes available templates when provided" do
+      error = described_class.new("kiosk", available: %w[backend frontend])
+      expect(error.message).to include("Available templates: backend, frontend")
+    end
+  end
+
+  describe Sxn::SessionTemplateValidationError do
+    it "inherits from Sxn::SessionTemplateError" do
+      expect(described_class).to be < Sxn::SessionTemplateError
+    end
+
+    it "generates message with template name and error details" do
+      error = described_class.new("kiosk", "has no projects")
+      expect(error.message).to include("Invalid session template 'kiosk'")
+      expect(error.message).to include("has no projects")
+    end
+  end
+
+  describe Sxn::SessionTemplateApplicationError do
+    it "inherits from Sxn::SessionTemplateError" do
+      expect(described_class).to be < Sxn::SessionTemplateError
+    end
+
+    it "generates message with template name and rollback note" do
+      error = described_class.new("kiosk", "failed to create worktree")
+      expect(error.message).to include("Failed to apply template 'kiosk'")
+      expect(error.message).to include("failed to create worktree")
+      expect(error.message).to include("rolled back")
+    end
+  end
+
+  describe "exit codes" do
+    it "SessionTemplateError has default exit code of 1" do
+      error = Sxn::SessionTemplateError.new("test error")
+      expect(error.exit_code).to eq(1)
+    end
+
+    it "SessionTemplateNotFoundError has default exit code of 1" do
+      error = Sxn::SessionTemplateNotFoundError.new("kiosk")
+      expect(error.exit_code).to eq(1)
+    end
+
+    it "SessionTemplateValidationError has default exit code of 1" do
+      error = Sxn::SessionTemplateValidationError.new("kiosk", "invalid config")
+      expect(error.exit_code).to eq(1)
+    end
+
+    it "SessionTemplateApplicationError has default exit code of 1" do
+      error = Sxn::SessionTemplateApplicationError.new("kiosk", "worktree failed")
+      expect(error.exit_code).to eq(1)
+    end
+  end
+
+  describe "message formatting edge cases" do
+    it "SessionTemplateNotFoundError without available templates" do
+      error = Sxn::SessionTemplateNotFoundError.new("kiosk", available: [])
+      expect(error.message).to eq("Session template 'kiosk' not found")
+      expect(error.message).not_to include("Available templates:")
+    end
+
+    it "SessionTemplateNotFoundError with single available template" do
+      error = Sxn::SessionTemplateNotFoundError.new("kiosk", available: ["backend"])
+      expect(error.message).to include("Available templates: backend")
+    end
+  end
+end
+
 RSpec.describe "Template Errors" do
   describe Sxn::TemplateError do
     it "inherits from Sxn::Error" do
@@ -340,6 +424,7 @@ RSpec.describe "Error integration" do
       Sxn::RuleNotFoundError,
       Sxn::InvalidRuleTypeError,
       Sxn::InvalidRuleConfigError,
+      Sxn::SessionTemplateError,
       Sxn::TemplateError,
       Sxn::TemplateNotFoundError,
       Sxn::TemplateProcessingError,
