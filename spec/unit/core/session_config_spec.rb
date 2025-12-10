@@ -144,6 +144,58 @@ RSpec.describe Sxn::Core::SessionConfig do
     end
   end
 
+  describe "#template_id" do
+    it "returns template_id from config when set" do
+      session_config.create(
+        parent_sxn_path: "/path",
+        default_branch: "main",
+        session_name: "test",
+        template_id: "kiosk"
+      )
+      expect(session_config.template_id).to eq("kiosk")
+    end
+
+    it "returns nil when template_id is not set" do
+      session_config.create(
+        parent_sxn_path: "/path",
+        default_branch: "main",
+        session_name: "test"
+      )
+      expect(session_config.template_id).to be_nil
+    end
+
+    it "returns nil when config does not exist" do
+      expect(session_config.template_id).to be_nil
+    end
+  end
+
+  describe "#create with template_id" do
+    it "stores template_id in the config file" do
+      result = session_config.create(
+        parent_sxn_path: "/path/to/.sxn",
+        default_branch: "feature-branch",
+        session_name: "my-session",
+        template_id: "backend-dev"
+      )
+
+      expect(result["template_id"]).to eq("backend-dev")
+
+      # Verify it's persisted
+      reloaded = session_config.read
+      expect(reloaded["template_id"]).to eq("backend-dev")
+    end
+
+    it "does not include template_id when nil" do
+      result = session_config.create(
+        parent_sxn_path: "/path/to/.sxn",
+        default_branch: "main",
+        session_name: "test"
+      )
+
+      expect(result).not_to have_key("template_id")
+    end
+  end
+
   describe "#update" do
     before do
       session_config.create(

@@ -15,7 +15,7 @@ module Sxn
         @config_path = File.join(session_path, FILENAME)
       end
 
-      def create(parent_sxn_path:, default_branch:, session_name:)
+      def create(parent_sxn_path:, default_branch:, session_name:, template_id: nil)
         config = {
           "version" => 1,
           "parent_sxn_path" => parent_sxn_path,
@@ -23,6 +23,7 @@ module Sxn
           "session_name" => session_name,
           "created_at" => Time.now.iso8601
         }
+        config["template_id"] = template_id if template_id
         File.write(@config_path, YAML.dump(config))
         config
       end
@@ -49,6 +50,10 @@ module Sxn
 
       def session_name
         read&.dig("session_name")
+      end
+
+      def template_id
+        read&.dig("template_id")
       end
 
       def project_root

@@ -13,7 +13,7 @@ module Sxn
         @database = initialize_database
       end
 
-      def create_session(name, description: nil, linear_task: nil, default_branch: nil)
+      def create_session(name, description: nil, linear_task: nil, default_branch: nil, template_id: nil)
         validate_session_name!(name)
         ensure_sessions_folder_exists!
 
@@ -31,10 +31,14 @@ module Sxn
         session_config.create(
           parent_sxn_path: @config_manager.sxn_folder_path,
           default_branch: branch,
-          session_name: name
+          session_name: name,
+          template_id: template_id
         )
 
-        # Create session record
+        # Create session record with template_id in metadata
+        metadata = {}
+        metadata["template_id"] = template_id if template_id
+
         session_data = {
           id: session_id,
           name: name,
@@ -46,7 +50,8 @@ module Sxn
           linear_task: linear_task,
           default_branch: branch,
           projects: [],
-          worktrees: {}
+          worktrees: {},
+          metadata: metadata
         }
 
         @database.create_session(session_data)
@@ -244,6 +249,7 @@ module Sxn
           description: metadata["description"] || db_row[:description],
           linear_task: metadata["linear_task"] || db_row[:linear_task],
           default_branch: metadata["default_branch"] || db_row[:default_branch],
+          template_id: metadata["template_id"],
           # Support both metadata and database columns for backward compatibility
           projects: db_row[:projects] || metadata["projects"] || [],
           worktrees: db_row[:worktrees] || metadata["worktrees"] || {}
