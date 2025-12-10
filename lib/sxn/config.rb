@@ -3,6 +3,7 @@
 require_relative "config/config_discovery"
 require_relative "config/config_cache"
 require_relative "config/config_validator"
+require_relative "config/templates_config"
 
 module Sxn
   module Config
