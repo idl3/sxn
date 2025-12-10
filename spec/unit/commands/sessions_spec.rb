@@ -12,6 +12,7 @@ RSpec.describe Sxn::Commands::Sessions do
   let(:session_manager) { instance_double(Sxn::Core::SessionManager) }
   let(:project_manager) { instance_double(Sxn::Core::ProjectManager) }
   let(:worktree_manager) { instance_double(Sxn::Core::WorktreeManager) }
+  let(:template_manager) { instance_double(Sxn::Core::TemplateManager) }
 
   let(:sample_session) do
     {
@@ -37,12 +38,14 @@ RSpec.describe Sxn::Commands::Sessions do
     allow(Sxn::Core::SessionManager).to receive(:new).and_return(session_manager)
     allow(Sxn::Core::ProjectManager).to receive(:new).and_return(project_manager)
     allow(Sxn::Core::WorktreeManager).to receive(:new).and_return(worktree_manager)
+    allow(Sxn::Core::TemplateManager).to receive(:new).and_return(template_manager)
 
     # Default project manager setup - empty projects means wizard is skipped
     allow(project_manager).to receive(:list_projects).and_return([])
 
     # Default mock setup
     allow(config_manager).to receive(:initialized?).and_return(true)
+    allow(config_manager).to receive(:sxn_folder_path).and_return(temp_dir)
     allow(mock_ui).to receive(:section)
     allow(mock_ui).to receive(:subsection)
     allow(mock_ui).to receive(:progress_start)
@@ -101,7 +104,8 @@ RSpec.describe Sxn::Commands::Sessions do
           "test-session",
           description: nil,
           linear_task: nil,
-          default_branch: "test-session"
+          default_branch: "test-session",
+          template_id: nil
         )
         expect(session_manager).to have_received(:use_session).with("test-session")
         expect(mock_ui).to have_received(:success).with("Created session 'test-session'")
@@ -147,7 +151,8 @@ RSpec.describe Sxn::Commands::Sessions do
           "test-session",
           description: "Test description",
           linear_task: "ATL-456",
-          default_branch: "test-session"
+          default_branch: "test-session",
+          template_id: nil
         )
       end
     end
@@ -178,7 +183,8 @@ RSpec.describe Sxn::Commands::Sessions do
           "interactive-session",
           description: nil,
           linear_task: nil,
-          default_branch: "interactive-session"
+          default_branch: "interactive-session",
+          template_id: nil
         )
       end
     end
@@ -325,6 +331,58 @@ RSpec.describe Sxn::Commands::Sessions do
         expect(mock_ui).to have_received(:progress_failed)
         expect(mock_ui).to have_received(:error).with("Failed to create worktree")
         expect(mock_ui).to have_received(:recovery_suggestion).with("You can try again with 'sxn worktree add project1'")
+      end
+    end
+
+    context "with --template option" do
+      it "validates template exists before creating session" do
+        allow(template_manager).to receive(:validate_template)
+          .with("my-template")
+          .and_raise(Sxn::SessionTemplateNotFoundError.new("my-template"))
+
+        options = Thor::CoreExt::HashWithIndifferentAccess.new(template: "my-template", branch: "main")
+        allow(command).to receive(:options).and_return(options)
+
+        expect { command.add("test-session") }.to raise_error(SystemExit)
+        expect(mock_ui).to have_received(:error).with(/not found/i)
+      end
+
+      it "creates session with template_id when template is valid" do
+        allow(template_manager).to receive(:validate_template).with("my-template")
+        allow(template_manager).to receive(:get_template).with("my-template").and_return({
+                                                                                           "name" => "my-template",
+                                                                                           "projects" => [
+                                                                                             { "name" => "project1", "branch" => "feature-branch" },
+                                                                                             { "name" => "project2" }
+                                                                                           ]
+                                                                                         })
+
+        allow(session_manager).to receive(:create_session)
+          .with("test-session", description: nil, linear_task: nil, default_branch: "feature-branch", template_id: "my-template")
+          .and_return(sample_session)
+
+        allow(worktree_manager).to receive(:add_worktree).and_return({ path: "/path/to/worktree", project: "project1", branch: "feature-branch" })
+
+        options = Thor::CoreExt::HashWithIndifferentAccess.new(template: "my-template", branch: "feature-branch")
+        allow(command).to receive(:options).and_return(options)
+
+        command.add("test-session")
+
+        expect(session_manager).to have_received(:create_session)
+          .with("test-session", hash_including(template_id: "my-template"))
+        expect(mock_ui).to have_received(:success)
+      end
+
+      it "handles template validation error" do
+        allow(template_manager).to receive(:validate_template)
+          .with("invalid-template")
+          .and_raise(Sxn::SessionTemplateValidationError.new("invalid-template", "has no projects"))
+
+        options = Thor::CoreExt::HashWithIndifferentAccess.new(template: "invalid-template", branch: "main")
+        allow(command).to receive(:options).and_return(options)
+
+        expect { command.add("test-session") }.to raise_error(SystemExit)
+        expect(mock_ui).to have_received(:error).with(/Invalid session template/i)
       end
     end
   end

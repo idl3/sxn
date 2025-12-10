@@ -19,12 +19,14 @@ module Sxn
         @session_manager = Sxn::Core::SessionManager.new(@config_manager)
         @project_manager = Sxn::Core::ProjectManager.new(@config_manager)
         @worktree_manager = Sxn::Core::WorktreeManager.new(@config_manager, @session_manager)
+        @template_manager = Sxn::Core::TemplateManager.new(@config_manager)
       end
 
       desc "add NAME", "Create a new session"
       option :description, type: :string, aliases: "-d", desc: "Session description"
       option :linear_task, type: :string, aliases: "-l", desc: "Linear task ID"
       option :branch, type: :string, aliases: "-b", desc: "Default branch for worktrees"
+      option :template, type: :string, aliases: "-t", desc: "Template to use for worktree creation"
       option :activate, type: :boolean, default: true, desc: "Activate session after creation"
       option :skip_worktree, type: :boolean, default: false, desc: "Skip worktree creation wizard"
 
@@ -37,9 +39,29 @@ module Sxn
           name = @prompt.session_name(existing_sessions: existing_sessions)
         end
 
+        template_id = options[:template]
+
+        # Validate template if specified
+        if template_id
+          begin
+            @template_manager.validate_template(template_id)
+          rescue Sxn::SessionTemplateNotFoundError, Sxn::SessionTemplateValidationError => e
+            @ui.error(e.message)
+            exit(1)
+          end
+        end
+
         # Get default branch - use provided option, or prompt interactively
+        # Branch is required when using a template
         default_branch = options[:branch]
-        default_branch ||= @prompt.default_branch(session_name: name)
+        if default_branch.nil?
+          if template_id
+            @ui.error("Branch is required when using a template. Use -b/--branch to specify.")
+            exit(1)
+          else
+            default_branch = @prompt.default_branch(session_name: name)
+          end
+        end
 
         begin
           @ui.progress_start("Creating session '#{name}'")
@@ -48,7 +70,8 @@ module Sxn
             name,
             description: options[:description],
             linear_task: options[:linear_task],
-            default_branch: default_branch
+            default_branch: default_branch,
+            template_id: template_id
           )
 
           @ui.progress_done
@@ -60,8 +83,13 @@ module Sxn
 
           display_session_info(session)
 
-          # Offer to add a worktree unless skipped
-          offer_worktree_wizard(name) unless options[:skip_worktree]
+          # Apply template if specified (with atomic rollback on failure)
+          if template_id
+            apply_template_to_session(name, template_id, default_branch)
+          elsif !options[:skip_worktree]
+            # Offer to add a worktree unless skipped or template was used
+            offer_worktree_wizard(name)
+          end
         rescue Sxn::Error => e
           @ui.progress_failed
           @ui.error(e.message)
@@ -274,6 +302,85 @@ module Sxn
       end
 
       private
+
+      def apply_template_to_session(session_name, template_id, default_branch)
+        template = @template_manager.get_template(template_id)
+        projects = template["projects"] || []
+        created_worktrees = []
+
+        @ui.newline
+        @ui.section("Applying Template '#{template_id}'")
+        @ui.info("Creating #{projects.size} worktree(s)...")
+
+        begin
+          projects.each_with_index do |project_config, index|
+            project_name = project_config["name"]
+            # Use project-specific branch override, or fall back to session default
+            branch = project_config["branch"] || default_branch
+
+            @ui.progress_start("Creating worktree #{index + 1}/#{projects.size}: #{project_name}")
+
+            worktree = @worktree_manager.add_worktree(
+              project_name,
+              branch,
+              session_name: session_name
+            )
+            created_worktrees << worktree
+
+            @ui.progress_done
+
+            # Apply project-specific rule overrides if defined
+            apply_template_rules(session_name, project_name, worktree[:path], project_config["rules"]) if project_config["rules"]
+          end
+
+          @ui.newline
+          @ui.success("Template applied: #{created_worktrees.size} worktree(s) created")
+
+          # Display created worktrees
+          @ui.newline
+          @ui.subsection("Created Worktrees")
+          created_worktrees.each do |wt|
+            @ui.list_item("#{wt[:project]} (#{wt[:branch]}) → #{wt[:path]}")
+          end
+        rescue StandardError => e
+          # ATOMIC ROLLBACK: Remove all created worktrees and the session
+          @ui.progress_failed
+          @ui.newline
+          @ui.warning("Template application failed, rolling back...")
+
+          rollback_template_application(session_name, created_worktrees)
+
+          raise Sxn::SessionTemplateApplicationError.new(template_id, e.message)
+        end
+      end
+
+      def rollback_template_application(session_name, created_worktrees)
+        # Remove created worktrees
+        created_worktrees.each do |wt|
+          @worktree_manager.remove_worktree(wt[:project], session_name: session_name)
+        rescue StandardError
+          # Best effort cleanup, continue with rollback
+          nil
+        end
+
+        # Remove the session
+        @session_manager.remove_session(session_name, force: true)
+        @ui.info("Session '#{session_name}' has been rolled back")
+      rescue StandardError => e
+        @ui.warning("Rollback encountered errors: #{e.message}")
+      end
+
+      def apply_template_rules(_session_name, project_name, worktree_path, rules)
+        return unless rules.is_a?(Hash)
+
+        rules_manager = Sxn::Core::RulesManager.new(@config_manager, worktree_path)
+
+        rules_manager.apply_copy_files_rules(rules["copy_files"]) if rules["copy_files"]
+
+        rules_manager.apply_setup_commands(rules["setup_commands"]) if rules["setup_commands"]
+      rescue StandardError => e
+        @ui.warning("Failed to apply rules for #{project_name}: #{e.message}")
+      end
 
       def ensure_initialized!
         return if @config_manager.initialized?
