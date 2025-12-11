@@ -329,7 +329,10 @@ module Sxn
 
             @ui.progress_done
 
-            # Apply project-specific rule overrides if defined
+            # Apply project's default rules first
+            apply_project_rules(project_name, session_name)
+
+            # Apply template-specific rule overrides if defined (in addition to project defaults)
             apply_template_rules(session_name, project_name, worktree[:path], project_config["rules"]) if project_config["rules"]
           end
 

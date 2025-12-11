@@ -61,6 +61,7 @@ RSpec.describe Sxn::Commands::Sessions do
     allow(mock_ui).to receive(:list_item)
     allow(mock_ui).to receive(:command_example)
     allow(mock_ui).to receive(:recovery_suggestion)
+    allow(mock_ui).to receive(:debug)
     allow(mock_table).to receive(:sessions)
     allow(mock_prompt).to receive(:confirm_deletion).and_return(true)
     allow(mock_prompt).to receive(:session_name).and_return("test-session")
@@ -383,6 +384,63 @@ RSpec.describe Sxn::Commands::Sessions do
 
         expect { command.add("test-session") }.to raise_error(SystemExit)
         expect(mock_ui).to have_received(:error).with(/Invalid session template/i)
+      end
+
+      it "applies project rules for each project in template" do
+        allow(template_manager).to receive(:validate_template).with("my-template")
+        allow(template_manager).to receive(:get_template).with("my-template").and_return({
+                                                                                           "name" => "my-template",
+                                                                                           "projects" => [
+                                                                                             { "name" => "project1" },
+                                                                                             { "name" => "project2" }
+                                                                                           ]
+                                                                                         })
+
+        allow(session_manager).to receive(:create_session).and_return(sample_session)
+        allow(worktree_manager).to receive(:add_worktree).and_return({
+                                                                       path: "/path/to/worktree",
+                                                                       project: "project1",
+                                                                       branch: "main"
+                                                                     })
+
+        # Stub apply_project_rules to verify it's called
+        allow(command).to receive(:apply_project_rules)
+
+        options = Thor::CoreExt::HashWithIndifferentAccess.new(template: "my-template", branch: "main")
+        allow(command).to receive(:options).and_return(options)
+
+        command.add("test-session")
+
+        # Verify apply_project_rules is called for each project in the template
+        expect(command).to have_received(:apply_project_rules).with("project1", "test-session")
+        expect(command).to have_received(:apply_project_rules).with("project2", "test-session")
+      end
+
+      it "accepts template names with hyphens" do
+        allow(template_manager).to receive(:validate_template).with("kiosk-full")
+        allow(template_manager).to receive(:get_template).with("kiosk-full").and_return({
+                                                                                          "name" => "kiosk-full",
+                                                                                          "projects" => [
+                                                                                            { "name" => "project1" }
+                                                                                          ]
+                                                                                        })
+
+        allow(session_manager).to receive(:create_session).and_return(sample_session)
+        allow(worktree_manager).to receive(:add_worktree).and_return({
+                                                                       path: "/path/to/worktree",
+                                                                       project: "project1",
+                                                                       branch: "main"
+                                                                     })
+        allow(command).to receive(:apply_project_rules)
+
+        options = Thor::CoreExt::HashWithIndifferentAccess.new(template: "kiosk-full", branch: "main")
+        allow(command).to receive(:options).and_return(options)
+
+        command.add("test-session")
+
+        expect(template_manager).to have_received(:validate_template).with("kiosk-full")
+        expect(template_manager).to have_received(:get_template).with("kiosk-full")
+        expect(mock_ui).to have_received(:success)
       end
     end
   end
