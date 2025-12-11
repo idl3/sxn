@@ -76,3 +76,5 @@ test_*.rb
 /sxn-sessions/
 /coverage/
 /test_projects/
+# SXN session management
+sxn-sessions/

@@ -42,6 +42,7 @@ module Sxn
     option :description, type: :string, aliases: "-d", desc: "Session description"
     option :linear_task, type: :string, aliases: "-l", desc: "Linear task ID"
     option :branch, type: :string, aliases: "-b", desc: "Default branch for worktrees"
+    option :template, type: :string, aliases: "-t", desc: "Template to use for worktree creation"
     def add(session_name)
       cmd = Commands::Sessions.new
       cmd.options = options
