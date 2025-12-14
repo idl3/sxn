@@ -139,12 +139,10 @@ RSpec.describe Sxn::Commands::Templates do
   end
 
   describe "create" do
-    let(:projects_file) { File.join(sxn_path, "projects.yml") }
-
     before do
-      # Create projects configuration
-      File.write(projects_file, <<~YAML)
-        version: 1
+      # Create config with projects - ConfigManager reads from config.yml
+      File.write(config_file, <<~YAML)
+        sessions_folder: sessions
         projects:
           project1:
             path: /path/to/project1
@@ -205,8 +203,9 @@ RSpec.describe Sxn::Commands::Templates do
 
     context "when no projects are configured" do
       before do
-        File.write(projects_file, <<~YAML)
-          version: 1
+        # Overwrite config with no projects
+        File.write(config_file, <<~YAML)
+          sessions_folder: sessions
           projects: {}
         YAML
       end

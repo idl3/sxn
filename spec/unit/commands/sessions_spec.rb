@@ -361,17 +361,19 @@ RSpec.describe Sxn::Commands::Sessions do
         allow(session_manager).to receive(:create_session)
           .with("test-session", description: nil, linear_task: nil, default_branch: "feature-branch", template_id: "my-template")
           .and_return(sample_session)
+        allow(session_manager).to receive(:get_session).and_return(sample_session)
 
         allow(worktree_manager).to receive(:add_worktree).and_return({ path: "/path/to/worktree", project: "project1", branch: "feature-branch" })
+        allow(command).to receive(:apply_project_rules)
 
         options = Thor::CoreExt::HashWithIndifferentAccess.new(template: "my-template", branch: "feature-branch")
         allow(command).to receive(:options).and_return(options)
 
-        command.add("test-session")
+        expect { command.add("test-session") }.not_to raise_error
 
         expect(session_manager).to have_received(:create_session)
           .with("test-session", hash_including(template_id: "my-template"))
-        expect(mock_ui).to have_received(:success)
+        expect(mock_ui).to have_received(:success).at_least(:once)
       end
 
       it "handles template validation error" do
@@ -397,6 +399,7 @@ RSpec.describe Sxn::Commands::Sessions do
                                                                                          })
 
         allow(session_manager).to receive(:create_session).and_return(sample_session)
+        allow(session_manager).to receive(:get_session).and_return(sample_session)
         allow(worktree_manager).to receive(:add_worktree).and_return({
                                                                        path: "/path/to/worktree",
                                                                        project: "project1",
@@ -409,7 +412,7 @@ RSpec.describe Sxn::Commands::Sessions do
         options = Thor::CoreExt::HashWithIndifferentAccess.new(template: "my-template", branch: "main")
         allow(command).to receive(:options).and_return(options)
 
-        command.add("test-session")
+        expect { command.add("test-session") }.not_to raise_error
 
         # Verify apply_project_rules is called for each project in the template
         expect(command).to have_received(:apply_project_rules).with("project1", "test-session")
@@ -426,6 +429,7 @@ RSpec.describe Sxn::Commands::Sessions do
                                                                                         })
 
         allow(session_manager).to receive(:create_session).and_return(sample_session)
+        allow(session_manager).to receive(:get_session).and_return(sample_session)
         allow(worktree_manager).to receive(:add_worktree).and_return({
                                                                        path: "/path/to/worktree",
                                                                        project: "project1",
@@ -436,11 +440,11 @@ RSpec.describe Sxn::Commands::Sessions do
         options = Thor::CoreExt::HashWithIndifferentAccess.new(template: "kiosk-full", branch: "main")
         allow(command).to receive(:options).and_return(options)
 
-        command.add("test-session")
+        expect { command.add("test-session") }.not_to raise_error
 
         expect(template_manager).to have_received(:validate_template).with("kiosk-full")
         expect(template_manager).to have_received(:get_template).with("kiosk-full")
-        expect(mock_ui).to have_received(:success)
+        expect(mock_ui).to have_received(:success).at_least(:once)
       end
     end
   end

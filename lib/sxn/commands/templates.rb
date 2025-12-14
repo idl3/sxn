@@ -62,7 +62,11 @@ module Sxn
         else
           projects.each do |project_config|
             project_name = project_config["name"]
-            project = @project_manager.get_project(project_name)
+            project = begin
+              @project_manager.get_project(project_name)
+            rescue Sxn::ProjectNotFoundError
+              nil
+            end
             status = project ? "✓" : "✗ (not found)"
 
             details = []

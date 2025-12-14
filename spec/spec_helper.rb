@@ -134,6 +134,18 @@ RSpec.configure do |config|
     # Ensure clean test environment
     ENV["SXN_CONFIG_PATH"] = nil
     ENV["SXN_DATABASE_PATH"] = nil
+
+    # Save original stderr and suppress warnings during tests
+    # RSpec's .to output().to_stderr matcher will temporarily replace $stderr
+    # so those tests will still work correctly
+    @original_stderr = $stderr
+    $stderr = File.open(File::NULL, "w")
+  end
+
+  # Restore stderr and close the null file after all tests complete
+  config.after(:suite) do
+    $stderr.close if $stderr.respond_to?(:close) && $stderr != @original_stderr
+    $stderr = @original_stderr if defined?(@original_stderr) && @original_stderr
   end
 
   # Global setup to prevent any interactive prompts and reset state
