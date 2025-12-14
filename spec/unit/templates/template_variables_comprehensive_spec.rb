@@ -425,4 +425,164 @@ RSpec.describe Sxn::Templates::TemplateVariables, "comprehensive coverage for mi
       end
     end
   end
+
+  describe "additional missing branch coverage" do
+    # Helper to create a session mock that allows all respond_to? calls
+    let(:flexible_session) do
+      session = instance_double("Session",
+                                name: "test-session",
+                                path: Pathname.new(session_path),
+                                created_at: Time.new(2023, 6, 15, 14, 30, 0),
+                                updated_at: Time.new(2023, 6, 15, 15, 30, 0),
+                                status: "active")
+      allow(session).to receive(:respond_to?).and_return(false)
+      session
+    end
+
+    it "handles session with nil linear_task attribute" do
+      allow(flexible_session).to receive(:respond_to?).with(:linear_task).and_return(true)
+      allow(flexible_session).to receive(:linear_task).and_return(nil)
+
+      test_variables = described_class.new(flexible_session, mock_project)
+      result = test_variables.send(:_collect_session_variables)
+      expect(result).not_to have_key(:linear_task)
+    end
+
+    it "handles session with nil description attribute" do
+      allow(flexible_session).to receive(:respond_to?).with(:description).and_return(true)
+      allow(flexible_session).to receive(:description).and_return(nil)
+
+      test_variables = described_class.new(flexible_session, mock_project)
+      result = test_variables.send(:_collect_session_variables)
+      expect(result).not_to have_key(:description)
+    end
+
+    it "handles session with nil projects attribute" do
+      allow(flexible_session).to receive(:respond_to?).with(:projects).and_return(true)
+      allow(flexible_session).to receive(:projects).and_return(nil)
+
+      test_variables = described_class.new(flexible_session, mock_project)
+      result = test_variables.send(:_collect_session_variables)
+      expect(result).not_to have_key(:projects)
+    end
+
+    it "handles session with nil tags attribute" do
+      allow(flexible_session).to receive(:respond_to?).with(:tags).and_return(true)
+      allow(flexible_session).to receive(:tags).and_return(nil)
+
+      test_variables = described_class.new(flexible_session, mock_project)
+      result = test_variables.send(:_collect_session_variables)
+      expect(result).not_to have_key(:tags)
+    end
+
+    it "handles git author info with no author name or email" do
+      # Mock git directory finding
+      allow(variables).to receive(:find_git_directory).and_return(project_path)
+      allow(variables).to receive(:execute_git_command).and_return(nil)
+
+      result = variables.send(:_collect_git_variables)
+      expect(result[:author]).to be_nil
+    end
+
+    it "handles config with nil default_editor" do
+      mock_config = double("Config")
+      allow(mock_config).to receive(:respond_to?).and_return(false)
+      allow(mock_config).to receive(:respond_to?).with(:default_editor).and_return(true)
+      allow(mock_config).to receive(:default_editor).and_return(nil)
+
+      variables_with_config = described_class.new(flexible_session, mock_project, mock_config)
+
+      result = variables_with_config.send(:_collect_user_variables)
+      expect(result[:editor]).to be_nil
+    end
+
+    it "handles config with nil user_preferences" do
+      mock_config = double("Config")
+      allow(mock_config).to receive(:respond_to?).and_return(false)
+      allow(mock_config).to receive(:respond_to?).with(:user_preferences).and_return(true)
+      allow(mock_config).to receive(:user_preferences).and_return(nil)
+
+      variables_with_config = described_class.new(flexible_session, mock_project, mock_config)
+
+      result = variables_with_config.send(:_collect_user_variables)
+      expect(result[:preferences]).to be_nil
+    end
+
+    it "handles ENV with fallback to USERNAME" do
+      # This test covers the fallback behavior when USER is not set
+      original_user = ENV.fetch("USER", nil)
+      original_username = ENV.fetch("USERNAME", nil)
+      begin
+        ENV["USER"] = nil
+        ENV["USERNAME"] = "windows_user"
+
+        result = variables.send(:_collect_user_variables)
+        # Result should have some username value (either from env or system)
+        expect(result).to have_key(:username)
+      ensure
+        ENV["USER"] = original_user
+        ENV["USERNAME"] = original_username
+      end
+    end
+
+    it "handles collect_git_remote_info with empty remote list" do
+      git_dir = project_path
+      allow(variables).to receive(:execute_git_command).and_call_original
+      allow(variables).to receive(:execute_git_command).with(git_dir, "remote").and_yield("")
+
+      result = variables.send(:collect_git_remote_info, git_dir)
+      expect(result[:default]).to be_nil
+    end
+
+    it "handles collect_git_remote_info when origin is not present" do
+      git_dir = project_path
+      allow(variables).to receive(:execute_git_command)
+        .with(git_dir, "remote") do |&block|
+        block&.call("upstream\nfork")
+      end
+      allow(variables).to receive(:execute_git_command)
+        .with(git_dir, "remote", "get-url", "upstream") do |&block|
+        block&.call("git@github.com:user/repo.git")
+      end
+
+      result = variables.send(:collect_git_remote_info, git_dir)
+      expect(result[:default_remote]).to eq("upstream")
+      expect(result[:remote_url]).to eq("git@github.com:user/repo.git")
+    end
+
+    it "handles detect_project_type with gemspec files" do
+      gemspec_file = File.join(project_path, "test.gemspec")
+      File.write(gemspec_file, "Gem::Specification.new")
+      FileUtils.rm_f(File.join(project_path, "Gemfile"))
+      FileUtils.rm_f(File.join(project_path, "package.json"))
+
+      result = variables.send(:detect_project_type, Pathname.new(project_path))
+      expect(result).to eq("ruby")
+    end
+
+    it "handles execute_git_command with Process.kill exception" do
+      allow(variables).to receive(:execute_git_command).and_call_original
+
+      wait_thr = double("wait_thr", join: nil, pid: 99_999)
+      allow(Open3).to receive(:popen3).and_yield(
+        double("stdin", close: nil),
+        double("stdout", read: "output"),
+        double("stderr"),
+        wait_thr
+      )
+
+      allow(Process).to receive(:kill).with("TERM", 99_999).and_raise(StandardError, "Process error")
+
+      result = variables.send(:execute_git_command, project_path, "status")
+      expect(result).to be_nil
+    end
+
+    it "handles execute_git_command with Open3 exception" do
+      allow(variables).to receive(:execute_git_command).and_call_original
+      allow(Open3).to receive(:popen3).and_raise(StandardError, "Command failed")
+
+      result = variables.send(:execute_git_command, project_path, "status")
+      expect(result).to be_nil
+    end
+  end
 end

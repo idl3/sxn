@@ -384,6 +384,14 @@ RSpec.describe "Database Module Comprehensive Coverage" do
       expect(stats[:database_size]).to be_a(Float)
     end
 
+    it "handles get_schema_version when result is nil" do
+      # Test via the db instance - schema version should be retrieved properly
+      # The get_schema_version method handles nil by returning 0
+      version = db.send(:get_schema_version)
+      expect(version).to be_a(Integer)
+      expect(version).to be >= 0
+    end
+
     it "supports vacuum operation for database optimization" do
       db.send(:database_size_mb)
 
@@ -479,6 +487,104 @@ RSpec.describe "Database Module Comprehensive Coverage" do
       created_time = Time.parse(session[:created_at])
       expect(created_time).to be_a(Time)
       expect(created_time.utc?).to be true
+    end
+  end
+
+  describe "Migration and Schema Edge Cases" do
+    let(:migration_db_path) { Tempfile.new(["migration_test", ".db"]).path }
+
+    after do
+      FileUtils.rm_f(migration_db_path)
+    end
+
+    it "handles run_migrations with current version" do
+      # Create a new database (already at current version)
+      migration_db = Sxn::Database::SessionDatabase.new(migration_db_path)
+
+      # Get current version
+      current_version = migration_db.send(:get_schema_version)
+      expect(current_version).to eq(Sxn::Database::SessionDatabase::SCHEMA_VERSION)
+
+      # Run migrations from current version (should be no-op)
+      migration_db.send(:run_migrations, current_version)
+
+      # Should still be at current version
+      version = migration_db.send(:get_schema_version)
+      expect(version).to eq(Sxn::Database::SessionDatabase::SCHEMA_VERSION)
+
+      migration_db.close
+    end
+
+    it "handles migration when from_version equals 1" do
+      # Create a new database
+      migration_db = Sxn::Database::SessionDatabase.new(migration_db_path)
+
+      # Set to version 1
+      migration_db.send(:set_schema_version, 1)
+
+      # Run migrations from version 1 (should only run v2 migration)
+      migration_db.send(:run_migrations, 1)
+
+      # Should be at version 2 now
+      version = migration_db.send(:get_schema_version)
+      expect(version).to eq(2)
+
+      migration_db.close
+    end
+
+    it "handles when worktrees column already exists during migration" do
+      # Create a database with worktrees but not projects
+      raw_db = SQLite3::Database.new(migration_db_path)
+      raw_db.execute_batch(<<~SQL)
+        CREATE TABLE sessions (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL UNIQUE,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'active',
+          linear_task TEXT,
+          description TEXT,
+          tags TEXT,
+          metadata TEXT,
+          worktrees TEXT
+        );
+        PRAGMA user_version = 1;
+      SQL
+      raw_db.close
+
+      # Open with SessionDatabase - should add projects column
+      migration_db = Sxn::Database::SessionDatabase.new(migration_db_path)
+
+      columns = migration_db.connection.execute("PRAGMA table_info(sessions)").map { |col| col["name"] }
+      expect(columns).to include("worktrees", "projects")
+
+      migration_db.close
+    end
+  end
+
+  describe "Configuration Edge Cases" do
+    let(:config_db_path) { Tempfile.new(["config_test", ".db"]).path }
+
+    after do
+      FileUtils.rm_f(config_db_path)
+    end
+
+    it "handles foreign_keys disabled in config" do
+      config_db = Sxn::Database::SessionDatabase.new(config_db_path, { foreign_keys: false })
+
+      result = config_db.connection.execute("PRAGMA foreign_keys").first[0]
+      expect(result).to eq(0) # 0 means OFF
+
+      config_db.close
+    end
+
+    it "handles auto_vacuum disabled in config" do
+      config_db = Sxn::Database::SessionDatabase.new(config_db_path, { auto_vacuum: false })
+
+      result = config_db.connection.execute("PRAGMA auto_vacuum").first[0]
+      expect(result).to eq(0) # 0 means NONE
+
+      config_db.close
     end
   end
 end

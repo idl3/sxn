@@ -539,6 +539,20 @@ RSpec.describe Sxn::Templates::TemplateEngine do
       result = h1.deep_merge(h2)
       expect(result).to eq({ a: { b: { c: 3, d: 2, e: 4 } } })
     end
+
+    it "overwrites when old value is hash but new value is not" do
+      h1 = { a: { b: 1 } }
+      h2 = { a: "string" }
+      result = h1.deep_merge(h2)
+      expect(result).to eq({ a: "string" })
+    end
+
+    it "overwrites when new value is hash but old value is not" do
+      h1 = { a: "string" }
+      h2 = { a: { b: 1 } }
+      result = h1.deep_merge(h2)
+      expect(result).to eq({ a: { b: 1 } })
+    end
   end
 
   describe "security error handling" do
@@ -595,6 +609,15 @@ RSpec.describe Sxn::Templates::TemplateEngine do
       expect(engine.validate_template_syntax(template)).to be true
     end
 
+    it "handles input with {%} syntax as content" do
+      # Input with Liquid tag syntax
+      template = "{% if user %}hello{% endif %}"
+      mock_processor = engine.instance_variable_get(:@processor)
+      allow(mock_processor).to receive(:validate_syntax).with(template).and_return(true)
+
+      expect(engine.validate_template_syntax(template)).to be true
+    end
+
     it "handles ambiguous input without Liquid syntax as filename" do
       # Create a simple template file
       template_path = File.join(temp_dir, "simple.liquid")
@@ -606,6 +629,49 @@ RSpec.describe Sxn::Templates::TemplateEngine do
       allow(mock_processor).to receive(:validate_syntax).with("Hello World").and_return(true)
 
       expect(engine.validate_template_syntax("simple")).to be true
+    end
+
+    it "handles file paths with .liquid extension" do
+      # Input ends with .liquid
+      template_path = File.join(temp_dir, "test.liquid")
+      File.write(template_path, "content")
+
+      allow(engine).to receive(:find_template).with("test.liquid", nil).and_return(template_path)
+      mock_processor = engine.instance_variable_get(:@processor)
+      allow(mock_processor).to receive(:validate_syntax).with("content").and_return(true)
+
+      expect(engine.validate_template_syntax("test.liquid")).to be true
+    end
+
+    it "handles file paths with directory separators" do
+      # Input has a path separator
+      template_path = File.join(temp_dir, "dir", "test.liquid")
+      FileUtils.mkdir_p(File.dirname(template_path))
+      File.write(template_path, "content")
+
+      allow(engine).to receive(:find_template).with("dir/test", nil).and_return(template_path)
+      mock_processor = engine.instance_variable_get(:@processor)
+      allow(mock_processor).to receive(:validate_syntax).with("content").and_return(true)
+
+      expect(engine.validate_template_syntax("dir/test")).to be true
+    end
+
+    it "handles template not found errors" do
+      allow(engine).to receive(:find_template).with("missing", nil).and_raise(
+        Sxn::Templates::Errors::TemplateNotFoundError
+      )
+
+      expect(engine.validate_template_syntax("missing")).to be false
+    end
+
+    it "treats inline content with Liquid markers as content (else branch)" do
+      # This covers the else branch at line 192 - when input is treated as inline template content
+      # To hit else branch: string with {{ but no "/" and no file extension
+      inline_content = "Hello {{ name }}"
+
+      # This should validate the content directly through the processor
+      result = engine.validate_template_syntax(inline_content)
+      expect(result).to be true
     end
   end
 
@@ -641,6 +707,18 @@ RSpec.describe Sxn::Templates::TemplateEngine do
       expect do
         engine.render_template("test")
       end.to raise_error(Sxn::Templates::Errors::TemplateProcessingError)
+    end
+
+    it "skips validation when validate option is false" do
+      template_path = File.join(temp_dir, "test.liquid")
+      File.write(template_path, "{{ user.name }}")
+      allow(engine).to receive(:find_template).with("test", nil).and_return(template_path)
+
+      mock_security = engine.instance_variable_get(:@security)
+
+      engine.render_template("test", {}, validate: false)
+
+      expect(mock_security).not_to have_received(:validate_template)
     end
   end
 end
