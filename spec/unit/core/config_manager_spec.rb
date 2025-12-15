@@ -1012,6 +1012,29 @@ RSpec.describe Sxn::Core::ConfigManager do
       expect(projects.none? { |p| p[:name] == "regular_file.txt" }).to be true
     end
 
+    it "skips hidden directories starting with dot in detect_projects" do
+      # Create directories - one hidden and one visible
+      hidden_dir = File.join(temp_dir, ".git")
+      visible_dir = File.join(temp_dir, "myproject")
+      FileUtils.mkdir_p(hidden_dir)
+      FileUtils.mkdir_p(visible_dir)
+
+      # Create a marker file in the visible directory to make it detectable
+      File.write(File.join(visible_dir, "Gemfile"), "source 'https://rubygems.org'")
+
+      detector_double = instance_double(Sxn::Rules::ProjectDetector)
+      allow(Sxn::Rules::ProjectDetector).to receive(:new).with(temp_dir).and_return(detector_double)
+      # Return :unknown for all directories except visible_dir
+      allow(detector_double).to receive(:detect_type).and_return(:unknown)
+      allow(detector_double).to receive(:detect_type).with(visible_dir).and_return(:rails)
+
+      projects = config_manager.detect_projects
+
+      # Verify that .git is skipped due to starting with "."
+      expect(projects.none? { |p| p[:name] == ".git" }).to be true
+      expect(projects.any? { |p| p[:name] == "myproject" }).to be true
+    end
+
     it "covers optimistic locking in update_project (line 170 then branch)" do
       # This is actually in config.rb, not config_manager.rb
       # The line 170 branch is when expected_version exists in update_session

@@ -556,6 +556,42 @@ RSpec.describe Sxn::UI::Table do
         expected_renderer = $stdout.tty? ? :unicode : :basic
         expect(mock_tty_table).to have_received(:render).with(expected_renderer, padding: [0, 1])
       end
+
+      it "uses unicode renderer when stdout is a TTY" do
+        headers = %w[Col1 Col2]
+        rows = [%w[val1 val2]]
+
+        # Need to stub tty? before capturing output
+        allow($stdout).to receive(:tty?).and_return(true)
+        allow($stdout).to receive(:write)
+        allow($stdout).to receive(:puts)
+
+        # Reset the mock to clear any previous calls
+        allow(TTY::Table).to receive(:new).and_return(mock_tty_table)
+        allow(mock_tty_table).to receive(:render).and_return("rendered_table")
+
+        table.send(:render_table, headers, rows)
+
+        expect(mock_tty_table).to have_received(:render).with(:unicode, padding: [0, 1])
+      end
+
+      it "uses basic renderer when stdout is not a TTY" do
+        headers = %w[Col1 Col2]
+        rows = [%w[val1 val2]]
+
+        # Need to stub tty? before capturing output
+        allow($stdout).to receive(:tty?).and_return(false)
+        allow($stdout).to receive(:write)
+        allow($stdout).to receive(:puts)
+
+        # Reset the mock to clear any previous calls
+        allow(TTY::Table).to receive(:new).and_return(mock_tty_table)
+        allow(mock_tty_table).to receive(:render).and_return("rendered_table")
+
+        table.send(:render_table, headers, rows)
+
+        expect(mock_tty_table).to have_received(:render).with(:basic, padding: [0, 1])
+      end
     end
 
     describe "#empty_table" do

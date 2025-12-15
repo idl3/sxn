@@ -790,19 +790,19 @@ RSpec.describe Sxn::Security::SecurePathValidator do
     end
 
     context "when NO symlink is found in path components" do
-      it "validates normal file path with no symlinks (line 191[else])" do
+      it "validates normal file path with no symlinks (line 191: next unless - FALSE)" do
         # Create a normal file with no symlinks in the path
         normal_file = File.join(subdir, "normal.txt")
         File.write(normal_file, "content")
 
-        # This tests line 191[else] - when current_path.symlink? is false
-        # The loop should skip symlink validation and just continue
+        # This tests line 191 - when current_path.symlink? is false
+        # The 'next unless' should skip the iteration (NOT execute lines 193-206)
         expect do
           validator.validate_path("testdir/normal.txt")
         end.not_to raise_error
       end
 
-      it "validates deeply nested path with no symlinks (line 191[else])" do
+      it "validates deeply nested path with no symlinks (line 191: next unless - FALSE, multiple times)" do
         # Create deeply nested structure with no symlinks
         deep_path = File.join(subdir, "level1", "level2", "level3")
         FileUtils.mkdir_p(deep_path)
@@ -810,15 +810,15 @@ RSpec.describe Sxn::Security::SecurePathValidator do
         File.write(deep_file, "content")
 
         # All path components are regular directories, not symlinks
-        # Tests line 191[else] multiple times
+        # Tests line 191 multiple times where current_path.symlink? is false
         expect do
           validator.validate_path("testdir/level1/level2/level3/file.txt")
         end.not_to raise_error
       end
     end
 
-    context "when validating relative paths in symlink validation (line 184[else])" do
-      it "validates symlink using relative path input (line 184[else])" do
+    context "when validating relative paths in symlink validation (line 184: ELSE branch)" do
+      it "validates symlink using relative path input (line 184: pathname.absolute? is FALSE)" do
         # Create target file
         target_file = File.join(temp_dir, "target.txt")
         File.write(target_file, "content")
@@ -827,30 +827,20 @@ RSpec.describe Sxn::Security::SecurePathValidator do
         symlink_path = File.join(subdir, "link")
         File.symlink("../target.txt", symlink_path)
 
-        # Call validate_path with a RELATIVE path
-        # This tests line 184[else] - when pathname.absolute? is false in validate_symlink_safety!
-        # The path is relative, so it takes the else branch
+        # Call validate_path with a RELATIVE path (not starting with /)
+        # This tests line 184 - when pathname.absolute? is false in validate_symlink_safety!
+        # Should execute lines 184-185 instead of lines 169-181
         expect do
           validator.validate_path("testdir/link")
         end.not_to raise_error
       end
     end
 
-    context "when absolute symlink path doesn't exist (line 169[else])" do
-      it "validates absolute symlink when File.exist? returns false (line 169[else])" do
-        # Create a symlink with absolute target that doesn't exist
-        non_existent_target = File.join(temp_dir, "does_not_exist.txt")
-        symlink_path = File.join(subdir, "link_to_nonexistent")
-        File.symlink(non_existent_target, symlink_path)
-
-        # When validating the symlink, the code checks if the symlink path exists
-        # Line 169: resolved_path = File.exist?(path) ? File.realpath(path) : path
-        # Since symlink exists, this uses realpath, BUT when validating the TARGET,
-        # we need to trigger the else branch at line 169
-
-        # Actually, line 169 is about the PATH itself not existing
-        # Let's create a scenario where we validate an absolute path that doesn't exist
-        # We need to pass an absolute path through symlink validation where the target doesn't exist
+    context "when absolute symlink path doesn't exist (line 169: File.exist? FALSE)" do
+      it "validates absolute path when File.exist?(path) returns false (line 169: ELSE branch)" do
+        # To hit line 169 with File.exist?(path) == false, we need to call
+        # validate_symlink_safety! on an ABSOLUTE path that does NOT exist
+        # This happens when allow_creation: true
 
         # Create parent temp for proper test
         parent_temp = Dir.mktmpdir("sxn_parent_test")
@@ -861,25 +851,98 @@ RSpec.describe Sxn::Security::SecurePathValidator do
         proj_subdir = File.join(project_dir, "subdir")
         FileUtils.mkdir_p(proj_subdir)
 
-        # Create a symlink to a non-existent absolute path within project
-        future_file = File.join(project_dir, "future.txt")
-        symlink_in_subdir = File.join(proj_subdir, "link")
-        File.symlink(future_file, symlink_in_subdir)
+        # Create a file that will be deleted
+        temp_file = File.join(proj_subdir, "temp.txt")
+        File.write(temp_file, "content")
 
         local_validator = described_class.new(project_dir)
 
-        # This should trigger line 169[else] when validating the absolute symlink target
-        # The symlink exists, but when checking the absolute target, it doesn't exist
+        # Get the absolute path first
+        abs_path = local_validator.validate_path("subdir/temp.txt")
+
+        # Now delete the file
+        File.delete(temp_file)
+
+        # Call validate_symlink_safety! directly with the absolute path that no longer exists
+        # Line 169: resolved_path = File.exist?(path) ? File.realpath(path) : path
+        # Since File.exist?(abs_path) is false, it should use 'path' directly
         expect do
-          local_validator.validate_path("subdir/link", allow_creation: true)
+          local_validator.send(:validate_symlink_safety!, abs_path)
         end.not_to raise_error
 
         FileUtils.rm_rf(parent_temp)
       end
     end
 
-    context "when symlink is found in path components" do
-      it "validates path through symlinked directory with absolute target" do
+    context "when symlink is found in path components (line 191: next unless - TRUE)" do
+      it "validates path with absolute symlink to existing file (line 198: File.exist? TRUE)" do
+        # Create a real target file
+        target_file = File.join(temp_dir, "real_target.txt")
+        File.write(target_file, "content")
+
+        # Create a symlink with ABSOLUTE target within project
+        link_path = File.join(subdir, "abs_link")
+        File.symlink(target_file, link_path)
+
+        # This tests:
+        # - line 191: current_path.symlink? is true (enters the block)
+        # - line 196: target.absolute? is true (enters the if)
+        # - line 198: File.exist?(target.to_s) is true (uses File.realpath)
+        expect do
+          validator.validate_path("testdir/abs_link")
+        end.not_to raise_error
+      end
+
+      it "validates path with absolute symlink to non-existent file (line 198: File.exist? FALSE)" do
+        # Create a symlink with absolute target that doesn't exist
+        non_existent_target = File.join(temp_dir, "future_file.txt")
+        symlink_path = File.join(subdir, "link_to_future_abs")
+        File.symlink(non_existent_target, symlink_path)
+
+        # This tests:
+        # - line 191: current_path.symlink? is true
+        # - line 196: target.absolute? is true
+        # - line 198: File.exist?(target.to_s) is false (uses target.to_s directly)
+        expect do
+          validator.validate_path("testdir/link_to_future_abs", allow_creation: true)
+        end.not_to raise_error
+      end
+
+      it "validates path with relative symlink to existing file (line 204: File.exist? TRUE)" do
+        # Create a real target file
+        target_file = File.join(temp_dir, "rel_target.txt")
+        File.write(target_file, "content")
+
+        # Create a symlink with RELATIVE target
+        symlink_path = File.join(subdir, "rel_link")
+        File.symlink("../rel_target.txt", symlink_path)
+
+        # This tests:
+        # - line 191: current_path.symlink? is true
+        # - line 196: target.absolute? is false (enters the else)
+        # - line 202: executes (resolves relative target)
+        # - line 204: File.exist?(resolved_target.to_s) is true (uses File.realpath)
+        expect do
+          validator.validate_path("testdir/rel_link")
+        end.not_to raise_error
+      end
+
+      it "validates path with relative symlink to non-existent file (line 204: File.exist? FALSE)" do
+        # Create relative symlink to non-existent file (but within project bounds)
+        symlink_path = File.join(subdir, "link_to_future_rel")
+        File.symlink("../future_relative.txt", symlink_path)
+
+        # This tests:
+        # - line 191: current_path.symlink? is true
+        # - line 196: target.absolute? is false
+        # - line 202: executes (resolves relative target)
+        # - line 204: File.exist?(resolved_target.to_s) is false (uses resolved_target.to_s directly)
+        expect do
+          validator.validate_path("testdir/link_to_future_rel", allow_creation: true)
+        end.not_to raise_error
+      end
+
+      it "validates path through symlinked directory with absolute existing target" do
         # Create a real target directory
         target_dir = File.join(temp_dir, "real_dir")
         FileUtils.mkdir_p(target_dir)
@@ -891,73 +954,25 @@ RSpec.describe Sxn::Security::SecurePathValidator do
         File.symlink(target_dir, link_dir)
 
         # Now access a file through the symlinked directory
-        # This should trigger symlink validation on the directory component
-        # Testing line 191[then], 196[then], 198[then]
+        # This tests line 191 (symlink found), 196 (absolute), 198 (exists)
         expect do
           validator.validate_path("linked_dir/file.txt")
         end.not_to raise_error
       end
 
-      it "validates path with symlink component to existing file (line 198[then])" do
-        # Create a real target file
-        target_file = File.join(temp_dir, "real_target.txt")
-        File.write(target_file, "content")
+      it "validates path through symlinked directory with absolute non-existent target" do
+        # Create a symlink directory with absolute non-existent target (within project)
+        non_existent_dir = File.join(temp_dir, "future_dir")
+        link_dir = File.join(subdir, "link_to_future_dir")
+        File.symlink(non_existent_dir, link_dir)
 
-        # Create a symlink with ABSOLUTE target within project
-        link_path = File.join(subdir, "abs_link")
-        File.symlink(target_file, link_path)
-
-        # This should trigger line 191[then] - when current_path.symlink? is true
-        # and line 196[then] - when target.absolute? is true
-        # and line 198[then] - when File.exist?(target.to_s) is true for absolute symlinks
+        # This tests line 191 (symlink), 196 (absolute), 198 (doesn't exist)
         expect do
-          validator.validate_path("testdir/abs_link")
+          validator.validate_path("testdir/link_to_future_dir", allow_creation: true)
         end.not_to raise_error
       end
 
-      it "validates path with symlink component to non-existent absolute file (line 198[else])" do
-        # Create a symlink with absolute target that doesn't exist
-        non_existent_target = File.join(temp_dir, "future_file.txt")
-        symlink_path = File.join(subdir, "link_to_future_abs")
-        File.symlink(non_existent_target, symlink_path)
-
-        # This tests line 191[then], 196[then], and 198[else]
-        # - when File.exist?(target.to_s) is false for absolute symlinks
-        expect do
-          validator.validate_path("testdir/link_to_future_abs", allow_creation: true)
-        end.not_to raise_error
-      end
-
-      it "validates path with symlink component to existing relative file (line 202[else], 204[then])" do
-        # Create a real target file
-        target_file = File.join(temp_dir, "rel_target.txt")
-        File.write(target_file, "content")
-
-        # Create a symlink with RELATIVE target
-        symlink_path = File.join(subdir, "rel_link")
-        File.symlink("../rel_target.txt", symlink_path)
-
-        # This tests line 191[then], 196[else], 202[else], and 204[then]
-        # - when target is relative and exists
-        # - line 202 is NOT an else, it's executed when target is NOT absolute (line 196[else])
-        expect do
-          validator.validate_path("testdir/rel_link")
-        end.not_to raise_error
-      end
-
-      it "validates path with symlink component to non-existent relative file (line 204[else])" do
-        # Create relative symlink to non-existent file (but within project bounds)
-        symlink_path = File.join(subdir, "link_to_future_rel")
-        File.symlink("../future_relative.txt", symlink_path)
-
-        # This tests line 191[then], 196[else], 202 (executed), and 204[else]
-        # - when File.exist?(resolved_target.to_s) is false for relative symlinks
-        expect do
-          validator.validate_path("testdir/link_to_future_rel", allow_creation: true)
-        end.not_to raise_error
-      end
-
-      it "validates path through symlinked directory with relative target" do
+      it "validates path through symlinked directory with relative existing target" do
         # Create a real target directory
         target_dir = File.join(temp_dir, "target_dir")
         FileUtils.mkdir_p(target_dir)
@@ -969,30 +984,18 @@ RSpec.describe Sxn::Security::SecurePathValidator do
         File.symlink("../target_dir", link_dir)
 
         # Access file through symlinked directory
-        # This tests line 191[then], 196[else], 202[then], 204[then]
+        # This tests line 191 (symlink), 196 (not absolute), 202 (resolve), 204 (exists)
         expect do
           validator.validate_path("testdir/linked_dir_rel/file.txt")
         end.not_to raise_error
       end
 
-      it "validates path through symlinked directory with non-existent absolute target" do
-        # Create a symlink directory with absolute non-existent target (within project)
-        non_existent_dir = File.join(temp_dir, "future_dir")
-        link_dir = File.join(subdir, "link_to_future_dir")
-        File.symlink(non_existent_dir, link_dir)
-
-        # This tests line 191[then], 196[then], 198[else]
-        expect do
-          validator.validate_path("testdir/link_to_future_dir", allow_creation: true)
-        end.not_to raise_error
-      end
-
-      it "validates path through symlinked directory with non-existent relative target" do
+      it "validates path through symlinked directory with relative non-existent target" do
         # Create a symlink directory with relative non-existent target (within project)
         link_dir = File.join(subdir, "link_to_future_dir_rel")
         File.symlink("../future_dir_rel", link_dir)
 
-        # This tests line 191[then], 196[else], 202[then], 204[else]
+        # This tests line 191 (symlink), 196 (not absolute), 202 (resolve), 204 (doesn't exist)
         expect do
           validator.validate_path("testdir/link_to_future_dir_rel", allow_creation: true)
         end.not_to raise_error
@@ -1053,6 +1056,326 @@ RSpec.describe Sxn::Security::SecurePathValidator do
         end.to raise_error(Sxn::PathValidationError, /outside project boundaries/)
 
         FileUtils.rm_rf(parent_temp)
+      end
+    end
+  end
+
+  # DIRECT BRANCH COVERAGE TESTS: Target uncovered branches in validate_symlink_safety! (lines 160-210)
+  describe "direct symlink branch coverage" do
+    let(:subdir) { File.join(temp_dir, "subdir") }
+
+    before do
+      FileUtils.mkdir_p(subdir)
+    end
+
+    context "Line 184 [else] - relative path input (pathname.absolute? is FALSE)" do
+      it "validates with RELATIVE path input to trigger line 184 else branch" do
+        # Create a file structure
+        FileUtils.mkdir_p(File.join(temp_dir, "subdir"))
+        File.write(File.join(temp_dir, "subdir", "file.txt"), "test content")
+
+        # Pass RELATIVE path (not starting with /) to validate_path
+        # This ensures pathname.absolute? is FALSE, triggering line 184 else branch
+        expect do
+          validator.validate_path("subdir/file.txt")
+        end.not_to raise_error
+      end
+    end
+
+    context "Line 191 [next unless] - non-symlink path components" do
+      it "validates path with regular directories (not symlinks) to trigger line 191 false branch" do
+        # Create nested regular directories (no symlinks)
+        nested_path = File.join(temp_dir, "dir1", "dir2", "dir3")
+        FileUtils.mkdir_p(nested_path)
+        File.write(File.join(nested_path, "normal.txt"), "content")
+
+        # All path components are regular dirs, not symlinks
+        # Line 191: current_path.symlink? returns FALSE, so 'next unless' skips the block
+        expect do
+          validator.validate_path("dir1/dir2/dir3/normal.txt")
+        end.not_to raise_error
+      end
+    end
+
+    context "Line 198 ternary - absolute symlink target EXISTS" do
+      it "validates absolute symlink to EXISTING file (line 198 then branch)" do
+        # Create a real target file
+        target_file = File.join(temp_dir, "real_file.txt")
+        File.write(target_file, "content")
+
+        # Create symlink with ABSOLUTE target path
+        absolute_link = File.join(subdir, "abs_link_exists")
+        File.symlink(target_file, absolute_link)
+
+        # Line 191: symlink? is TRUE
+        # Line 196: target.absolute? is TRUE
+        # Line 198: File.exist?(target.to_s) is TRUE -> uses File.realpath(target.to_s)
+        expect do
+          validator.validate_path("subdir/abs_link_exists")
+        end.not_to raise_error
+      end
+    end
+
+    context "Line 198 ternary - absolute symlink target does NOT exist" do
+      it "validates absolute symlink to NON-EXISTING file (line 198 else branch)" do
+        # Create symlink with absolute target that doesn't exist (but within project bounds)
+        non_existent_target = File.join(temp_dir, "not_created_yet.txt")
+        absolute_link = File.join(subdir, "abs_link_not_exists")
+        File.symlink(non_existent_target, absolute_link)
+
+        # Line 191: symlink? is TRUE
+        # Line 196: target.absolute? is TRUE
+        # Line 198: File.exist?(target.to_s) is FALSE -> uses target.to_s directly
+        expect do
+          validator.validate_path("subdir/abs_link_not_exists", allow_creation: true)
+        end.not_to raise_error
+      end
+    end
+
+    context "Line 202-204 - relative symlink target handling" do
+      it "validates relative symlink to EXISTING file (line 204 then branch)" do
+        # Create a real target file
+        target_file = File.join(temp_dir, "rel_target.txt")
+        File.write(target_file, "content")
+
+        # Create symlink with RELATIVE target
+        relative_link = File.join(subdir, "rel_link_exists")
+        File.symlink("../rel_target.txt", relative_link)
+
+        # Line 191: symlink? is TRUE
+        # Line 196: target.absolute? is FALSE (enters else block)
+        # Line 202: resolves relative target with dirname.join(target).cleanpath
+        # Line 204: File.exist?(resolved_target.to_s) is TRUE -> uses File.realpath
+        expect do
+          validator.validate_path("subdir/rel_link_exists")
+        end.not_to raise_error
+      end
+
+      it "validates relative symlink to NON-EXISTING file (line 204 else branch)" do
+        # Create symlink with relative target that doesn't exist (but within project bounds)
+        relative_link = File.join(subdir, "rel_link_not_exists")
+        File.symlink("../future_file.txt", relative_link)
+
+        # Line 191: symlink? is TRUE
+        # Line 196: target.absolute? is FALSE (enters else block)
+        # Line 202: resolves relative target
+        # Line 204: File.exist?(resolved_target.to_s) is FALSE -> uses resolved_target.to_s
+        expect do
+          validator.validate_path("subdir/rel_link_not_exists", allow_creation: true)
+        end.not_to raise_error
+      end
+    end
+  end
+
+  # NEW TESTS: Additional comprehensive branch coverage for validate_symlink_safety!
+  describe "comprehensive symlink validation branch coverage" do
+    let(:test_subdir) { File.join(temp_dir, "test_area") }
+
+    before do
+      FileUtils.mkdir_p(test_subdir)
+    end
+
+    context "testing line 169 File.exist?(path) FALSE branch with actual absolute path" do
+      it "handles absolute path validation when file does not exist" do
+        # Create a file, get its absolute path, then delete it
+        temp_file = File.join(test_subdir, "will_be_deleted.txt")
+        File.write(temp_file, "temporary")
+
+        abs_path = validator.validate_path("test_area/will_be_deleted.txt")
+        File.delete(temp_file)
+
+        # Now call validate_symlink_safety! with an absolute path that doesn't exist
+        # This hits line 169 ELSE: File.exist?(path) ? File.realpath(path) : path
+        expect do
+          validator.send(:validate_symlink_safety!, abs_path)
+        end.not_to raise_error
+      end
+    end
+
+    context "testing line 184 relative path with symlinks in subdirectory" do
+      it "validates relative path through multiple non-symlink components" do
+        # Create nested structure: dir1/dir2/file.txt (no symlinks)
+        deep_dir = File.join(test_subdir, "dir1", "dir2")
+        FileUtils.mkdir_p(deep_dir)
+        target_file = File.join(deep_dir, "file.txt")
+        File.write(target_file, "data")
+
+        # Validate with relative path - hits line 184 (else branch)
+        # Each component is NOT a symlink, so line 191 'next unless' skips
+        expect do
+          validator.validate_path("test_area/dir1/dir2/file.txt")
+        end.not_to raise_error
+      end
+
+      it "validates relative path with symlink in middle of path components" do
+        # Create: test_area/real_dir/file.txt
+        real_dir = File.join(test_subdir, "real_dir")
+        FileUtils.mkdir_p(real_dir)
+        File.write(File.join(real_dir, "file.txt"), "content")
+
+        # Create symlink: test_area/link_to_real -> real_dir
+        link_dir = File.join(test_subdir, "link_to_real")
+        File.symlink("real_dir", link_dir)
+
+        # Validate relative path through symlink - hits line 184, then 191 (true), then 196 (false), 204
+        expect do
+          validator.validate_path("test_area/link_to_real/file.txt")
+        end.not_to raise_error
+      end
+    end
+
+    context "testing line 191 next unless with mixed symlink and regular components" do
+      it "skips non-symlink directories and processes symlink directories" do
+        # Create: test_area/regular1/regular2/symlink_dir/file.txt
+        # where symlink_dir -> target_dir
+
+        regular_path = File.join(test_subdir, "regular1", "regular2")
+        FileUtils.mkdir_p(regular_path)
+
+        target_dir = File.join(test_subdir, "target_dir")
+        FileUtils.mkdir_p(target_dir)
+        File.write(File.join(target_dir, "file.txt"), "data")
+
+        symlink_dir = File.join(regular_path, "symlink_dir")
+        File.symlink(File.join(temp_dir, "test_area", "target_dir"), symlink_dir)
+
+        # This path has both regular dirs (line 191 false, skip) and symlink dir (line 191 true, process)
+        expect do
+          validator.validate_path("test_area/regular1/regular2/symlink_dir/file.txt")
+        end.not_to raise_error
+      end
+    end
+
+    context "testing line 198 absolute symlink File.exist? branches" do
+      it "validates absolute symlink to existing file within project" do
+        # Create target
+        target = File.join(temp_dir, "abs_target.txt")
+        File.write(target, "content")
+
+        # Create absolute symlink
+        link = File.join(test_subdir, "abs_link")
+        File.symlink(target, link)
+
+        # Line 191 true, 196 true, 198 TRUE (file exists)
+        expect do
+          validator.validate_path("test_area/abs_link")
+        end.not_to raise_error
+      end
+
+      it "validates absolute symlink to non-existing file within project bounds" do
+        # Create absolute symlink to non-existent path (but within project)
+        future_target = File.join(temp_dir, "future_abs.txt")
+        link = File.join(test_subdir, "future_abs_link")
+        File.symlink(future_target, link)
+
+        # Line 191 true, 196 true, 198 FALSE (file doesn't exist)
+        expect do
+          validator.validate_path("test_area/future_abs_link", allow_creation: true)
+        end.not_to raise_error
+      end
+    end
+
+    context "testing line 204 relative symlink File.exist? branches" do
+      it "validates relative symlink to existing file" do
+        # Create target
+        target = File.join(test_subdir, "rel_target.txt")
+        File.write(target, "content")
+
+        # Create relative symlink
+        link = File.join(test_subdir, "rel_link")
+        File.symlink("rel_target.txt", link)
+
+        # Line 191 true, 196 false, 202 executes, 204 TRUE (file exists)
+        expect do
+          validator.validate_path("test_area/rel_link")
+        end.not_to raise_error
+      end
+
+      it "validates relative symlink to non-existing file within project bounds" do
+        # Create relative symlink to non-existent file
+        link = File.join(test_subdir, "future_rel_link")
+        File.symlink("future_rel.txt", link)
+
+        # Line 191 true, 196 false, 202 executes, 204 FALSE (file doesn't exist)
+        expect do
+          validator.validate_path("test_area/future_rel_link", allow_creation: true)
+        end.not_to raise_error
+      end
+
+      it "validates relative symlink with complex path resolution" do
+        # Create nested structure with relative symlink
+        # test_area/sub1/sub2/link -> ../../target.txt
+
+        sub_path = File.join(test_subdir, "sub1", "sub2")
+        FileUtils.mkdir_p(sub_path)
+
+        target = File.join(test_subdir, "target.txt")
+        File.write(target, "content")
+
+        link = File.join(sub_path, "complex_link")
+        File.symlink("../../target.txt", link)
+
+        # Tests line 202 path resolution with dirname.join(target).cleanpath
+        # and line 204 with File.exist? TRUE
+        expect do
+          validator.validate_path("test_area/sub1/sub2/complex_link")
+        end.not_to raise_error
+      end
+    end
+
+    context "testing symlink chains and edge cases" do
+      it "validates symlink to symlink (chain)" do
+        # Create target
+        target = File.join(test_subdir, "final_target.txt")
+        File.write(target, "content")
+
+        # Create first symlink
+        link1 = File.join(test_subdir, "link1")
+        File.symlink("final_target.txt", link1)
+
+        # Create second symlink pointing to first
+        link2 = File.join(test_subdir, "link2")
+        File.symlink("link1", link2)
+
+        # This should resolve through the chain
+        expect do
+          validator.validate_path("test_area/link2")
+        end.not_to raise_error
+      end
+
+      it "validates path with symlink in first component" do
+        # Create target directory
+        target_dir = File.join(temp_dir, "real_location")
+        FileUtils.mkdir_p(target_dir)
+        File.write(File.join(target_dir, "data.txt"), "content")
+
+        # Create symlink at first level
+        link_dir = File.join(temp_dir, "first_level_link")
+        File.symlink(target_dir, link_dir)
+
+        # Validate path where first component is a symlink
+        expect do
+          validator.validate_path("first_level_link/data.txt")
+        end.not_to raise_error
+      end
+
+      it "validates path with symlink in last component" do
+        # Create target file
+        target = File.join(test_subdir, "last_target.txt")
+        File.write(target, "content")
+
+        # Create regular directory
+        regular_dir = File.join(test_subdir, "regular")
+        FileUtils.mkdir_p(regular_dir)
+
+        # Create symlink in the regular directory (last component)
+        link = File.join(regular_dir, "last_link")
+        File.symlink("../last_target.txt", link)
+
+        # Path where only last component is symlink
+        expect do
+          validator.validate_path("test_area/regular/last_link")
+        end.not_to raise_error
       end
     end
   end

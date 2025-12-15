@@ -519,118 +519,248 @@ RSpec.describe Sxn::Templates::TemplateEngine do
   end
 
   describe "Hash#deep_merge" do
-    before(:all) do
-      # Ensure Hash.deep_merge is available - define it if not already defined
-      unless Hash.method_defined?(:deep_merge)
-        class Hash
-          def deep_merge(other_hash)
-            merge(other_hash) do |_key, oldval, newval|
-              if oldval.is_a?(Hash) && newval.is_a?(Hash)
-                oldval.deep_merge(newval)
-              else
-                newval
-              end
-            end
-          end
-        end
-      end
-    end
+    # Test the deep_merge implementation from template_engine.rb (lines 10-22)
+    # The challenge is that if ActiveSupport is loaded, deep_merge is already defined
+    # and the code at lines 11-21 never executes. We need to test the behavior
+    # regardless of whether the method was defined by our code or ActiveSupport.
+    #
+    # Implementation being tested:
+    #   def deep_merge(other_hash)
+    #     merge(other_hash) do |_key, oldval, newval|
+    #       if oldval.is_a?(Hash) && newval.is_a?(Hash)  # Line 14-15
+    #         oldval.deep_merge(newval)                   # Line 15[then] - RECURSIVE MERGE
+    #       else                                          # Line 16-17
+    #         newval                                      # Line 17[else] - REPLACE VALUE
+    #       end
+    #     end
+    #   end
 
-    it "skips defining deep_merge when already defined (line 11[then])" do
-      # This test verifies that the conditional at line 11 works correctly
-      # when Hash.method_defined?(:deep_merge) is true
-      # We verify that deep_merge exists and works
-      expect(Hash.method_defined?(:deep_merge)).to be true
-      h1 = { a: 1 }
-      h2 = { b: 2 }
-      result = h1.deep_merge(h2)
-      expect(result).to eq({ a: 1, b: 2 })
-    end
-
-    it "deeply merges nested hashes" do
-      h1 = { a: { b: 1 } }
-      h2 = { a: { c: 2 } }
-      result = h1.deep_merge(h2)
-      expect(result).to eq({ a: { b: 1, c: 2 } })
-    end
-
-    it "overwrites non-hash values" do
-      h1 = { a: 1, b: { c: 2 } }
-      h2 = { a: 3, b: { d: 4 } }
-      result = h1.deep_merge(h2)
-      expect(result).to eq({ a: 3, b: { c: 2, d: 4 } })
-    end
-
-    it "handles deeply nested structures" do
-      h1 = { a: { b: { c: 1, d: 2 } } }
-      h2 = { a: { b: { c: 3, e: 4 } } }
-      result = h1.deep_merge(h2)
-      expect(result).to eq({ a: { b: { c: 3, d: 2, e: 4 } } })
-    end
-
-    it "overwrites when old value is hash but new value is not" do
-      h1 = { a: { b: 1 } }
-      h2 = { a: "string" }
-      result = h1.deep_merge(h2)
-      expect(result).to eq({ a: "string" })
-    end
-
-    it "overwrites when new value is hash but old value is not" do
-      h1 = { a: "string" }
-      h2 = { a: { b: 1 } }
-      result = h1.deep_merge(h2)
-      expect(result).to eq({ a: { b: 1 } })
-    end
-
-    it "handles both values being hashes with recursive deep_merge" do
-      # This specifically tests line 11[then] and 15[then] - when both oldval and newval are hashes
+    it "recursively merges nested hashes (line 15[then])" do
+      # This tests the recursive case where both oldval and newval are hashes
       h1 = { config: { database: { host: "localhost", port: 5432 } } }
       h2 = { config: { database: { port: 3306, user: "admin" } } }
       result = h1.deep_merge(h2)
+
       # Should recursively merge the nested hashes
       expect(result[:config][:database][:host]).to eq("localhost")
       expect(result[:config][:database][:port]).to eq(3306)
       expect(result[:config][:database][:user]).to eq("admin")
     end
 
-    it "returns newval when oldval is hash but newval is array (else branch)" do
-      # This specifically tests line 17[else] - when values are not both hashes
+    it "deeply merges multiple levels of nested hashes (line 15[then])" do
+      # Additional test for recursive merging with deeper nesting
+      h1 = { a: { b: { c: 1, d: 2 } } }
+      h2 = { a: { b: { c: 3, e: 4 } } }
+      result = h1.deep_merge(h2)
+
+      expect(result).to eq({ a: { b: { c: 3, d: 2, e: 4 } } })
+    end
+
+    it "merges simple nested hash structures (line 15[then])" do
+      # Test simple one-level nesting
+      h1 = { a: { b: 1 } }
+      h2 = { a: { c: 2 } }
+      result = h1.deep_merge(h2)
+
+      expect(result).to eq({ a: { b: 1, c: 2 } })
+    end
+
+    it "overwrites when old value is hash but new value is not (line 17[else])" do
+      # This tests line 17[else] - oldval.is_a?(Hash) is true but newval.is_a?(Hash) is false
       h1 = { items: { a: 1, b: 2 } }
       h2 = { items: [1, 2, 3] }
       result = h1.deep_merge(h2)
+
       expect(result[:items]).to eq([1, 2, 3])
     end
 
-    it "returns newval when oldval is array but newval is hash (else branch)" do
-      # This also tests line 17[else] - when values are not both hashes
+    it "overwrites when old value is hash but new value is string (line 17[else])" do
+      # Another test for line 17[else] - hash replaced by string
+      h1 = { a: { b: 1 } }
+      h2 = { a: "string" }
+      result = h1.deep_merge(h2)
+
+      expect(result).to eq({ a: "string" })
+    end
+
+    it "overwrites when old value is not hash but new value is hash (line 17[else])" do
+      # This tests line 17[else] - oldval.is_a?(Hash) is false
       h1 = { items: [1, 2, 3] }
       h2 = { items: { a: 1 } }
       result = h1.deep_merge(h2)
+
       expect(result[:items]).to eq({ a: 1 })
     end
 
-    it "returns newval when oldval is string and newval is integer (else branch)" do
-      # Additional test for line 17[else] - when neither value is a hash
+    it "overwrites when old value is string but new value is hash (line 17[else])" do
+      # Another test for line 17[else] - non-hash replaced by hash
+      h1 = { a: "string" }
+      h2 = { a: { b: 1 } }
+      result = h1.deep_merge(h2)
+
+      expect(result[:a]).to eq({ b: 1 })
+    end
+
+    it "overwrites when both values are non-hash types (line 17[else])" do
+      # Tests line 17[else] - neither oldval nor newval are hashes
       h1 = { value: "old" }
       h2 = { value: 42 }
       result = h1.deep_merge(h2)
+
       expect(result[:value]).to eq(42)
     end
 
-    it "returns newval when oldval is nil and newval is hash (else branch)" do
-      # Additional test for line 17[else] - oldval not a hash
+    it "overwrites when old value is nil (line 17[else])" do
+      # Tests line 17[else] - oldval is nil (not a hash)
       h1 = { data: nil }
       h2 = { data: { key: "value" } }
       result = h1.deep_merge(h2)
+
       expect(result[:data]).to eq({ key: "value" })
     end
 
-    it "returns newval when both are arrays (else branch)" do
-      # Additional test for line 17[else] - both are non-hash values
+    it "overwrites arrays with arrays (line 17[else])" do
+      # Tests line 17[else] - both are arrays (non-hash values)
       h1 = { list: [1, 2] }
       h2 = { list: [3, 4] }
       result = h1.deep_merge(h2)
+
       expect(result[:list]).to eq([3, 4])
+    end
+
+    it "handles complex mixed-type merging scenario (lines 15[then] and 17[else])" do
+      # This test exercises both branches in a single merge operation
+      h1 = {
+        simple: 1, # Will be overwritten (17[else])
+        nested: { a: 1, b: 2 }, # Will be recursively merged (15[then])
+        replaced: { old: "value" }        # Will be replaced by non-hash (17[else])
+      }
+      h2 = {
+        simple: 2,                        # Overwrites simple value
+        nested: { b: 3, c: 4 }, # Merges with nested hash
+        replaced: "new value" # Replaces hash with string
+      }
+      result = h1.deep_merge(h2)
+
+      expect(result).to eq({
+                             simple: 2,
+                             nested: { a: 1, b: 3, c: 4 },
+                             replaced: "new value"
+                           })
+    end
+
+    it "preserves original hash and returns new hash" do
+      # Verify that deep_merge doesn't mutate the original
+      h1 = { a: { b: 1 } }
+      h2 = { a: { c: 2 } }
+      original_h1 = h1.dup
+
+      result = h1.deep_merge(h2)
+
+      expect(result).to eq({ a: { b: 1, c: 2 } })
+      # NOTE: Hash#dup is shallow, so we check the top-level key
+      expect(h1.keys).to eq(original_h1.keys)
+    end
+
+    it "handles empty hash merging" do
+      h1 = { a: 1 }
+      h2 = {}
+      result = h1.deep_merge(h2)
+
+      expect(result).to eq({ a: 1 })
+    end
+
+    it "merges into empty hash" do
+      h1 = {}
+      h2 = { a: 1 }
+      result = h1.deep_merge(h2)
+
+      expect(result).to eq({ a: 1 })
+    end
+
+    it "works with symbol and string keys" do
+      h1 = { a: { b: 1 } }
+      h2 = { a: { c: 2 } }
+      result = h1.deep_merge(h2)
+
+      expect(result).to eq({ a: { b: 1, c: 2 } })
+    end
+
+    it "handles deep recursion with 5+ levels of nesting (line 15[then])" do
+      # Test deep recursive merge to ensure the recursion works at any depth
+      h1 = { a: { b: { c: { d: { e: { f: 1, g: 2 } } } } } }
+      h2 = { a: { b: { c: { d: { e: { g: 3, h: 4 } } } } } }
+      result = h1.deep_merge(h2)
+
+      # Verify all levels are merged correctly
+      expect(result[:a][:b][:c][:d][:e][:f]).to eq(1)
+      expect(result[:a][:b][:c][:d][:e][:g]).to eq(3)
+      expect(result[:a][:b][:c][:d][:e][:h]).to eq(4)
+    end
+
+    it "correctly merges when keys exist at different depths (line 15[then] and 17[else])" do
+      # Mixed scenario: some keys merge deeply, others replace
+      h1 = {
+        settings: {
+          theme: { color: "blue", size: "large" },
+          notifications: { email: true },
+          timeout: 30
+        }
+      }
+      h2 = {
+        settings: {
+          theme: { color: "red", font: "Arial" },
+          notifications: "disabled",
+          timeout: 60,
+          new_setting: "value"
+        }
+      }
+      result = h1.deep_merge(h2)
+
+      # theme should be recursively merged (line 15[then])
+      expect(result[:settings][:theme]).to eq({ color: "red", size: "large", font: "Arial" })
+      # notifications should be replaced (line 17[else] - hash to string)
+      expect(result[:settings][:notifications]).to eq("disabled")
+      # timeout should be replaced (line 17[else] - both non-hash)
+      expect(result[:settings][:timeout]).to eq(60)
+      # new_setting should be added
+      expect(result[:settings][:new_setting]).to eq("value")
+    end
+
+    it "verifies non-destructive merge behavior" do
+      # Ensure original hashes are not modified
+      h1 = { a: { b: 1, c: 2 } }
+      h2 = { a: { c: 3, d: 4 } }
+      h1_original = Marshal.load(Marshal.dump(h1)) # Deep copy
+      h2_original = Marshal.load(Marshal.dump(h2)) # Deep copy
+
+      result = h1.deep_merge(h2)
+
+      # Result should have merged values
+      expect(result).to eq({ a: { b: 1, c: 3, d: 4 } })
+      # Original hashes should be unchanged
+      expect(h1).to eq(h1_original)
+      expect(h2).to eq(h2_original)
+    end
+
+    it "handles boolean values correctly (line 17[else])" do
+      # Booleans are not hashes, so they should replace
+      h1 = { feature_flag: true }
+      h2 = { feature_flag: false }
+      result = h1.deep_merge(h2)
+
+      expect(result[:feature_flag]).to eq(false)
+    end
+
+    it "merges hashes with numeric keys" do
+      # Test with numeric keys
+      h1 = { 1 => { a: 1 }, 2 => { b: 2 } }
+      h2 = { 1 => { c: 3 }, 3 => { d: 4 } }
+      result = h1.deep_merge(h2)
+
+      expect(result[1]).to eq({ a: 1, c: 3 })
+      expect(result[2]).to eq({ b: 2 })
+      expect(result[3]).to eq({ d: 4 })
     end
   end
 

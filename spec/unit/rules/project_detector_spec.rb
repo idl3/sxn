@@ -1515,6 +1515,41 @@ RSpec.describe Sxn::Rules::ProjectDetector do
         expect(high_confidence).to be > medium_confidence
         expect(medium_confidence).to be > low_confidence
       end
+
+      # Test for line 286-288: else branch when pattern_type doesn't match known types
+      it "handles non-medium-high confidence types with pattern matches" do
+        File.write(File.join(project_path, "Gemfile"), 'gem "rails"')
+
+        # Use Ruby project type (medium confidence, not high)
+        criteria = { files: ["Gemfile"], patterns: { gemfile_contains: ["nokogiri"] }, confidence: :medium }
+        confidence = detector.send(:calculate_type_confidence, :ruby, criteria)
+
+        # Should get base confidence from file but not pattern bonus
+        expect(confidence).to be > 0
+      end
+
+      # Test for line 304, 308: when clauses for gemfile_contains and requirements_contains in non-high confidence
+      it "adds confidence for gemfile_contains pattern in non-high confidence type" do
+        File.write(File.join(project_path, "Gemfile"), 'gem "nokogiri"')
+
+        # Medium confidence type with gemfile_contains pattern
+        criteria = { files: ["Gemfile"], patterns: { gemfile_contains: ["nokogiri"] }, confidence: :medium }
+        confidence = detector.send(:calculate_type_confidence, :ruby, criteria)
+
+        # Should get bonus for pattern match
+        expect(confidence).to be > 10
+      end
+
+      it "adds confidence for requirements_contains pattern in non-high confidence type" do
+        File.write(File.join(project_path, "requirements.txt"), "requests==2.0")
+
+        # Medium confidence type with requirements_contains pattern
+        criteria = { files: ["requirements.txt"], patterns: { requirements_contains: ["requests"] }, confidence: :medium }
+        confidence = detector.send(:calculate_type_confidence, :python, criteria)
+
+        # Should get bonus for pattern match
+        expect(confidence).to be > 10
+      end
     end
 
     describe "#file_exists_in_project?" do

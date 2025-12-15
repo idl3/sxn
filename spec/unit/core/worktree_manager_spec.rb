@@ -1088,6 +1088,22 @@ RSpec.describe Sxn::Core::WorktreeManager do
       end.to raise_error(Sxn::WorktreeCreationError, /some error without fatal prefix/)
     end
 
+    it "handles error messages that don't match any specific pattern (line 282 if-elsif-else branch)" do
+      require "open3"
+      status = double("status", success?: false, exitstatus: 128)
+      # Error message that doesn't contain any of the specific patterns
+      stderr = "error: some generic git error\nanother error line"
+      allow(Open3).to receive(:capture3).and_return(["", stderr, status])
+      allow(worktree_manager).to receive(:system).and_return(false)
+
+      expect do
+        worktree_manager.send(:create_git_worktree, project_path, test_worktree_path, "test-branch")
+      end.to raise_error(Sxn::WorktreeCreationError) do |error|
+        # Should use the original error message without additional context
+        expect(error.message).to eq(stderr)
+      end
+    end
+
     it "includes non-empty stdout in details (line 292 then branch)" do
       require "open3"
       status = double("status", success?: false, exitstatus: 128)

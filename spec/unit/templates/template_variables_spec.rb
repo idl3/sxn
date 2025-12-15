@@ -1380,6 +1380,81 @@ RSpec.describe Sxn::Templates::TemplateVariables do
         result = collector.send(:collect_database_info)
         expect(result[:sqlite3]).to eq("3.39.4")
       end
+
+      it "handles all database versions being nil simultaneously" do
+        # Additional test to ensure all nil branches work together
+        allow(collector).to receive(:`).with("psql --version 2>/dev/null").and_return(nil)
+        allow(collector).to receive(:`).with("mysql --version 2>/dev/null").and_return(nil)
+        allow(collector).to receive(:`).with("sqlite3 --version 2>/dev/null").and_return(nil)
+
+        result = collector.send(:collect_database_info)
+        expect(result).to be_a(Hash)
+        expect(result[:postgresql]).to be_nil
+        expect(result[:mysql]).to be_nil
+        expect(result[:sqlite3]).to be_nil
+      end
+    end
+
+    describe "additional validation edge cases" do
+      it "logs warning for object that doesn't respond to to_s and is not Proc/Method" do
+        # This ensures line 161[else] is hit when the value doesn't respond to :to_s
+        mock_logger = double("Logger")
+        allow(Sxn).to receive(:logger).and_return(mock_logger)
+        allow(mock_logger).to receive(:warn)
+
+        # Create an object that explicitly doesn't respond to :to_s
+        bad_object = double("BadValue")
+        allow(bad_object).to receive(:nil?).and_return(false)
+        allow(bad_object).to receive(:respond_to?).with(:to_s).and_return(false)
+        allow(bad_object).to receive(:is_a?).with(Proc).and_return(false)
+        allow(bad_object).to receive(:is_a?).with(Method).and_return(false)
+        allow(bad_object).to receive(:class).and_return(Object)
+
+        variables = { test: { unstringifiable: bad_object } }
+        collector.send(:validate_collected_variables, variables)
+
+        expect(mock_logger).to have_received(:warn).with(/cannot be safely stringified/)
+      end
+
+      it "handles exception during variable iteration in validation" do
+        # This ensures line 172[else] rescue block is triggered
+        mock_logger = double("Logger")
+        allow(Sxn).to receive(:logger).and_return(mock_logger)
+        allow(mock_logger).to receive(:error)
+
+        variables = { test: { key: "value" } }
+        # Make the variables hash raise an error during iteration
+        allow(variables).to receive(:each).and_raise(RuntimeError, "Iteration failed")
+
+        result = collector.send(:validate_collected_variables, variables)
+
+        expect(mock_logger).to have_received(:error).with(/Template variable validation failed: Iteration failed/)
+        expect(result).to eq(variables)
+      end
+
+      it "does not warn for normal string, integer, and array values" do
+        # This ensures line 165[else] is hit - values that are NOT Proc/Method
+        mock_logger = double("Logger")
+        allow(Sxn).to receive(:logger).and_return(mock_logger)
+        allow(mock_logger).to receive(:warn)
+
+        variables = {
+          test: {
+            string: "value",
+            integer: 42,
+            float: 3.14,
+            array: [1, 2, 3],
+            hash: { nested: "value" },
+            symbol: :test,
+            true_val: true,
+            false_val: false
+          }
+        }
+        collector.send(:validate_collected_variables, variables)
+
+        # Should not receive ANY warnings for these safe values
+        expect(mock_logger).not_to have_received(:warn)
+      end
     end
   end
 end
