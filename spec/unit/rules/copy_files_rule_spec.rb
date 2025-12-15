@@ -702,4 +702,196 @@ RSpec.describe Sxn::Rules::CopyFilesRule do
       expect(options[:permissions]).to eq("600")
     end
   end
+
+  describe "additional branch coverage" do
+    context "with non-hash file config" do
+      let(:non_hash_config) do
+        {
+          "files" => [
+            "not a hash"
+          ]
+        }
+      end
+      let(:non_hash_rule) { described_class.new(project_path, session_path, non_hash_config) }
+
+      it "fails validation for non-hash file config" do
+        expect do
+          non_hash_rule.validate
+        end.to raise_error(Sxn::Rules::ValidationError, /File config .* must be a hash/)
+      end
+    end
+
+    context "with destination specified" do
+      let(:dest_config) do
+        {
+          "files" => [
+            {
+              "source" => "config/master.key",
+              "destination" => "config/custom_destination.key",
+              "strategy" => "copy"
+            }
+          ]
+        }
+      end
+      let(:dest_rule) { described_class.new(project_path, session_path, dest_config) }
+
+      before { dest_rule.validate }
+
+      it "uses custom destination" do
+        dest_rule.apply
+        expect(dest_rule.changes.size).to eq(1)
+      end
+    end
+
+    context "with unknown strategy at runtime" do
+      it "raises error for unknown strategy" do
+        file_config = {
+          "source" => "config/master.key",
+          "strategy" => "unknown"
+        }
+
+        # Bypass validation by directly calling apply_file_operation
+        expect do
+          rule.send(:apply_file_operation, file_config)
+        end.to raise_error(Sxn::Rules::ApplicationError, /Unknown strategy/)
+      end
+    end
+
+    context "with fallback file copier" do
+      it "uses fallback when file_copier doesn't respond to copy_file", :use_real_file_copier do
+        # Create a mock file copier that doesn't respond to copy_file
+        mock_copier = double("MockFileCopier")
+        allow(mock_copier).to receive(:respond_to?).with(:copy_file).and_return(false)
+        allow(mock_copier).to receive(:sensitive_file?).and_return(true)
+
+        encrypt_config = {
+          "files" => [
+            {
+              "source" => "config/master.key",
+              "strategy" => "copy",
+              "encrypt" => true,
+              "permissions" => "0600"
+            }
+          ]
+        }
+        encrypt_rule = described_class.new(project_path, session_path, encrypt_config)
+        encrypt_rule.instance_variable_set(:@file_copier, mock_copier)
+        encrypt_rule.validate
+        encrypt_rule.apply
+
+        # Check that file was copied using fallback
+        copied_file = File.join(session_path, "config/master.key")
+        expect(File.exist?(copied_file)).to be true
+      end
+    end
+
+    context "with permissions in fallback path" do
+      it "sets permissions when specified in fallback path", :use_real_file_copier do
+        mock_copier = double("MockFileCopier")
+        allow(mock_copier).to receive(:respond_to?).with(:copy_file).and_return(false)
+        allow(mock_copier).to receive(:sensitive_file?).and_return(true)
+
+        perms_config = {
+          "files" => [
+            {
+              "source" => "config/master.key",
+              "strategy" => "copy",
+              "encrypt" => true,
+              "permissions" => "0600"
+            }
+          ]
+        }
+        perms_rule = described_class.new(project_path, session_path, perms_config)
+        perms_rule.instance_variable_set(:@file_copier, mock_copier)
+        perms_rule.validate
+        perms_rule.apply
+
+        copied_file = File.join(session_path, "config/master.key")
+        stat = File.stat(copied_file)
+        expect(stat.mode & 0o777).to eq(0o600)
+      end
+    end
+
+    context "with permissions in simple copy" do
+      it "sets permissions in simple copy when specified", :use_real_file_copier do
+        mock_copier = double("MockFileCopier")
+        allow(mock_copier).to receive(:respond_to?).with(:copy_file).and_return(false)
+        allow(mock_copier).to receive(:sensitive_file?).and_return(false)
+
+        simple_config = {
+          "files" => [
+            {
+              "source" => "config/master.key",
+              "strategy" => "copy",
+              "encrypt" => false,
+              "permissions" => "0644"
+            }
+          ]
+        }
+        simple_rule = described_class.new(project_path, session_path, simple_config)
+        simple_rule.instance_variable_set(:@file_copier, mock_copier)
+        simple_rule.validate
+        simple_rule.apply
+
+        copied_file = File.join(session_path, "config/master.key")
+        stat = File.stat(copied_file)
+        expect(stat.mode & 0o777).to eq(0o644)
+      end
+    end
+
+    context "with symlink directory creation" do
+      it "creates directory when it doesn't exist for symlink", :use_real_file_copier do
+        symlink_config = {
+          "files" => [
+            {
+              "source" => ".env",
+              "destination" => "deep/nested/.env",
+              "strategy" => "symlink"
+            }
+          ]
+        }
+        symlink_rule = described_class.new(project_path, session_path, symlink_config)
+        symlink_rule.validate
+        symlink_rule.apply
+
+        symlink_file = File.join(session_path, "deep/nested/.env")
+        expect(File.symlink?(symlink_file)).to be true
+      end
+    end
+
+    context "with existing symlink/file" do
+      it "removes existing file before creating symlink", :use_real_file_copier do
+        # Create existing file
+        existing_file = File.join(session_path, ".env")
+        File.write(existing_file, "existing content")
+
+        symlink_config = {
+          "files" => [
+            {
+              "source" => ".env",
+              "strategy" => "symlink"
+            }
+          ]
+        }
+        symlink_rule = described_class.new(project_path, session_path, symlink_config)
+        symlink_rule.validate
+        symlink_rule.apply
+
+        # Should now be a symlink, not a regular file
+        expect(File.symlink?(existing_file)).to be true
+      end
+    end
+
+    context "with integer permissions in copy_options" do
+      it "preserves integer permissions as-is" do
+        file_config = {
+          "source" => "config/master.key",
+          "permissions" => 0o600
+        }
+
+        options = rule.send(:copy_options, file_config)
+        expect(options[:permissions]).to eq(0o600)
+      end
+    end
+  end
 end

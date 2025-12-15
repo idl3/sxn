@@ -578,6 +578,9 @@ RSpec.describe Sxn::Templates::TemplateVariables do
         expect(version).to be_a(String)
         expect(version).not_to be_empty
       end
+
+      # NOTE: Line 119[then] (RUBY_VERSION.nil?) is unreachable in practice
+      # as RUBY_VERSION is always defined. Testing it would break other tests.
     end
 
     describe "#detect_rails_version" do
@@ -595,6 +598,15 @@ RSpec.describe Sxn::Templates::TemplateVariables do
 
         version = collector.send(:detect_rails_version)
         expect(version).to be_nil
+      end
+
+      it "returns version when result is a Hash with :version key" do
+        # This tests line 131[then]
+        allow(collector).to receive(:rails_available?).and_return(true)
+        allow(collector).to receive(:collect_rails_version).and_return({ version: "7.0.4" })
+
+        version = collector.send(:detect_rails_version)
+        expect(version).to eq("7.0.4")
       end
     end
   end
@@ -707,6 +719,23 @@ RSpec.describe Sxn::Templates::TemplateVariables do
         expect(Process).to receive(:kill).with("TERM", 12_345)
 
         collector.send(:execute_git_command, "/tmp", "status")
+      end
+
+      it "does not yield when no block is given" do
+        # This tests line 520[else] - when block_given? is false
+        # Allow the real method to be called
+        allow(collector).to receive(:execute_git_command).and_call_original
+
+        allow(Open3).to receive(:popen3).and_yield(
+          double("stdin", close: nil),
+          double("stdout", read: "success output"),
+          double("stderr"),
+          double("wait_thr", join: true, pid: 12_345, value: double(success?: true))
+        )
+
+        # Call without a block
+        result = collector.send(:execute_git_command, "/tmp", "status")
+        expect(result).to eq("success output")
       end
     end
   end
@@ -902,6 +931,455 @@ RSpec.describe Sxn::Templates::TemplateVariables do
 
       result = collector.send(:collect_ruby_project_info)
       expect(result).to be_a(Hash)
+    end
+  end
+
+  describe "additional branch coverage tests" do
+    describe "#detect_rails_version" do
+      it "returns nil when rails_available? returns false" do
+        allow(collector).to receive(:rails_available?).and_return(false)
+
+        version = collector.send(:detect_rails_version)
+        expect(version).to be_nil
+      end
+
+      it "returns nil when collect_rails_version returns hash without :version key" do
+        allow(collector).to receive(:rails_available?).and_return(true)
+        allow(collector).to receive(:collect_rails_version).and_return({ other_key: "value" })
+
+        version = collector.send(:detect_rails_version)
+        expect(version).to be_nil
+      end
+    end
+
+    describe "#detect_node_version" do
+      it "returns nil when node_available? returns false" do
+        allow(collector).to receive(:node_available?).and_return(false)
+
+        version = collector.send(:detect_node_version)
+        expect(version).to be_nil
+      end
+
+      it "returns nil when collect_node_version returns hash without :version key" do
+        allow(collector).to receive(:node_available?).and_return(true)
+        allow(collector).to receive(:collect_node_version).and_return({ other_key: "value" })
+
+        version = collector.send(:detect_node_version)
+        expect(version).to be_nil
+      end
+
+      it "returns version when result is a Hash with :version key" do
+        # This tests line 141[then]
+        allow(collector).to receive(:node_available?).and_return(true)
+        allow(collector).to receive(:collect_node_version).and_return({ version: "18.0.0" })
+
+        version = collector.send(:detect_node_version)
+        expect(version).to eq("18.0.0")
+      end
+    end
+
+    describe "#validate_collected_variables" do
+      it "returns variables as-is when not a Hash" do
+        not_a_hash = "not a hash"
+        result = collector.send(:validate_collected_variables, not_a_hash)
+        expect(result).to eq(not_a_hash)
+      end
+
+      it "handles category data that is not a Hash" do
+        mock_logger = double("Logger")
+        allow(Sxn).to receive(:logger).and_return(mock_logger)
+        allow(mock_logger).to receive(:warn)
+
+        variables = { valid_category: { key: "value" }, invalid_category: "not a hash" }
+        result = collector.send(:validate_collected_variables, variables)
+
+        expect(result).to eq(variables)
+      end
+
+      it "logs warning when value does not respond to :to_s" do
+        # This tests line 161[else] - the branch where value.respond_to?(:to_s) is false
+        mock_logger = double("Logger")
+        allow(Sxn).to receive(:logger).and_return(mock_logger)
+        allow(mock_logger).to receive(:warn)
+
+        bad_value = double("BadValue")
+        allow(bad_value).to receive(:respond_to?).with(:to_s).and_return(false)
+
+        variables = { test: { bad: bad_value } }
+        collector.send(:validate_collected_variables, variables)
+
+        expect(mock_logger).to have_received(:warn).with(/cannot be safely stringified/)
+      end
+
+      it "does not log warning for non-Proc, non-Method values" do
+        # This tests line 165[else] - the branch where value is NOT Proc/Method
+        mock_logger = double("Logger")
+        allow(Sxn).to receive(:logger).and_return(mock_logger)
+        allow(mock_logger).to receive(:warn)
+
+        variables = { test: { safe: "string", number: 42, array: [1, 2, 3] } }
+        collector.send(:validate_collected_variables, variables)
+
+        # Should not receive the executable code warning
+        expect(mock_logger).not_to have_received(:warn).with(/contains executable code/)
+      end
+
+      it "logs error when validation encounters an exception" do
+        # This tests line 172[else] - the rescue block
+        mock_logger = double("Logger")
+        allow(Sxn).to receive(:logger).and_return(mock_logger)
+        allow(mock_logger).to receive(:error)
+
+        variables = { test: { key: "value" } }
+        allow(variables).to receive(:each).and_raise(StandardError, "Unexpected error")
+
+        result = collector.send(:validate_collected_variables, variables)
+
+        expect(mock_logger).to have_received(:error).with(/Template variable validation failed/)
+        expect(result).to eq(variables)
+      end
+    end
+
+    describe "#git_repository?" do
+      it "returns true when execute_git_command returns output" do
+        git_path = "/tmp/test_git_repo"
+        allow(File).to receive(:exist?).with("#{git_path}/.git").and_return(false)
+
+        allow(collector).to receive(:execute_git_command) do |dir, *args, &block|
+          if dir.to_s == git_path && args == ["rev-parse", "--git-dir"]
+            block&.call("   .git   ")
+            "   .git   "
+          end
+        end
+
+        is_repo = collector.send(:git_repository?, git_path)
+        expect(is_repo).to be true
+      end
+
+      it "returns false when execute_git_command returns empty string" do
+        git_path = "/tmp/test_git_repo"
+        allow(File).to receive(:exist?).with("#{git_path}/.git").and_return(false)
+
+        allow(collector).to receive(:execute_git_command) do |dir, *args, &block|
+          if dir.to_s == git_path && args == ["rev-parse", "--git-dir"]
+            block&.call("")
+            ""
+          end
+        end
+
+        is_repo = collector.send(:git_repository?, git_path)
+        expect(is_repo).to be false
+      end
+    end
+
+    describe "#collect_git_commit_info" do
+      it "does not set last_commit when parts length is less than 4" do
+        git_dir = "/tmp/git-repo"
+
+        allow(collector).to receive(:execute_git_command)
+          .with(git_dir, "log", "-1", "--format=%H|%s|%an|%ae|%ai")
+          .and_yield("abc123|message|author")
+
+        allow(collector).to receive(:execute_git_command)
+          .with(git_dir, "rev-parse", "--short", "HEAD")
+          .and_yield("abc123")
+
+        commit_info = collector.send(:collect_git_commit_info, git_dir)
+
+        expect(commit_info[:last_commit]).to be_nil
+        expect(commit_info[:short_sha]).to eq("abc123")
+      end
+    end
+
+    describe "#detect_project_type" do
+      it "detects Next.js projects" do
+        project_path = "/tmp/test-project"
+        gemfile_path = double("Pathname")
+        package_json_path = double("Pathname")
+        tsconfig_path = double("Pathname")
+        gemspec_path = double("Pathname")
+
+        allow(Pathname).to receive(:new).with(project_path).and_return(double("Pathname").tap do |path|
+          allow(path).to receive(:/).with("Gemfile").and_return(gemfile_path)
+          allow(path).to receive(:/).with("package.json").and_return(package_json_path)
+          allow(path).to receive(:/).with("tsconfig.json").and_return(tsconfig_path)
+          allow(path).to receive(:/).with("*.gemspec").and_return(gemspec_path)
+          allow(path).to receive(:to_s).and_return(project_path)
+        end)
+
+        allow(gemfile_path).to receive(:exist?).and_return(false)
+        allow(package_json_path).to receive(:exist?).and_return(true)
+        allow(package_json_path).to receive(:read).and_return('{"dependencies": {"next": "13.0.0"}}')
+        allow(tsconfig_path).to receive(:exist?).and_return(false)
+        allow(gemspec_path).to receive(:to_s).and_return("/tmp/test-project/*.gemspec")
+        allow(Dir).to receive(:glob).with("/tmp/test-project/*.gemspec").and_return([])
+
+        type = collector.send(:detect_project_type, project_path)
+        expect(type).to eq("nextjs")
+      end
+
+      it "detects React projects" do
+        project_path = "/tmp/test-project"
+        gemfile_path = double("Pathname")
+        package_json_path = double("Pathname")
+        tsconfig_path = double("Pathname")
+        gemspec_path = double("Pathname")
+
+        allow(Pathname).to receive(:new).with(project_path).and_return(double("Pathname").tap do |path|
+          allow(path).to receive(:/).with("Gemfile").and_return(gemfile_path)
+          allow(path).to receive(:/).with("package.json").and_return(package_json_path)
+          allow(path).to receive(:/).with("tsconfig.json").and_return(tsconfig_path)
+          allow(path).to receive(:/).with("*.gemspec").and_return(gemspec_path)
+          allow(path).to receive(:to_s).and_return(project_path)
+        end)
+
+        allow(gemfile_path).to receive(:exist?).and_return(false)
+        allow(package_json_path).to receive(:exist?).and_return(true)
+        allow(package_json_path).to receive(:read).and_return('{"dependencies": {"react": "18.0.0"}}')
+        allow(tsconfig_path).to receive(:exist?).and_return(false)
+        allow(gemspec_path).to receive(:to_s).and_return("/tmp/test-project/*.gemspec")
+        allow(Dir).to receive(:glob).with("/tmp/test-project/*.gemspec").and_return([])
+
+        type = collector.send(:detect_project_type, project_path)
+        expect(type).to eq("react")
+      end
+    end
+
+    describe "#collect_rails_project_info" do
+      it "returns empty hash when project path is nil" do
+        collector_without_project = described_class.new(mock_session, nil, mock_config)
+        result = collector_without_project.send(:collect_rails_project_info)
+        expect(result).to eq({})
+      end
+
+      it "returns empty hash when database.yml does not exist" do
+        db_config_path = double("Pathname")
+        allow(db_config_path).to receive(:exist?).and_return(false)
+
+        config_path = double("Pathname")
+        allow(config_path).to receive(:/).with("database.yml").and_return(db_config_path)
+
+        project_path = double("Pathname")
+        allow(project_path).to receive(:/).with("config").and_return(config_path)
+        allow(Pathname).to receive(:new).with(mock_project.path).and_return(project_path)
+
+        result = collector.send(:collect_rails_project_info)
+        expect(result).to eq({})
+      end
+    end
+
+    describe "#collect_js_project_info" do
+      it "returns empty hash when project path is nil" do
+        collector_without_project = described_class.new(mock_session, nil, mock_config)
+        result = collector_without_project.send(:collect_js_project_info)
+        expect(result).to eq({})
+      end
+
+      it "returns empty hash when package.json does not exist" do
+        package_json_path = double("Pathname")
+        allow(package_json_path).to receive(:exist?).and_return(false)
+
+        project_path = double("Pathname")
+        allow(project_path).to receive(:/).with("package.json").and_return(package_json_path)
+        allow(Pathname).to receive(:new).with(mock_project.path).and_return(project_path)
+
+        result = collector.send(:collect_js_project_info)
+        expect(result).to eq({})
+      end
+
+      it "includes scripts when present in package.json" do
+        package_json_path = double("Pathname")
+        allow(package_json_path).to receive(:exist?).and_return(true)
+        allow(package_json_path).to receive(:read).and_return('{"scripts": {"test": "jest", "build": "webpack"}}')
+
+        project_path = double("Pathname")
+        allow(project_path).to receive(:/).with("package.json").and_return(package_json_path)
+        allow(Pathname).to receive(:new).with(mock_project.path).and_return(project_path)
+
+        allow(collector).to receive(:detect_package_manager).and_return("npm")
+
+        result = collector.send(:collect_js_project_info)
+        expect(result[:scripts]).to eq({ "test" => "jest", "build" => "webpack" })
+      end
+
+      it "includes dependencies when present in package.json" do
+        package_json_path = double("Pathname")
+        allow(package_json_path).to receive(:exist?).and_return(true)
+        allow(package_json_path).to receive(:read).and_return('{"dependencies": {"react": "18.0.0", "lodash": "4.17.0"}}')
+
+        project_path = double("Pathname")
+        allow(project_path).to receive(:/).with("package.json").and_return(package_json_path)
+        allow(Pathname).to receive(:new).with(mock_project.path).and_return(project_path)
+
+        allow(collector).to receive(:detect_package_manager).and_return("npm")
+
+        result = collector.send(:collect_js_project_info)
+        expect(result[:dependencies]).to eq(%w[react lodash])
+      end
+
+      it "includes dev_dependencies when present in package.json" do
+        package_json_path = double("Pathname")
+        allow(package_json_path).to receive(:exist?).and_return(true)
+        allow(package_json_path).to receive(:read).and_return('{"devDependencies": {"jest": "27.0.0", "webpack": "5.0.0"}}')
+
+        project_path = double("Pathname")
+        allow(project_path).to receive(:/).with("package.json").and_return(package_json_path)
+        allow(Pathname).to receive(:new).with(mock_project.path).and_return(project_path)
+
+        allow(collector).to receive(:detect_package_manager).and_return("npm")
+
+        result = collector.send(:collect_js_project_info)
+        expect(result[:dev_dependencies]).to eq(%w[jest webpack])
+      end
+    end
+
+    describe "#collect_ruby_project_info" do
+      it "returns empty hash when project path is nil" do
+        collector_without_project = described_class.new(mock_session, nil, mock_config)
+        result = collector_without_project.send(:collect_ruby_project_info)
+        expect(result).to eq({})
+      end
+
+      it "returns empty hash when Gemfile does not exist" do
+        gemfile_path = double("Pathname")
+        allow(gemfile_path).to receive(:exist?).and_return(false)
+
+        project_path = double("Pathname")
+        allow(project_path).to receive(:/).with("Gemfile").and_return(gemfile_path)
+        allow(Pathname).to receive(:new).with(mock_project.path).and_return(project_path)
+
+        result = collector.send(:collect_ruby_project_info)
+        expect(result).to eq({})
+      end
+    end
+
+    describe "#detect_package_manager" do
+      it "returns npm when project path is nil" do
+        collector_without_project = described_class.new(mock_session, nil, mock_config)
+        result = collector_without_project.send(:detect_package_manager)
+        expect(result).to eq("npm")
+      end
+
+      it "returns pnpm when pnpm-lock.yaml exists" do
+        pnpm_lock_path = double("Pathname")
+        allow(pnpm_lock_path).to receive(:exist?).and_return(true)
+
+        project_path = double("Pathname")
+        allow(project_path).to receive(:/).with("pnpm-lock.yaml").and_return(pnpm_lock_path)
+        allow(Pathname).to receive(:new).with(mock_project.path).and_return(project_path)
+
+        result = collector.send(:detect_package_manager)
+        expect(result).to eq("pnpm")
+      end
+
+      it "returns yarn when yarn.lock exists and pnpm-lock.yaml does not" do
+        pnpm_lock_path = double("Pathname")
+        allow(pnpm_lock_path).to receive(:exist?).and_return(false)
+
+        yarn_lock_path = double("Pathname")
+        allow(yarn_lock_path).to receive(:exist?).and_return(true)
+
+        project_path = double("Pathname")
+        allow(project_path).to receive(:/).with("pnpm-lock.yaml").and_return(pnpm_lock_path)
+        allow(project_path).to receive(:/).with("yarn.lock").and_return(yarn_lock_path)
+        allow(Pathname).to receive(:new).with(mock_project.path).and_return(project_path)
+
+        result = collector.send(:detect_package_manager)
+        expect(result).to eq("yarn")
+      end
+
+      it "returns npm when package-lock.json exists" do
+        pnpm_lock_path = double("Pathname")
+        allow(pnpm_lock_path).to receive(:exist?).and_return(false)
+
+        yarn_lock_path = double("Pathname")
+        allow(yarn_lock_path).to receive(:exist?).and_return(false)
+
+        npm_lock_path = double("Pathname")
+        allow(npm_lock_path).to receive(:exist?).and_return(true)
+
+        project_path = double("Pathname")
+        allow(project_path).to receive(:/).with("pnpm-lock.yaml").and_return(pnpm_lock_path)
+        allow(project_path).to receive(:/).with("yarn.lock").and_return(yarn_lock_path)
+        allow(project_path).to receive(:/).with("package-lock.json").and_return(npm_lock_path)
+        allow(Pathname).to receive(:new).with(mock_project.path).and_return(project_path)
+
+        result = collector.send(:detect_package_manager)
+        expect(result).to eq("npm")
+      end
+    end
+
+    describe "#collect_node_version" do
+      it "returns empty hash when node_available? returns false" do
+        allow(collector).to receive(:node_available?).and_return(false)
+
+        result = collector.send(:collect_node_version)
+        expect(result).to eq({})
+      end
+
+      it "returns empty hash when version string is empty" do
+        allow(collector).to receive(:node_available?).and_return(true)
+        allow(collector).to receive(:`).with("node --version 2>/dev/null").and_return("\n")
+
+        result = collector.send(:collect_node_version)
+        expect(result).to eq({})
+      end
+    end
+
+    describe "#collect_database_info" do
+      it "does not include postgresql when version is nil" do
+        # This tests line 676[else] - when pg_version is falsy
+        allow(collector).to receive(:`).with("psql --version 2>/dev/null").and_return("")
+
+        result = collector.send(:collect_database_info)
+        expect(result[:postgresql]).to be_nil
+      end
+
+      it "does not include mysql when version is nil" do
+        # This tests line 684[else] - when mysql_version is falsy
+        allow(collector).to receive(:`).with("psql --version 2>/dev/null").and_return("")
+        allow(collector).to receive(:`).with("mysql --version 2>/dev/null").and_return("")
+
+        result = collector.send(:collect_database_info)
+        expect(result[:mysql]).to be_nil
+      end
+
+      it "does not include sqlite3 when version is nil" do
+        # This tests line 692[else] - when sqlite_version is falsy
+        allow(collector).to receive(:`).with("psql --version 2>/dev/null").and_return("")
+        allow(collector).to receive(:`).with("mysql --version 2>/dev/null").and_return("")
+        allow(collector).to receive(:`).with("sqlite3 --version 2>/dev/null").and_return("")
+
+        result = collector.send(:collect_database_info)
+        expect(result[:sqlite3]).to be_nil
+      end
+
+      it "includes postgresql when version is present" do
+        # This tests line 676[then] - when pg_version is truthy
+        allow(collector).to receive(:`).with("psql --version 2>/dev/null").and_return("psql (PostgreSQL) 14.5")
+
+        result = collector.send(:collect_database_info)
+        expect(result[:postgresql]).to eq("14.5")
+      end
+
+      it "includes mysql when version is present" do
+        # This tests line 684[then] - when mysql_version is truthy
+        allow(collector).to receive(:`).with("psql --version 2>/dev/null").and_return("")
+        allow(collector).to receive(:`).with("mysql --version 2>/dev/null").and_return("mysql Ver 8.0.30 for Linux")
+
+        result = collector.send(:collect_database_info)
+        expect(result[:mysql]).to eq("8.0.30")
+      end
+
+      it "includes sqlite3 when version is present" do
+        # This tests line 692[then] - when sqlite_version is truthy
+        allow(collector).to receive(:`).with("psql --version 2>/dev/null").and_return("")
+        allow(collector).to receive(:`).with("mysql --version 2>/dev/null").and_return("")
+        allow(collector).to receive(:`).with("sqlite3 --version 2>/dev/null").and_return("3.39.4 2022-09-29")
+
+        result = collector.send(:collect_database_info)
+        expect(result[:sqlite3]).to eq("3.39.4")
+      end
     end
   end
 end

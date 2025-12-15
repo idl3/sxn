@@ -242,4 +242,29 @@ RSpec.describe Sxn::Config::TemplatesConfig do
       expect(templates_config.get_template("to-keep")).not_to be_nil
     end
   end
+
+  describe "private methods" do
+    describe "#normalize_projects" do
+      it "handles non-string, non-hash project entries" do
+        # Test line 131: else branch when project is neither String nor Hash
+        projects = [123, :symbol, true]
+        result = templates_config.send(:normalize_projects, projects)
+        expect(result).to eq([
+                               { "name" => "123" },
+                               { "name" => "symbol" },
+                               { "name" => "true" }
+                             ])
+      end
+    end
+
+    describe "#stringify_keys" do
+      it "returns non-hash values unchanged" do
+        # Test line 137: then branch when value is not a Hash
+        expect(templates_config.send(:stringify_keys, "string")).to eq("string")
+        expect(templates_config.send(:stringify_keys, 123)).to eq(123)
+        expect(templates_config.send(:stringify_keys, nil)).to be_nil
+        expect(templates_config.send(:stringify_keys, [])).to eq([])
+      end
+    end
+  end
 end

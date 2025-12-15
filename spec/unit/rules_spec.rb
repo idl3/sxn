@@ -73,6 +73,17 @@ RSpec.describe Sxn::Rules do
       end.to raise_error(ArgumentError, /Invalid rule type: invalid_type/)
     end
 
+    it "raises error for valid RULE_TYPES key but unhandled in case statement" do
+      # This tests the else branch at line 66
+      # We'll stub RULE_TYPES to include a valid key that's not handled
+      original_types = Sxn::Rules::RulesEngine::RULE_TYPES.dup
+      stub_const("Sxn::Rules::RulesEngine::RULE_TYPES", original_types.merge("unhandled_type" => Object))
+
+      expect do
+        Sxn::Rules.create_rule("test_rule", "unhandled_type", {}, project_path, session_path)
+      end.to raise_error(ArgumentError, /Invalid rule type: unhandled_type/)
+    end
+
     it "passes dependencies to rule constructor" do
       dependencies = %w[dependency1 dependency2]
       rule = Sxn::Rules.create_rule("test_rule", "copy_files", rule_config, project_path, session_path,

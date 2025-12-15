@@ -288,6 +288,42 @@ RSpec.describe Sxn::Core::RulesManager do
       FileUtils.rm_rf(temp_worktree_dir)
     end
 
+    # Test for line 102[then] - project path does not exist
+    it "raises error when project path does not exist" do
+      allow(mock_project_manager).to receive(:get_project).and_return(
+        { name: "test-project", path: "/nonexistent/project/path", type: "rails" }
+      )
+      allow(mock_project_manager).to receive(:get_project_rules).and_return({})
+
+      expect do
+        rules_manager.apply_rules("test-project")
+      end.to raise_error(Sxn::InvalidProjectPathError, /Project path does not exist/)
+    end
+
+    # Test for line 103[then] - worktree path does not exist
+    it "raises error when worktree path does not exist" do
+      allow(mock_worktree_manager).to receive(:get_worktree).and_return(
+        { project: "test-project", path: "/nonexistent/worktree/path" }
+      )
+      allow(mock_project_manager).to receive(:get_project_rules).and_return({})
+
+      expect do
+        rules_manager.apply_rules("test-project")
+      end.to raise_error(Sxn::WorktreeNotFoundError, /Worktree path does not exist/)
+    end
+
+    # Test for line 109[else] - no copy_files rules
+    it "handles case when copy_files rules are nil" do
+      project_rules = { "setup_commands" => [{ "command" => %w[echo test] }] }
+      allow(mock_project_manager).to receive(:get_project_rules).and_return(project_rules)
+
+      result = rules_manager.apply_rules("test-project")
+
+      expect(result[:success]).to be true
+      expect(result[:applied_count]).to eq(0)
+      expect(result[:errors]).to be_empty
+    end
+
     it "applies rules successfully" do
       # Create a test file in the project directory
       File.write(File.join(temp_project_dir, "test.txt"), "test content")
@@ -409,6 +445,28 @@ RSpec.describe Sxn::Core::RulesManager do
       expect(File.symlink?(dest_file)).to be true
       expect(File.readlink(dest_file)).to eq(File.join(temp_project_dir, "test.txt"))
     end
+
+    # Test for line 146[else] - strategy is neither copy nor symlink (should do nothing)
+    it "handles unknown strategy by doing nothing" do
+      # Create a test file in the project directory
+      File.write(File.join(temp_project_dir, "test.txt"), "test content")
+
+      project_rules = {
+        "copy_files" => [
+          { "source" => "test.txt", "strategy" => "unknown" }
+        ]
+      }
+      allow(mock_project_manager).to receive(:get_project_rules).and_return(project_rules)
+
+      result = rules_manager.apply_rules("test-project")
+
+      expect(result[:success]).to be true
+      expect(result[:applied_count]).to eq(1)
+
+      # Verify file was NOT copied (unknown strategy is ignored)
+      dest_file = File.join(temp_worktree_dir, "test.txt")
+      expect(File.exist?(dest_file)).to be false
+    end
   end
 
   describe "#validate_rules" do
@@ -467,8 +525,44 @@ RSpec.describe Sxn::Core::RulesManager do
       expect(template).to include({ "source" => ".env", "strategy" => "copy" })
     end
 
+    # Test for line 322[when] - "javascript", "typescript" branch
+    it "generates copy_files template for JavaScript" do
+      template = rules_manager.generate_rule_template("copy_files", "javascript")
+
+      expect(template).to be_an(Array)
+      expect(template).to include({ "source" => ".env", "strategy" => "copy" })
+      expect(template).to include({ "source" => ".env.local", "strategy" => "copy" })
+      expect(template).to include({ "source" => ".npmrc", "strategy" => "copy" })
+    end
+
+    it "generates copy_files template for TypeScript" do
+      template = rules_manager.generate_rule_template("copy_files", "typescript")
+
+      expect(template).to be_an(Array)
+      expect(template).to include({ "source" => ".env", "strategy" => "copy" })
+      expect(template).to include({ "source" => ".env.local", "strategy" => "copy" })
+      expect(template).to include({ "source" => ".npmrc", "strategy" => "copy" })
+    end
+
     it "generates setup_commands template for JavaScript" do
       template = rules_manager.generate_rule_template("setup_commands", "javascript")
+
+      expect(template).to be_an(Array)
+      expect(template).to include({ "command" => %w[npm install] })
+    end
+
+    # Test for line 337[when] - "rails" branch in generate_setup_commands_template
+    it "generates setup_commands template for Rails" do
+      template = rules_manager.generate_rule_template("setup_commands", "rails")
+
+      expect(template).to be_an(Array)
+      expect(template).to include({ "command" => %w[bundle install] })
+      expect(template).to include({ "command" => ["bin/rails", "db:create"] })
+      expect(template).to include({ "command" => ["bin/rails", "db:migrate"] })
+    end
+
+    it "generates setup_commands template for TypeScript" do
+      template = rules_manager.generate_rule_template("setup_commands", "typescript")
 
       expect(template).to be_an(Array)
       expect(template).to include({ "command" => %w[npm install] })
@@ -602,6 +696,16 @@ RSpec.describe Sxn::Core::RulesManager do
         expect do
           rules_manager.send(:validate_template_config!, { "source" => "template.erb" })
         end.to raise_error(Sxn::InvalidRuleConfigError, /must have 'source' and 'destination' fields/)
+      end
+    end
+
+    # Test for line 229[else] - when rule_type is unknown in validate_rule_config!
+    describe "#validate_rule_config!" do
+      it "does nothing for unknown rule type" do
+        # The else branch does nothing, so this should complete without raising an error
+        expect do
+          rules_manager.send(:validate_rule_config!, "unknown_type", { "key" => "value" })
+        end.not_to raise_error
       end
     end
   end

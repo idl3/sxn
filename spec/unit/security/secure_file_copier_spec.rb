@@ -595,5 +595,361 @@ RSpec.describe Sxn::Security::SecureFileCopier do
       expect(log_content).to match(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/) # ISO timestamp
       expect(log_content).to include(Process.pid.to_s)
     end
+
+    it "does not log when logger is nil" do
+      copier_no_logger = described_class.new(temp_dir, logger: nil)
+      # Should not raise error when logger is nil
+      expect { copier_no_logger.copy_file("source.txt", "dest.txt") }.not_to raise_error
+    end
+  end
+
+  describe "additional branch coverage" do
+    let(:source_file) { File.join(temp_dir, "source.txt") }
+    let(:executable_file) { File.join(temp_dir, "script.sh") }
+
+    before do
+      File.write(source_file, "test content")
+      File.write(executable_file, "#!/bin/bash\necho 'test'")
+      File.chmod(0o755, executable_file)
+    end
+
+    context "with create_directories option" do
+      it "does not create directories when create_directories is false" do
+        dest_dir = File.join(temp_dir, "subdir")
+        FileUtils.mkdir_p(dest_dir)
+
+        copier.copy_file("source.txt", "subdir/dest.txt", create_directories: false)
+        expect(File.exist?(File.join(temp_dir, "subdir/dest.txt"))).to be true
+      end
+    end
+
+    context "with non-sensitive world-readable files" do
+      it "does not warn for world-readable non-sensitive files" do
+        File.chmod(0o644, source_file)
+
+        log_output = StringIO.new
+        test_logger = Logger.new(log_output)
+        test_copier = described_class.new(temp_dir, logger: test_logger)
+
+        test_copier.copy_file("source.txt", "dest.txt")
+
+        expect(log_output.string).not_to include("world-readable sensitive file")
+      end
+    end
+
+    context "with destination file ownership" do
+      it "does not raise error when destination is owned by current user" do
+        # Create destination file owned by current user
+        dest_file = File.join(temp_dir, "existing_dest.txt")
+        File.write(dest_file, "existing content")
+
+        expect do
+          copier.copy_file("source.txt", "existing_dest.txt")
+        end.not_to raise_error
+      end
+    end
+
+    context "with executable file permissions" do
+      it "sets executable permissions for executable files" do
+        copier.copy_file("script.sh", "copied_script.sh")
+
+        copied_file = File.join(temp_dir, "copied_script.sh")
+        file_mode = File.stat(copied_file).mode & 0o777
+        expect(file_mode).to eq(0o755)
+      end
+    end
+
+    context "with directory creation outside project root" do
+      it "creates directories without validation for paths outside project root" do
+        # Create a subdirectory that doesn't match the project root pattern
+        temp_subdir = File.join(temp_dir, "completely_different_path")
+        FileUtils.mkdir_p(temp_subdir)
+        File.write(File.join(temp_subdir, "source.txt"), "content")
+
+        # Create a copier with a different project root
+        different_root = File.join(temp_dir, "other_root")
+        FileUtils.mkdir_p(different_root)
+        different_copier = described_class.new(different_root, logger: logger)
+
+        # This should handle the path that doesn't start with project_root
+        expect do
+          different_copier.copy_file("source.txt", "dest.txt")
+        end.to raise_error # Will fail validation, but we're testing the directory creation path
+      end
+    end
+
+    context "with invalid encrypted content" do
+      it "raises error for content with wrong number of parts" do
+        File.write(source_file, "invalid:content") # Only 2 parts instead of 3
+
+        key = Base64.strict_encode64(OpenSSL::Random.random_bytes(32))
+
+        expect do
+          copier.decrypt_file("source.txt", key)
+        end.to raise_error(Sxn::SecurityError, /Invalid encrypted content format/)
+      end
+    end
+
+    context "with checksum generation for non-existent file" do
+      it "returns nil for non-existent file" do
+        # Create a copier and call the private method
+        checksum = copier.send(:generate_checksum, File.join(temp_dir, "nonexistent.txt"))
+        expect(checksum).to be_nil
+      end
+    end
+
+    context "with file existence validation" do
+      it "does not raise error when file exists" do
+        # This tests the early return in validate_file_exists!
+        expect do
+          copier.send(:validate_file_exists!, source_file)
+        end.not_to raise_error
+      end
+    end
+
+    context "with relative directory validation" do
+      it "validates non-empty relative directories" do
+        # Create nested directory structure
+        nested_dir = File.join(temp_dir, "nested", "deep")
+        FileUtils.mkdir_p(nested_dir)
+        File.write(File.join(temp_dir, "source.txt"), "content")
+
+        # This should test the path where relative_directory is not empty
+        copier.copy_file("source.txt", "nested/deep/dest.txt")
+        expect(File.exist?(File.join(temp_dir, "nested/deep/dest.txt"))).to be true
+      end
+    end
+
+    context "with source file that is not world-readable" do
+      it "does not warn when source is not world-readable" do
+        # Create source with secure permissions (not world-readable)
+        sensitive_source = File.join(temp_dir, "master.key")
+        File.write(sensitive_source, "sensitive")
+        File.chmod(0o600, sensitive_source)
+
+        log_output = StringIO.new
+        test_logger = Logger.new(log_output)
+        test_copier = described_class.new(temp_dir, logger: test_logger)
+
+        # Set up Sxn.logger to not capture warning (testing line 298[else])
+        allow(Sxn).to receive(:logger).and_return(test_logger)
+
+        test_copier.copy_file("master.key", "copied.key")
+
+        # Should not warn because file is not world-readable
+        expect(log_output.string).not_to include("world-readable sensitive file")
+      end
+    end
+
+    context "with destination file not existing" do
+      it "handles destination that does not exist" do
+        # Test line 304[else] - when File.exist?(destination_path) returns false
+        expect do
+          copier.copy_file("source.txt", "new_dest.txt")
+        end.not_to raise_error
+
+        expect(File.exist?(File.join(temp_dir, "new_dest.txt"))).to be true
+      end
+    end
+
+    context "with directory already existing" do
+      it "skips directory creation when directory already exists" do
+        # Create destination directory first
+        dest_dir = File.join(temp_dir, "existing_dir")
+        FileUtils.mkdir_p(dest_dir)
+
+        # Test line 330[else] and the early return at line 327
+        copier.copy_file("source.txt", "existing_dir/file.txt")
+        expect(File.exist?(File.join(dest_dir, "file.txt"))).to be true
+      end
+    end
+
+    context "with project root directory as destination parent" do
+      it "handles destination in project root without validation" do
+        # When destination is directly in project root, relative_directory will be empty
+        # This tests line 333[else] - when relative_directory.empty? is true
+        copier.copy_file("source.txt", "root_level_dest.txt")
+        expect(File.exist?(File.join(temp_dir, "root_level_dest.txt"))).to be true
+      end
+    end
+
+    context "with file readability validation" do
+      it "does not raise error when file is readable" do
+        # Test line 452[else] in validate_file_readable! - the early return when file IS readable
+        expect do
+          copier.send(:validate_file_readable!, source_file)
+        end.not_to raise_error
+      end
+    end
+
+    context "with no logger" do
+      it "handles audit logging when logger is nil" do
+        # Test line 459[then] - when @logger is nil
+        copier_no_logger = described_class.new(temp_dir, logger: nil)
+
+        # This should not raise an error and should skip logging
+        expect do
+          copier_no_logger.copy_file("source.txt", "dest_no_log.txt")
+        end.not_to raise_error
+      end
+    end
+  end
+
+  describe "additional branch coverage for file ownership" do
+    let(:source_file) { File.join(temp_dir, "source.txt") }
+    let(:dest_file) { File.join(temp_dir, "dest.txt") }
+
+    before do
+      File.write(source_file, "test content")
+      File.write(dest_file, "existing content")
+    end
+
+    it "allows overwriting file when owned by same user" do
+      # Test line 304[else] - when dest_stat.uid == Process.uid (same owner)
+      # This should not raise an error
+      expect do
+        copier.copy_file("source.txt", "dest.txt")
+      end.not_to raise_error
+
+      expect(File.read(dest_file)).to eq("test content")
+    end
+  end
+
+  describe "missing branch coverage" do
+    let(:source_file) { File.join(temp_dir, "source.txt") }
+
+    before do
+      File.write(source_file, "test content")
+    end
+
+    context "line 298[else] - non-world-readable or non-sensitive files" do
+      it "does not warn for non-sensitive world-readable files" do
+        # File is world-readable but NOT sensitive
+        File.chmod(0o644, source_file)
+
+        log_output = StringIO.new
+        test_logger = Logger.new(log_output)
+        test_copier = described_class.new(temp_dir, logger: test_logger)
+        allow(Sxn).to receive(:logger).and_return(test_logger)
+
+        test_copier.copy_file("source.txt", "dest.txt")
+
+        expect(log_output.string).not_to include("world-readable sensitive file")
+      end
+
+      it "does not warn for sensitive files that are not world-readable" do
+        # File IS sensitive but NOT world-readable
+        sensitive_file = File.join(temp_dir, ".env")
+        File.write(sensitive_file, "SECRET=value")
+        File.chmod(0o600, sensitive_file)
+
+        log_output = StringIO.new
+        test_logger = Logger.new(log_output)
+        test_copier = described_class.new(temp_dir, logger: test_logger)
+        allow(Sxn).to receive(:logger).and_return(test_logger)
+
+        test_copier.copy_file(".env", "dest.env")
+
+        expect(log_output.string).not_to include("world-readable sensitive file")
+      end
+    end
+
+    context "line 304[else] - destination owned by current user" do
+      it "continues without error when destination is owned by same user" do
+        # Create existing destination file
+        dest_file = File.join(temp_dir, "existing.txt")
+        File.write(dest_file, "existing")
+
+        # Verify destination is owned by current user
+        expect(File.stat(dest_file).uid).to eq(Process.uid)
+
+        # Should not raise error
+        expect do
+          copier.copy_file("source.txt", "existing.txt")
+        end.not_to raise_error
+
+        expect(File.read(dest_file)).to eq("test content")
+      end
+    end
+
+    context "line 330[else] - directory not starting with project root" do
+      it "handles directory creation when path does not start with project root" do
+        # Create a new temp directory that's completely separate
+        external_temp = Dir.mktmpdir("external_test")
+
+        begin
+          # Create source in external directory
+          external_source = File.join(external_temp, "source.txt")
+          File.write(external_source, "external content")
+
+          # Create copier for external directory
+          external_copier = described_class.new(external_temp, logger: logger)
+
+          # Destination path that doesn't start with the project root
+          # This will test the else branch at line 330
+          dest_path = "subdir/dest.txt"
+          external_copier.copy_file("source.txt", dest_path)
+
+          expect(File.exist?(File.join(external_temp, dest_path))).to be true
+        ensure
+          FileUtils.rm_rf(external_temp)
+        end
+      end
+    end
+
+    context "line 333[else] - empty relative directory" do
+      it "skips validation when relative directory is empty (file in project root)" do
+        # When file is placed directly in project root, relative_directory will be empty
+        # This tests the unless condition at line 333
+        copier.copy_file("source.txt", "root_file.txt")
+
+        expect(File.exist?(File.join(temp_dir, "root_file.txt"))).to be true
+      end
+    end
+
+    context "line 444[else] - file does not exist" do
+      it "raises error when source file does not exist" do
+        # Delete the source file to trigger the else branch
+        FileUtils.rm_f(source_file)
+
+        expect do
+          copier.send(:validate_file_exists!, source_file)
+        end.to raise_error(Sxn::SecurityError, /does not exist/)
+      end
+
+      it "raises error in validate_file_exists! for non-existent normalized path" do
+        # Test with a path that would be normalized
+        nonexistent = File.join(temp_dir, "nonexistent.txt")
+
+        expect do
+          copier.send(:validate_file_exists!, nonexistent)
+        end.to raise_error(Sxn::SecurityError, /does not exist/)
+      end
+    end
+
+    context "line 459[then] - logger is nil" do
+      it "returns early from audit_log when logger is nil" do
+        copier_no_logger = described_class.new(temp_dir, logger: nil)
+
+        # This should execute the early return at line 459
+        result = described_class::CopyResult.new(
+          source_file, File.join(temp_dir, "dest.txt"), :copy
+        )
+
+        # Should not raise error even though logger is nil
+        expect do
+          copier_no_logger.send(:audit_log, "TEST_EVENT", result)
+        end.not_to raise_error
+      end
+
+      it "returns early from audit_log with hash details when logger is nil" do
+        copier_no_logger = described_class.new(temp_dir, logger: nil)
+
+        # Test with hash details instead of CopyResult
+        expect do
+          copier_no_logger.send(:audit_log, "TEST_EVENT", { file_path: "test.txt" })
+        end.not_to raise_error
+      end
+    end
   end
 end

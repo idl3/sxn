@@ -455,6 +455,136 @@ RSpec.describe Sxn::Config::ConfigValidator do
     end
   end
 
+  describe "#migrate_config edge cases" do
+    it "returns config unchanged when config is not a hash" do
+      result = validator.migrate_config("not_a_hash")
+      expect(result).to eq "not_a_hash"
+    end
+
+    it "handles version 1 config that needs v0 migration" do
+      # Version 1 config but with v0 structure (missing paths)
+      config = {
+        "version" => 1,
+        "sessions_folder" => "sessions",
+        "projects" => {
+          "test-project" => {
+            "type" => "rails"
+            # missing path - indicates v0 structure
+          }
+        }
+      }
+
+      result = validator.migrate_config(config)
+      expect(result["version"]).to eq 1
+      expect(result["projects"]["test-project"]["path"]).to eq "./test-project"
+    end
+
+    it "migrates old setting names when they exist" do
+      config = {
+        "version" => 0,
+        "sessions_folder" => "sessions",
+        "auto_cleanup" => false,
+        "max_sessions" => 15,
+        "worktree_cleanup_days" => 60,
+        "projects" => {}
+      }
+
+      result = validator.migrate_config(config)
+      expect(result["settings"]["auto_cleanup"]).to be false
+      expect(result["settings"]["max_sessions"]).to eq 15
+      expect(result["settings"]["worktree_cleanup_days"]).to eq 60
+      expect(result.key?("auto_cleanup")).to be false
+      expect(result.key?("max_sessions")).to be false
+      expect(result.key?("worktree_cleanup_days")).to be false
+    end
+
+    it "skips migration of old settings when they don't exist" do
+      config = {
+        "version" => 0,
+        "sessions_folder" => "sessions",
+        "projects" => {}
+      }
+
+      result = validator.migrate_config(config)
+      expect(result["version"]).to eq 1
+      expect(result["settings"]).to eq({})
+    end
+
+    it "migrates project rules when rules exist" do
+      config = {
+        "version" => 0,
+        "sessions_folder" => "sessions",
+        "projects" => {
+          "test" => {
+            "rules" => {
+              "copy_files" => ["file1.txt"],
+              "setup_commands" => ["bundle install"]
+            }
+          }
+        }
+      }
+
+      result = validator.migrate_config(config)
+      expect(result["projects"]["test"]["rules"]["copy_files"]).to eq([{ "source" => "file1.txt", "strategy" => "copy" }])
+    end
+
+    it "skips rule migration when rules don't exist" do
+      config = {
+        "version" => 0,
+        "sessions_folder" => "sessions",
+        "projects" => {
+          "test" => {
+            "path" => "./test"
+          }
+        }
+      }
+
+      result = validator.migrate_config(config)
+      expect(result["projects"]["test"]).not_to have_key("rules")
+    end
+
+    it "handles project config that is not a hash" do
+      config = {
+        "version" => 0,
+        "sessions_folder" => "sessions",
+        "projects" => {
+          "test" => "not_a_hash"
+        }
+      }
+
+      result = validator.migrate_config(config)
+      expect(result["projects"]["test"]).to eq "not_a_hash"
+    end
+
+    it "handles projects field that is not a hash" do
+      config = {
+        "version" => 0,
+        "sessions_folder" => "sessions",
+        "projects" => "not_a_hash"
+      }
+
+      result = validator.migrate_config(config)
+      expect(result["projects"]).to eq "not_a_hash"
+    end
+  end
+
+  describe "migrate_rules_v0_to_v1 edge cases" do
+    it "returns early when rules is not a hash" do
+      validator.send(:migrate_rules_v0_to_v1, nil)
+      # Should not raise error
+    end
+
+    it "skips setup_commands migration when not an array" do
+      rules = {
+        "copy_files" => ["file1.txt"],
+        "setup_commands" => { "not" => "array" }
+      }
+
+      validator.send(:migrate_rules_v0_to_v1, rules)
+      expect(rules["setup_commands"]).to eq({ "not" => "array" })
+    end
+  end
+
   describe "private methods" do
     describe "#needs_v0_to_v1_migration?" do
       it "returns false for non-hash config" do
@@ -574,6 +704,234 @@ RSpec.describe Sxn::Config::ConfigValidator do
         validator.instance_variable_set(:@errors, [])
         validator.send(:validate_field_constraints, [1, 2, 3, 4, 5], { max_length: 3 }, "test_array")
         expect(validator.errors).to include("Field 'test_array' must have at most 3 items")
+      end
+
+      it "validates min_length constraint for strings" do
+        validator.instance_variable_set(:@errors, [])
+        validator.send(:validate_field_constraints, "ab", { min_length: 5 }, "test_field")
+        expect(validator.errors).to include("Field 'test_field' must be at least 5 characters long")
+      end
+
+      it "validates min_length constraint for arrays" do
+        validator.instance_variable_set(:@errors, [])
+        validator.send(:validate_field_constraints, [1], { min_length: 3 }, "test_array")
+        expect(validator.errors).to include("Field 'test_array' must have at least 3 items")
+      end
+
+      it "skips field type validation when no expected_type is specified" do
+        validator.instance_variable_set(:@errors, [])
+        validator.send(:validate_field_type, "anything", {}, "test_field")
+        expect(validator.errors).to be_empty
+      end
+
+      it "validates nested schema for array items that are not hashes" do
+        config = {
+          "version" => 1,
+          "sessions_folder" => "test",
+          "projects" => {
+            "test" => {
+              "path" => "./test",
+              "rules" => {
+                "copy_files" => [
+                  "not_a_hash" # This should be skipped in validation
+                ]
+              }
+            }
+          }
+        }
+
+        result = validator.valid?(config)
+        # Non-hash items are skipped, so no errors for copy_files specifically
+        # But the config should still be valid
+        expect(result).to be true
+      end
+
+      it "skips nested validation for hash values that are not hashes" do
+        config = {
+          "version" => 1,
+          "sessions_folder" => "test",
+          "projects" => {
+            "test" => "not_a_hash" # This is skipped in nested validation
+          }
+        }
+
+        result = validator.valid?(config)
+        # The validator only validates nested schema when the value is a hash
+        # Since "not_a_hash" is a string, it doesn't validate the nested schema
+        # This test ensures we don't crash on non-hash values
+        expect(result).to be true
+      end
+    end
+
+    describe "#apply_defaults_recursive edge cases" do
+      it "applies defaults to nested hash structures" do
+        config = {
+          "settings" => {
+            "default_rules" => {}
+          }
+        }
+
+        schema = {
+          "settings" => {
+            type: :hash,
+            value_schema: {
+              "default_rules" => {
+                type: :hash,
+                default: {},
+                value_schema: {
+                  "templates" => {
+                    type: :array,
+                    default: []
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        result = validator.send(:apply_defaults_recursive, config, schema, config)
+        expect(result["settings"]["default_rules"]["templates"]).to eq []
+      end
+
+      it "applies defaults to array items when item_schema is present" do
+        config = {
+          "rules" => {
+            "copy_files" => [
+              { "source" => "file1.txt" },
+              { "source" => "file2.txt" }
+            ]
+          }
+        }
+
+        schema = {
+          "rules" => {
+            type: :hash,
+            value_schema: {
+              "copy_files" => {
+                type: :array,
+                item_schema: {
+                  "source" => { type: :string },
+                  "strategy" => { type: :string, default: "copy" }
+                }
+              }
+            }
+          }
+        }
+
+        result = validator.send(:apply_defaults_recursive, config, schema, config)
+        expect(result["rules"]["copy_files"][0]["strategy"]).to eq "copy"
+        expect(result["rules"]["copy_files"][1]["strategy"]).to eq "copy"
+      end
+
+      it "skips defaults for array items that are not hashes" do
+        config = {
+          "test_array" => %w[string1 string2]
+        }
+
+        schema = {
+          "test_array" => {
+            type: :array,
+            item_schema: {
+              "field" => { type: :string, default: "default" }
+            }
+          }
+        }
+
+        result = validator.send(:apply_defaults_recursive, config, schema, config)
+        expect(result["test_array"]).to eq %w[string1 string2]
+      end
+
+      it "skips defaults for hash values that are not hashes" do
+        config = {
+          "projects" => {
+            "test1" => "not_a_hash"
+          }
+        }
+
+        schema = {
+          "projects" => {
+            type: :hash,
+            value_schema: {
+              "path" => { type: :string, default: "./default" }
+            }
+          }
+        }
+
+        result = validator.send(:apply_defaults_recursive, config, schema, config)
+        expect(result["projects"]["test1"]).to eq "not_a_hash"
+      end
+
+      it "applies defaults to hash with dynamic keys when type is not :hash" do
+        # This tests line 479[else] - the else branch for non-:hash types with value_schema
+        config = {
+          "projects" => {
+            "test1" => {
+              "type" => "rails"
+            },
+            "test2" => {
+              "type" => "ruby"
+            }
+          }
+        }
+
+        schema = {
+          "projects" => {
+            type: :dynamic_hash,
+            value_schema: {
+              "type" => { type: :string },
+              "default_branch" => { type: :string, default: "main" }
+            }
+          }
+        }
+
+        result = validator.send(:apply_defaults_recursive, config, schema, config)
+        expect(result["projects"]["test1"]["default_branch"]).to eq "main"
+        expect(result["projects"]["test2"]["default_branch"]).to eq "main"
+      end
+
+      it "skips non-hash values in dynamic key hashes" do
+        # This tests line 480[else] - when nested_value is not a hash
+        config = {
+          "projects" => {
+            "test1" => { "type" => "rails" },
+            "test2" => "not_a_hash",
+            "test3" => { "type" => "ruby" }
+          }
+        }
+
+        schema = {
+          "projects" => {
+            type: :dynamic_hash,
+            value_schema: {
+              "type" => { type: :string },
+              "default_branch" => { type: :string, default: "main" }
+            }
+          }
+        }
+
+        result = validator.send(:apply_defaults_recursive, config, schema, config)
+        expect(result["projects"]["test1"]["default_branch"]).to eq "main"
+        expect(result["projects"]["test2"]).to eq "not_a_hash"
+        expect(result["projects"]["test3"]["default_branch"]).to eq "main"
+      end
+    end
+
+    describe "#migrate_rules_v0_to_v1 with non-string commands" do
+      it "preserves hash format in setup_commands" do
+        # This tests line 556[else] - when command is already a hash (not a string)
+        rules = {
+          "setup_commands" => [
+            { "command" => %w[bundle install], "environment" => { "RAILS_ENV" => "test" } },
+            "rails db:migrate"
+          ]
+        }
+
+        validator.send(:migrate_rules_v0_to_v1, rules)
+
+        expect(rules["setup_commands"]).to eq([
+                                                { "command" => %w[bundle install], "environment" => { "RAILS_ENV" => "test" } },
+                                                { "command" => ["rails", "db:migrate"] }
+                                              ])
       end
     end
   end

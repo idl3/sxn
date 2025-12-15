@@ -245,6 +245,49 @@ RSpec.describe Sxn::UI::Table do
     end
   end
 
+  describe "#templates" do
+    context "with templates data" do
+      let(:templates) do
+        [
+          {
+            name: "template1",
+            description: "A test template",
+            project_count: 3
+          },
+          {
+            name: "template2",
+            description: nil,
+            project_count: 1
+          }
+        ]
+      end
+
+      it "renders templates table with headers and data" do
+        expect do
+          table.templates(templates)
+        end.to output("rendered_table\n").to_stdout
+
+        expect(TTY::Table).to have_received(:new).with(
+          header: %w[Name Description Projects],
+          rows: [
+            ["template1", "A test template", "3"],
+            ["template2", "-", "1"]
+          ]
+        )
+      end
+    end
+
+    context "with empty templates" do
+      it "displays empty state message" do
+        expect do
+          table.templates([])
+        end.to output("DIM\n").to_stdout
+
+        expect(mock_pastel).to have_received(:dim).with("  No templates defined")
+      end
+    end
+  end
+
   describe "#config_summary" do
     let(:config) do
       {

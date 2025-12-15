@@ -210,6 +210,26 @@ RSpec.describe Sxn::Commands::Sessions do
         expect(mock_ui).to have_received(:progress_failed)
         expect(mock_ui).to have_received(:error).with("Session already exists")
       end
+
+      it "handles unexpected errors with debug output when SXN_DEBUG is set" do
+        allow(session_manager).to receive(:create_session).and_raise(StandardError.new("Unexpected error"))
+        allow(ENV).to receive(:[]).with("SXN_DEBUG").and_return("1")
+
+        expect { command.add("test-session") }.to raise_error(SystemExit)
+        expect(mock_ui).to have_received(:progress_failed)
+        expect(mock_ui).to have_received(:error).with("Unexpected error: Unexpected error")
+        expect(mock_ui).to have_received(:debug)
+      end
+
+      it "handles unexpected errors without debug output when SXN_DEBUG is not set" do
+        allow(session_manager).to receive(:create_session).and_raise(StandardError.new("Unexpected error"))
+        allow(ENV).to receive(:[]).with("SXN_DEBUG").and_return(nil)
+
+        expect { command.add("test-session") }.to raise_error(SystemExit)
+        expect(mock_ui).to have_received(:progress_failed)
+        expect(mock_ui).to have_received(:error).with("Unexpected error: Unexpected error")
+        expect(mock_ui).not_to have_received(:debug)
+      end
     end
 
     context "with worktree wizard" do
@@ -336,6 +356,16 @@ RSpec.describe Sxn::Commands::Sessions do
     end
 
     context "with --template option" do
+      it "requires branch when using template" do
+        allow(template_manager).to receive(:validate_template).with("my-template")
+
+        options = Thor::CoreExt::HashWithIndifferentAccess.new(template: "my-template", branch: nil)
+        allow(command).to receive(:options).and_return(options)
+
+        expect { command.add("test-session") }.to raise_error(SystemExit)
+        expect(mock_ui).to have_received(:error).with("Branch is required when using a template. Use -b/--branch to specify.")
+      end
+
       it "validates template exists before creating session" do
         allow(template_manager).to receive(:validate_template)
           .with("my-template")
@@ -445,6 +475,99 @@ RSpec.describe Sxn::Commands::Sessions do
         expect(template_manager).to have_received(:validate_template).with("kiosk-full")
         expect(template_manager).to have_received(:get_template).with("kiosk-full")
         expect(mock_ui).to have_received(:success).at_least(:once)
+      end
+
+      it "applies template-specific rules when project has rules defined" do
+        template_rules = {
+          "copy_files" => [{ "source" => "template.txt" }],
+          "setup_commands" => [{ "command" => %w[echo test] }]
+        }
+
+        allow(template_manager).to receive(:validate_template).with("my-template")
+        allow(template_manager).to receive(:get_template).with("my-template").and_return({
+                                                                                           "name" => "my-template",
+                                                                                           "projects" => [
+                                                                                             { "name" => "project1", "rules" => template_rules }
+                                                                                           ]
+                                                                                         })
+
+        allow(session_manager).to receive(:create_session).and_return(sample_session)
+        allow(session_manager).to receive(:get_session).and_return(sample_session)
+        allow(worktree_manager).to receive(:add_worktree).and_return({
+                                                                       path: "/path/to/worktree",
+                                                                       project: "project1",
+                                                                       branch: "main"
+                                                                     })
+
+        # Track calls to apply_template_rules
+        allow(command).to receive(:apply_template_rules).and_call_original
+        allow(command).to receive(:apply_project_rules)
+
+        options = Thor::CoreExt::HashWithIndifferentAccess.new(template: "my-template", branch: "main")
+        allow(command).to receive(:options).and_return(options)
+
+        expect { command.add("test-session") }.not_to raise_error
+
+        expect(command).to have_received(:apply_template_rules).with("test-session", "project1", "/path/to/worktree", template_rules)
+      end
+
+      it "skips template rules when project has no rules defined" do
+        allow(template_manager).to receive(:validate_template).with("my-template")
+        allow(template_manager).to receive(:get_template).with("my-template").and_return({
+                                                                                           "name" => "my-template",
+                                                                                           "projects" => [
+                                                                                             { "name" => "project1" }
+                                                                                           ]
+                                                                                         })
+
+        allow(session_manager).to receive(:create_session).and_return(sample_session)
+        allow(session_manager).to receive(:get_session).and_return(sample_session)
+        allow(worktree_manager).to receive(:add_worktree).and_return({
+                                                                       path: "/path/to/worktree",
+                                                                       project: "project1",
+                                                                       branch: "main"
+                                                                     })
+
+        allow(command).to receive(:apply_project_rules)
+
+        options = Thor::CoreExt::HashWithIndifferentAccess.new(template: "my-template", branch: "main")
+        allow(command).to receive(:options).and_return(options)
+
+        expect { command.add("test-session") }.not_to raise_error
+      end
+
+      it "handles rules application failures gracefully" do
+        template_rules = {
+          "copy_files" => [{ "source" => "template.txt" }]
+        }
+
+        allow(template_manager).to receive(:validate_template).with("my-template")
+        allow(template_manager).to receive(:get_template).with("my-template").and_return({
+                                                                                           "name" => "my-template",
+                                                                                           "projects" => [
+                                                                                             { "name" => "project1", "rules" => template_rules }
+                                                                                           ]
+                                                                                         })
+
+        allow(session_manager).to receive(:create_session).and_return(sample_session)
+        allow(session_manager).to receive(:get_session).and_return(sample_session)
+        allow(worktree_manager).to receive(:add_worktree).and_return({
+                                                                       path: "/path/to/worktree",
+                                                                       project: "project1",
+                                                                       branch: "main"
+                                                                     })
+        allow(worktree_manager).to receive(:remove_worktree)
+        allow(session_manager).to receive(:remove_session)
+
+        # Stub apply_template_rules to raise an error - this triggers rollback
+        allow(command).to receive(:apply_template_rules).and_raise(StandardError.new("Rules failed"))
+        allow(command).to receive(:apply_project_rules)
+
+        options = Thor::CoreExt::HashWithIndifferentAccess.new(template: "my-template", branch: "main")
+        allow(command).to receive(:options).and_return(options)
+
+        expect { command.add("test-session") }.to raise_error(SystemExit)
+        expect(mock_ui).to have_received(:warning).with(/rolling back/i)
       end
     end
   end
@@ -1010,6 +1133,48 @@ RSpec.describe Sxn::Commands::Sessions do
         expect(mock_ui).not_to have_received(:key_value).with("Description", anything)
         expect(mock_ui).not_to have_received(:key_value).with("Linear Task", anything)
       end
+
+      it "returns early when session is nil" do
+        command.send(:display_session_info, nil)
+
+        expect(mock_ui).not_to have_received(:key_value)
+      end
+
+      it "skips default_branch when not present" do
+        session_without_branch = sample_session.dup
+        session_without_branch.delete(:default_branch)
+        allow(session_manager).to receive(:get_session).and_return(session_without_branch)
+
+        command.send(:display_session_info, session_without_branch)
+
+        expect(mock_ui).not_to have_received(:key_value).with("Default Branch", anything)
+      end
+
+      it "skips projects subsection when not in verbose mode" do
+        allow(session_manager).to receive(:get_session).and_return(sample_session)
+
+        command.send(:display_session_info, sample_session, verbose: false)
+
+        expect(mock_ui).not_to have_received(:subsection).with("Projects")
+      end
+
+      it "skips projects subsection when projects is empty in verbose mode" do
+        session_without_projects = sample_session.merge(projects: [])
+        allow(session_manager).to receive(:get_session).and_return(session_without_projects)
+
+        command.send(:display_session_info, session_without_projects, verbose: true)
+
+        expect(mock_ui).not_to have_received(:subsection).with("Projects")
+      end
+
+      it "skips session commands when session name is missing" do
+        session_without_name = sample_session.dup
+        session_without_name.delete(:name)
+
+        command.send(:display_session_info, session_without_name)
+
+        expect(mock_ui).not_to have_received(:subsection).with("Available Commands")
+      end
     end
 
     describe "#display_session_commands" do
@@ -1040,6 +1205,217 @@ RSpec.describe Sxn::Commands::Sessions do
 
         expect(mock_ui).to have_received(:recovery_suggestion)
           .with("Create your first session with 'sxn add <session-name>'")
+      end
+    end
+
+    describe "#format_timestamp" do
+      it "formats valid timestamp" do
+        timestamp = Time.now.iso8601
+        result = command.send(:format_timestamp, timestamp)
+        expect(result).to match(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} (AM|PM)/)
+      end
+
+      it "returns 'Unknown' for nil timestamp" do
+        result = command.send(:format_timestamp, nil)
+        expect(result).to eq "Unknown"
+      end
+
+      it "returns 'Unknown' for empty timestamp" do
+        result = command.send(:format_timestamp, "")
+        expect(result).to eq "Unknown"
+      end
+
+      it "returns original timestamp if parsing fails" do
+        invalid_timestamp = "not-a-valid-timestamp"
+        result = command.send(:format_timestamp, invalid_timestamp)
+        expect(result).to eq invalid_timestamp
+      end
+    end
+
+    describe "#add_more_worktrees" do
+      it "returns early when projects list is empty" do
+        allow(project_manager).to receive(:list_projects).and_return([])
+        allow(session_manager).to receive(:get_session).and_return(sample_session)
+
+        command.send(:add_more_worktrees, "test-session")
+
+        expect(mock_prompt).not_to have_received(:ask_yes_no)
+      end
+
+      it "continues adding worktrees until user declines" do
+        projects = [
+          { name: "project1", type: "rails", path: "/path/to/project1" }
+        ]
+
+        allow(project_manager).to receive(:list_projects).and_return(projects)
+        allow(session_manager).to receive(:get_session).and_return(sample_session)
+        allow(mock_prompt).to receive(:ask_yes_no).and_return(true, false)
+        allow(mock_prompt).to receive(:select).and_return("project1")
+        allow(mock_prompt).to receive(:branch_name).and_return("test-branch")
+        allow(worktree_manager).to receive(:add_worktree).and_return({
+                                                                       project: "project1",
+                                                                       branch: "test-branch",
+                                                                       path: "/path/to/worktree"
+                                                                     })
+
+        rules_manager = instance_double(Sxn::Core::RulesManager)
+        allow(Sxn::Core::RulesManager).to receive(:new).and_return(rules_manager)
+        allow(rules_manager).to receive(:apply_rules).and_return({ success: true, applied_count: 0 })
+
+        command.send(:add_more_worktrees, "test-session")
+
+        expect(worktree_manager).to have_received(:add_worktree).once
+      end
+    end
+
+    describe "#apply_project_rules" do
+      let(:rules_manager) { instance_double(Sxn::Core::RulesManager) }
+
+      before do
+        allow(Sxn::Core::RulesManager).to receive(:new).and_return(rules_manager)
+      end
+
+      it "applies rules successfully" do
+        allow(rules_manager).to receive(:apply_rules).and_return({ success: true, applied_count: 3 })
+
+        command.send(:apply_project_rules, "test-project", "test-session")
+
+        expect(mock_ui).to have_received(:progress_start).with("Applying rules for test-project")
+        expect(mock_ui).to have_received(:progress_done)
+        expect(mock_ui).to have_received(:success).with("Applied 3 rules")
+      end
+
+      it "shows warning when rules fail to apply" do
+        allow(rules_manager).to receive(:apply_rules).and_return({ success: false, applied_count: 0 })
+
+        command.send(:apply_project_rules, "test-project", "test-session")
+
+        expect(mock_ui).to have_received(:warning).with("Some rules failed to apply")
+      end
+
+      it "does not show success message when no rules applied" do
+        allow(rules_manager).to receive(:apply_rules).and_return({ success: true, applied_count: 0 })
+
+        command.send(:apply_project_rules, "test-project", "test-session")
+
+        expect(mock_ui).not_to have_received(:success).with("Applied 0 rules")
+      end
+
+      it "handles unexpected errors gracefully" do
+        allow(rules_manager).to receive(:apply_rules).and_raise(StandardError.new("Unexpected error"))
+
+        command.send(:apply_project_rules, "test-project", "test-session")
+
+        expect(mock_ui).to have_received(:warning).with("Could not apply rules: Unexpected error")
+      end
+    end
+
+    describe "#apply_template_rules" do
+      let(:rules_manager) { double("RulesManager") }
+
+      before do
+        allow(Sxn::Core::RulesManager).to receive(:new).and_return(rules_manager)
+        allow(rules_manager).to receive(:apply_copy_files_rules)
+        allow(rules_manager).to receive(:apply_setup_commands)
+      end
+
+      it "returns early when rules is not a Hash" do
+        # Line 377 [then] - testing the early return when rules is not a Hash
+        command.send(:apply_template_rules, "test-session", "test-project", "/path/to/worktree", "not-a-hash")
+
+        expect(Sxn::Core::RulesManager).not_to have_received(:new)
+      end
+
+      it "returns early when rules is nil" do
+        # Line 377 [then] - testing the early return when rules is nil
+        command.send(:apply_template_rules, "test-session", "test-project", "/path/to/worktree", nil)
+
+        expect(Sxn::Core::RulesManager).not_to have_received(:new)
+      end
+
+      it "skips copy_files when not present in rules" do
+        # Line 381 [else] - testing when copy_files is not in the rules hash
+        rules = { "setup_commands" => [{ "command" => %w[echo test] }] }
+
+        command.send(:apply_template_rules, "test-session", "test-project", "/path/to/worktree", rules)
+
+        expect(rules_manager).not_to have_received(:apply_copy_files_rules)
+        expect(rules_manager).to have_received(:apply_setup_commands).with([{ "command" => %w[echo test] }])
+      end
+
+      it "applies copy_files when present in rules" do
+        # Line 381 [then] - covered, but ensuring both branches are hit
+        rules = { "copy_files" => [{ "source" => "file.txt" }] }
+
+        command.send(:apply_template_rules, "test-session", "test-project", "/path/to/worktree", rules)
+
+        expect(rules_manager).to have_received(:apply_copy_files_rules).with([{ "source" => "file.txt" }])
+        expect(rules_manager).not_to have_received(:apply_setup_commands)
+      end
+
+      it "skips setup_commands when not present in rules" do
+        # Line 383 [else] - testing when setup_commands is not in the rules hash
+        rules = { "copy_files" => [{ "source" => "file.txt" }] }
+
+        command.send(:apply_template_rules, "test-session", "test-project", "/path/to/worktree", rules)
+
+        expect(rules_manager).to have_received(:apply_copy_files_rules).with([{ "source" => "file.txt" }])
+        expect(rules_manager).not_to have_received(:apply_setup_commands)
+      end
+
+      it "applies setup_commands when present in rules" do
+        # Line 383 [then] - testing when setup_commands is in the rules hash
+        rules = { "setup_commands" => [{ "command" => %w[npm install] }] }
+
+        command.send(:apply_template_rules, "test-session", "test-project", "/path/to/worktree", rules)
+
+        expect(rules_manager).not_to have_received(:apply_copy_files_rules)
+        expect(rules_manager).to have_received(:apply_setup_commands).with([{ "command" => %w[npm install] }])
+      end
+
+      it "applies both copy_files and setup_commands when both present" do
+        rules = {
+          "copy_files" => [{ "source" => "file.txt" }],
+          "setup_commands" => [{ "command" => %w[npm install] }]
+        }
+
+        command.send(:apply_template_rules, "test-session", "test-project", "/path/to/worktree", rules)
+
+        expect(rules_manager).to have_received(:apply_copy_files_rules).with([{ "source" => "file.txt" }])
+        expect(rules_manager).to have_received(:apply_setup_commands).with([{ "command" => %w[npm install] }])
+      end
+
+      it "handles errors gracefully and shows warning" do
+        rules = { "copy_files" => [{ "source" => "file.txt" }] }
+        allow(rules_manager).to receive(:apply_copy_files_rules).and_raise(StandardError.new("Copy failed"))
+
+        command.send(:apply_template_rules, "test-session", "test-project", "/path/to/worktree", rules)
+
+        expect(mock_ui).to have_received(:warning).with("Failed to apply rules for test-project: Copy failed")
+      end
+    end
+
+    describe "#display_session_info verbose and projects edge cases" do
+      it "does not show projects when verbose is false and projects exist" do
+        # Line 412 [else] - testing when verbose is false (first part of compound condition)
+        session_with_projects = sample_session.merge(projects: %w[project1 project2])
+        allow(session_manager).to receive(:get_session).and_return(session_with_projects)
+
+        command.send(:display_session_info, session_with_projects, verbose: false)
+
+        expect(mock_ui).not_to have_received(:subsection).with("Projects")
+        expect(mock_ui).not_to have_received(:list_item).with("project1")
+      end
+
+      it "does not show projects when verbose is true but projects is nil" do
+        # Line 412 [else] - testing when projects is nil (second part of compound condition)
+        session_without_projects = sample_session.dup
+        session_without_projects.delete(:projects)
+        allow(session_manager).to receive(:get_session).and_return(session_without_projects)
+
+        command.send(:display_session_info, session_without_projects, verbose: true)
+
+        expect(mock_ui).not_to have_received(:subsection).with("Projects")
       end
     end
   end

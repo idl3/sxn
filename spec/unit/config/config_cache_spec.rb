@@ -466,4 +466,222 @@ RSpec.describe Sxn::Config::ConfigCache do
       end
     end
   end
+
+  describe "additional branch coverage" do
+    context "with nil config_files in stats" do
+      it "handles nil config_files gracefully" do
+        cache.set(sample_config, config_files)
+        stats = cache.stats(nil)
+        expect(stats[:file_count]).to eq(2)
+      end
+    end
+
+    context "with cache data missing cached_at" do
+      before do
+        FileUtils.mkdir_p(cache_dir)
+        cache_data = {
+          "config" => sample_config,
+          "config_files" => cache.send(:build_file_metadata, config_files)
+        }
+        File.write(cache.cache_file_path, JSON.pretty_generate(cache_data))
+      end
+
+      it "returns true for ttl_expired when cached_at is missing" do
+        expect(cache.get(config_files)).to be_nil
+      end
+    end
+
+    context "with cache data missing cached file metadata" do
+      before do
+        cache.set(sample_config, config_files)
+        # Modify cache to remove metadata for one file
+        cache_data = JSON.parse(File.read(cache.cache_file_path))
+        cache_data["config_files"].delete(config_file1)
+        File.write(cache.cache_file_path, JSON.pretty_generate(cache_data))
+      end
+
+      it "invalidates cache when cached metadata is missing" do
+        expect(cache.get(config_files)).to be_nil
+      end
+    end
+
+    context "with checksum mismatch" do
+      before do
+        cache.set(sample_config, config_files)
+        # Modify cache to have wrong checksum
+        cache_data = JSON.parse(File.read(cache.cache_file_path))
+        cache_data["config_files"][config_file1]["checksum"] = "wrong_checksum"
+        File.write(cache.cache_file_path, JSON.pretty_generate(cache_data))
+      end
+
+      it "invalidates cache when checksum differs" do
+        expect(cache.get(config_files)).to be_nil
+      end
+    end
+
+    context "with missing temp file during retry" do
+      it "returns false when temp file cannot be recreated" do
+        call_count = 0
+        allow(File).to receive(:rename).and_wrap_original do |original_method, *args|
+          call_count += 1
+          raise Errno::ENOENT, "No such file or directory" if call_count == 1
+
+          original_method.call(*args)
+        end
+
+        allow(File).to receive(:write).and_wrap_original do |original_method, path, *args|
+          raise SystemCallError, "Cannot write temp file" if path.include?(".tmp") && call_count >= 1
+
+          original_method.call(path, *args)
+        end
+
+        result = cache.set(sample_config, config_files)
+        # May succeed or fail depending on timing, but should not crash
+        expect([true, false]).to include(result)
+      end
+    end
+
+    context "with temp file cleanup after error" do
+      it "cleans up temp file when it exists after error" do
+        # Force an error during rename to trigger cleanup
+        allow(File).to receive(:rename).and_raise(Errno::EACCES, "Permission denied")
+
+        cache.set(sample_config, config_files)
+
+        # Check no temp files remain
+        temp_files = Dir.glob(File.join(cache_dir, "*.tmp"))
+        expect(temp_files).to be_empty
+      end
+    end
+
+    context "with directory creation race condition" do
+      it "handles directory existing after mkdir_p fails" do
+        call_count = 0
+        original_mkdir_p = FileUtils.method(:mkdir_p)
+
+        allow(FileUtils).to receive(:mkdir_p).and_wrap_original do |_original_method, *args|
+          call_count += 1
+          if call_count == 1
+            # Simulate race condition - another process creates directory
+            original_mkdir_p.call(*args)
+            raise SystemCallError, "Directory already exists"
+          else
+            original_mkdir_p.call(*args)
+          end
+        end
+
+        # Should not raise error even if mkdir_p fails
+        expect { described_class.new(cache_dir: cache_dir, ttl: 300) }.not_to raise_error
+      end
+    end
+
+    # Line 109[else] - stats method when config_files is nil
+    context "with cache_data missing config_files entirely" do
+      before do
+        FileUtils.mkdir_p(cache_dir)
+        cache_data = {
+          "config" => sample_config,
+          "cached_at" => Time.now.to_f,
+          "cache_version" => 1
+        }
+        File.write(cache.cache_file_path, JSON.pretty_generate(cache_data))
+      end
+
+      it "returns file_count of 0 when config_files is missing" do
+        stats = cache.stats(config_files)
+        expect(stats[:file_count]).to eq(0)
+      end
+    end
+
+    # Line 127[then] - ensure_cache_directory when Dir.exist? is true after SystemCallError
+    context "with directory creation race condition where dir exists after error" do
+      it "does not raise when directory exists after mkdir_p fails" do
+        FileUtils.rm_rf(cache_dir)
+
+        call_count = 0
+        original_mkdir_p = FileUtils.method(:mkdir_p)
+
+        allow(FileUtils).to receive(:mkdir_p).and_wrap_original do |_original_method, *args|
+          call_count += 1
+          if call_count == 1
+            # Simulate race - create dir then raise error
+            original_mkdir_p.call(*args)
+            raise SystemCallError.new("File exists", Errno::EEXIST::Errno)
+          else
+            original_mkdir_p.call(*args)
+          end
+        end
+
+        # Should not raise error because directory exists
+        expect { described_class.new(cache_dir: cache_dir, ttl: 300) }.not_to raise_error
+      end
+    end
+
+    # Line 139[then] - load_cache when cache_exists? is false
+    context "with non-existent cache file in load_cache" do
+      it "returns nil when cache file does not exist" do
+        # Ensure no cache exists
+        FileUtils.rm_rf(cache_dir)
+        FileUtils.mkdir_p(cache_dir)
+
+        # Call load_cache directly via get (which calls it)
+        expect(cache.get(config_files)).to be_nil
+      end
+    end
+
+    # Line 182[then] - save_cache when retries > 3 (retries <= 3 is false)
+    # This branch is difficult to test because:
+    # - When File.rename raises ENOENT, the ensure block cleans up the temp file
+    # - Then File.exist?(temp_file) returns false, triggering recreation at line 188
+    # - If recreation succeeds, retry happens (not hitting line 182)
+    # - If recreation fails, line 193 returns false (not line 182)
+    # - To hit line 182, we need File.exist? to return true AND retry to keep failing
+    # - But mocking File.exist? affects all file operations including initial setup
+    # Skipping this edge case as it may be unreachable in practice.
+    context "with excessive ENOENT retries during save" do
+      it "returns false after exceeding retry limit" do
+        skip "This branch appears unreachable given current implementation logic"
+      end
+    end
+
+    # Line 189[then] - save_cache when temp_file does not exist during retry
+    context "with missing temp file during ENOENT retry" do
+      it "attempts to recreate temp file when missing during retry" do
+        call_count = 0
+        temp_file_path = nil
+
+        allow(File).to receive(:rename).and_wrap_original do |original_method, source, dest|
+          temp_file_path = source
+          call_count += 1
+
+          if call_count == 1
+            # Delete temp file and raise ENOENT to trigger retry
+            FileUtils.rm_f(source)
+            raise Errno::ENOENT, "No such file or directory"
+          else
+            original_method.call(source, dest)
+          end
+        end
+
+        result = cache.set(sample_config, config_files)
+        # Should succeed because it recreates the temp file
+        expect(result).to be true
+      end
+    end
+
+    # Line 251[then] - files_changed? when cached_metadata is nil
+    context "with missing cached metadata for a specific file" do
+      before do
+        cache.set(sample_config, config_files)
+        # Remove metadata for one file to trigger the nil check
+        cache_data = JSON.parse(File.read(cache.cache_file_path))
+        cache_data["config_files"][config_file1] = nil
+        File.write(cache.cache_file_path, JSON.pretty_generate(cache_data))
+      end
+
+      it "returns true when cached_metadata for a file is nil" do
+        expect(cache.get(config_files)).to be_nil
+      end
+    end
+  end
 end

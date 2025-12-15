@@ -219,6 +219,60 @@ RSpec.describe Sxn::Commands::Worktrees do
         # since apply_project_rules is a private method that handles its own exceptions
       end
     end
+
+    context "with verbose option" do
+      it "enables debug mode during execution" do
+        allow(mock_worktree_manager).to receive(:add_worktree).and_return(sample_worktree)
+        allow(worktrees_command).to receive(:apply_project_rules)
+        allow(worktrees_command).to receive(:display_worktree_info)
+        allow(worktrees_command).to receive(:options).and_return({ verbose: true })
+
+        expect(ENV).to receive(:[]=).with("SXN_DEBUG", "true")
+        expect(ENV).to receive(:delete).with("SXN_DEBUG")
+
+        worktrees_command.add("test-project", "main")
+      end
+
+      it "shows error details when error has details method" do
+        error = Sxn::WorktreeCreationError.new("Creation failed")
+        allow(error).to receive(:exit_code).and_return(20)
+        allow(error).to receive(:respond_to?).and_return(true)
+        allow(error).to receive(:details).and_return("Detailed error information")
+        allow(mock_worktree_manager).to receive(:add_worktree).and_raise(error)
+        allow(worktrees_command).to receive(:options).and_return({ verbose: true })
+
+        expect(ENV).to receive(:[]=).with("SXN_DEBUG", "true")
+        expect(ENV).to receive(:delete).with("SXN_DEBUG")
+
+        expect { worktrees_command.add("test-project") }.to raise_error(SystemExit)
+        expect(mock_ui).to have_received(:subsection).with("Debug Information")
+        expect(mock_ui).to have_received(:info).with("Detailed error information")
+      end
+
+      it "cleans up ENV even on error" do
+        error = Sxn::WorktreeCreationError.new("Creation failed")
+        allow(error).to receive(:exit_code).and_return(20)
+        allow(mock_worktree_manager).to receive(:add_worktree).and_raise(error)
+        allow(worktrees_command).to receive(:options).and_return({ verbose: true })
+
+        expect(ENV).to receive(:[]=).with("SXN_DEBUG", "true")
+        expect(ENV).to receive(:delete).with("SXN_DEBUG")
+
+        expect { worktrees_command.add("test-project") }.to raise_error(SystemExit)
+      end
+    end
+
+    context "without verbose option when error occurs" do
+      it "suggests running with verbose flag" do
+        error = Sxn::WorktreeCreationError.new("Creation failed")
+        allow(error).to receive(:exit_code).and_return(20)
+        allow(mock_worktree_manager).to receive(:add_worktree).and_raise(error)
+        allow(worktrees_command).to receive(:options).and_return({ verbose: false })
+
+        expect { worktrees_command.add("test-project") }.to raise_error(SystemExit)
+        expect(mock_ui).to have_received(:recovery_suggestion).with("Run with --verbose flag for more details")
+      end
+    end
   end
 
   describe "#remove" do
@@ -496,6 +550,23 @@ RSpec.describe Sxn::Commands::Worktrees do
         expect(mock_ui).to have_received(:list_item).with("Directory missing")
         expect(mock_ui).to have_received(:list_item).with("Not a git worktree")
       end
+
+      it "handles validation result without worktree data" do
+        validation_result = {
+          valid: false,
+          issues: ["Worktree not found"],
+          worktree: nil
+        }
+        allow(mock_worktree_manager).to receive(:validate_worktree).and_return(validation_result)
+        allow(mock_ui).to receive(:list_item)
+        allow(worktrees_command).to receive(:display_worktree_info)
+
+        worktrees_command.validate("test-project")
+
+        expect(mock_ui).to have_received(:error).with("Worktree has issues:")
+        expect(mock_ui).to have_received(:list_item).with("Worktree not found")
+        expect(worktrees_command).not_to have_received(:display_worktree_info)
+      end
     end
 
     context "without project name" do
@@ -683,6 +754,56 @@ RSpec.describe Sxn::Commands::Worktrees do
 
         expect(mock_ui).to have_received(:key_value).with("Exists", "No")
       end
+
+      it "does not display session when not present" do
+        worktree_no_session = {
+          project: "test-project",
+          branch: "main",
+          path: "/path/to/worktree"
+        }
+        allow(mock_ui).to receive(:key_value)
+        allow(worktrees_command).to receive(:display_worktree_commands)
+
+        worktrees_command.send(:display_worktree_info, worktree_no_session)
+
+        expect(mock_ui).not_to have_received(:key_value).with("Session", anything)
+      end
+
+      it "does not display created_at when not present in detailed mode" do
+        worktree_no_created = {
+          project: "test-project",
+          branch: "main",
+          path: "/path/to/worktree",
+          exists: true,
+          status: "clean"
+        }
+        allow(mock_ui).to receive(:key_value)
+        allow(worktrees_command).to receive(:display_worktree_commands)
+
+        worktrees_command.send(:display_worktree_info, worktree_no_created, detailed: true)
+
+        expect(mock_ui).not_to have_received(:key_value).with("Created", anything)
+        expect(mock_ui).to have_received(:key_value).with("Exists", "Yes")
+        expect(mock_ui).to have_received(:key_value).with("Status", "clean")
+      end
+
+      it "does not display status when not present in detailed mode" do
+        worktree_no_status = {
+          project: "test-project",
+          branch: "main",
+          path: "/path/to/worktree",
+          exists: true,
+          created_at: "2023-01-01T00:00:00Z"
+        }
+        allow(mock_ui).to receive(:key_value)
+        allow(worktrees_command).to receive(:display_worktree_commands)
+
+        worktrees_command.send(:display_worktree_info, worktree_no_status, detailed: true)
+
+        expect(mock_ui).not_to have_received(:key_value).with("Status", anything)
+        expect(mock_ui).to have_received(:key_value).with("Created", "2023-01-01T00:00:00Z")
+        expect(mock_ui).to have_received(:key_value).with("Exists", "Yes")
+      end
     end
 
     describe "#display_worktree_commands" do
@@ -703,6 +824,26 @@ RSpec.describe Sxn::Commands::Worktrees do
         expect(mock_ui).to have_received(:command_example).with(
           "sxn worktree validate test-project",
           "Validate this worktree"
+        )
+      end
+
+      it "does not display rules apply command when project is missing" do
+        worktree_no_project = {
+          branch: "main",
+          path: "/path/to/worktree"
+        }
+        allow(mock_ui).to receive(:command_example)
+
+        worktrees_command.send(:display_worktree_commands, worktree_no_project)
+
+        expect(mock_ui).to have_received(:subsection).with("Available Commands")
+        expect(mock_ui).to have_received(:command_example).with(
+          "cd /path/to/worktree",
+          "Navigate to worktree directory"
+        )
+        expect(mock_ui).not_to have_received(:command_example).with(
+          "sxn rules apply test-project",
+          "Apply project rules to this worktree"
         )
       end
     end

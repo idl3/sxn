@@ -260,4 +260,23 @@ RSpec.describe Sxn::Config do
       expect { manager.config }.not_to raise_error
     end
   end
+
+  describe "config error handling" do
+    let(:temp_dir) { Dir.mktmpdir("sxn_config_error_test") }
+    let(:manager) { Sxn::Config::Manager.new(start_directory: temp_dir) }
+
+    after do
+      FileUtils.rm_rf(temp_dir)
+    end
+
+    it "handles generic ConfigurationError in the else branch of errors method" do
+      # Test line 116: else branch when error message doesn't include "Configuration validation failed:"
+      # Force a ConfigurationError that doesn't match the expected pattern
+      # We need to stub at a lower level to ensure the error propagates correctly
+      allow(manager.validator).to receive(:validate_and_migrate).and_raise(Sxn::ConfigurationError, "Generic error message")
+
+      errors = manager.errors
+      expect(errors).to eq(["Generic error message"])
+    end
+  end
 end

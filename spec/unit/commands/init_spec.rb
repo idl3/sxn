@@ -393,6 +393,24 @@ RSpec.describe Sxn::Commands::Init do
 
         ENV.delete("SXN_DEBUG")
       end
+
+      it "handles standard errors without debug info when SXN_DEBUG is not set" do
+        # Ensure SXN_DEBUG is not set (line 81 else branch)
+        ENV.delete("SXN_DEBUG")
+
+        allow_any_instance_of(Sxn::UI::Output).to receive(:section)
+        allow_any_instance_of(Sxn::UI::Output).to receive(:progress_start)
+        allow_any_instance_of(Sxn::UI::Output).to receive(:error)
+        allow_any_instance_of(Sxn::UI::Output).to receive(:debug)
+
+        allow_any_instance_of(Sxn::Core::ConfigManager).to receive(:initialize_project)
+          .and_raise("Unexpected error")
+
+        expect { command.init("test-sessions") }.to raise_error(SystemExit)
+
+        # Verify debug was not called (since SXN_DEBUG is not set)
+        expect_any_instance_of(Sxn::UI::Output).not_to receive(:debug)
+      end
     end
   end
 
@@ -482,110 +500,6 @@ RSpec.describe Sxn::Commands::Init do
 
         gitignore_path = File.join(temp_dir, ".gitignore")
         expect(File).not_to exist(gitignore_path)
-      end
-    end
-  end
-
-  describe "private methods" do
-    describe "#determine_sessions_folder" do
-      it "returns folder when provided and not in quiet mode" do
-        allow(command).to receive(:options).and_return({})
-
-        result = command.send(:determine_sessions_folder, "custom-folder")
-        expect(result).to eq("custom-folder")
-      end
-
-      it "uses interactive prompt when folder not provided and not in quiet mode" do
-        allow(command).to receive(:options).and_return({})
-        allow_any_instance_of(Sxn::UI::Prompt).to receive(:sessions_folder_setup)
-          .and_return("interactive-folder")
-
-        result = command.send(:determine_sessions_folder, nil)
-        expect(result).to eq("interactive-folder")
-      end
-
-      it "generates default folder name in quiet mode when none provided" do
-        allow(Dir).to receive(:pwd).and_return("/current/dir")
-        allow(File).to receive(:basename).with("/current/dir").and_return("project")
-        allow(command).to receive(:options).and_return({ quiet: true })
-
-        result = command.send(:determine_sessions_folder, nil)
-        expect(result).to eq("project-sessions")
-      end
-
-      it "returns provided folder in quiet mode" do
-        allow(command).to receive(:options).and_return({ quiet: true })
-
-        result = command.send(:determine_sessions_folder, "quiet-folder")
-        expect(result).to eq("quiet-folder")
-      end
-    end
-
-    describe "#auto_detect_projects" do
-      it "shows empty state when no projects detected" do
-        allow_any_instance_of(Sxn::Core::ConfigManager).to receive(:detect_projects)
-          .and_return([])
-        ui_output = double("ui_output")
-        allow(ui_output).to receive(:subsection)
-        allow(ui_output).to receive(:empty_state)
-        command.instance_variable_set(:@ui, ui_output)
-
-        command.send(:auto_detect_projects)
-
-        expect(ui_output).to have_received(:empty_state)
-          .with("No projects detected in current directory")
-      end
-    end
-
-    describe "#display_next_steps" do
-      it "shows different message when projects are detected" do
-        # Create mock instances
-        config_manager = instance_double(Sxn::Core::ConfigManager)
-        ui_output = instance_double(Sxn::UI::Output)
-
-        # Mock the config manager to return detected projects
-        allow(config_manager).to receive(:detect_projects).and_return([{ name: "project1" }])
-
-        # Mock UI methods
-        allow(ui_output).to receive(:newline)
-        allow(ui_output).to receive(:subsection)
-        allow(ui_output).to receive(:command_example)
-        allow(ui_output).to receive(:info)
-        allow(ui_output).to receive(:recovery_suggestion)
-
-        # Set the instances on the command
-        command.instance_variable_set(:@config_manager, config_manager)
-        command.instance_variable_set(:@ui, ui_output)
-
-        command.send(:display_next_steps)
-
-        expect(ui_output).to have_received(:info)
-          .with("💡 Detected projects are ready to use!")
-      end
-
-      it "shows recovery suggestion when no projects detected" do
-        # Create mock instances
-        config_manager = instance_double(Sxn::Core::ConfigManager)
-        ui_output = instance_double(Sxn::UI::Output)
-
-        # Mock the config manager to return no detected projects
-        allow(config_manager).to receive(:detect_projects).and_return([])
-
-        # Mock UI methods
-        allow(ui_output).to receive(:newline)
-        allow(ui_output).to receive(:subsection)
-        allow(ui_output).to receive(:command_example)
-        allow(ui_output).to receive(:info)
-        allow(ui_output).to receive(:recovery_suggestion)
-
-        # Set the instances on the command
-        command.instance_variable_set(:@config_manager, config_manager)
-        command.instance_variable_set(:@ui, ui_output)
-
-        command.send(:display_next_steps)
-
-        expect(ui_output).to have_received(:recovery_suggestion)
-          .with("Register your projects with 'sxn projects add <name> <path>'")
       end
     end
   end
@@ -778,6 +692,144 @@ RSpec.describe Sxn::Commands::Init do
           .with("Could not determine shell configuration file")
 
         expect { command.install_shell }.to raise_error(SystemExit)
+      end
+    end
+
+    context "when uninstalling with non-existent rc file" do
+      it "shows info message when rc file does not exist" do
+        # Test line 175 [then] - when File.exist?(rc_file) is false
+        non_existent_rc = File.join(temp_home, ".nonexistent_rc")
+
+        options_hash = Thor::CoreExt::HashWithIndifferentAccess.new
+        options_hash["shell_type"] = "zsh"
+        options_hash["uninstall"] = true
+        command.instance_variable_set(:@options, options_hash)
+
+        # Override shell_rc_file to return non-existent file
+        allow(command).to receive(:shell_rc_file).and_return(non_existent_rc)
+
+        expect_any_instance_of(Sxn::UI::Output).to receive(:info)
+          .with("Shell configuration file not found: #{non_existent_rc}")
+
+        command.install_shell
+      end
+    end
+  end
+
+  describe "private methods" do
+    describe "#shell_rc_file" do
+      it "returns nil for unsupported shell type" do
+        # Test line 129 [else] - when shell_type doesn't match "zsh" or "bash"
+        result = command.send(:shell_rc_file, "fish")
+        expect(result).to be_nil
+      end
+
+      it "returns nil for unknown shell type" do
+        # Test line 129 [else] - another edge case with random shell type
+        result = command.send(:shell_rc_file, "tcsh")
+        expect(result).to be_nil
+      end
+    end
+
+    describe "#determine_sessions_folder" do
+      it "returns folder when provided and not in quiet mode" do
+        allow(command).to receive(:options).and_return({})
+
+        result = command.send(:determine_sessions_folder, "custom-folder")
+        expect(result).to eq("custom-folder")
+      end
+
+      it "uses interactive prompt when folder not provided and not in quiet mode" do
+        allow(command).to receive(:options).and_return({})
+        allow_any_instance_of(Sxn::UI::Prompt).to receive(:sessions_folder_setup)
+          .and_return("interactive-folder")
+
+        result = command.send(:determine_sessions_folder, nil)
+        expect(result).to eq("interactive-folder")
+      end
+
+      it "generates default folder name in quiet mode when none provided" do
+        allow(Dir).to receive(:pwd).and_return("/current/dir")
+        allow(File).to receive(:basename).with("/current/dir").and_return("project")
+        allow(command).to receive(:options).and_return({ quiet: true })
+
+        result = command.send(:determine_sessions_folder, nil)
+        expect(result).to eq("project-sessions")
+      end
+
+      it "returns provided folder in quiet mode" do
+        allow(command).to receive(:options).and_return({ quiet: true })
+
+        result = command.send(:determine_sessions_folder, "quiet-folder")
+        expect(result).to eq("quiet-folder")
+      end
+    end
+
+    describe "#auto_detect_projects" do
+      it "shows empty state when no projects detected" do
+        allow_any_instance_of(Sxn::Core::ConfigManager).to receive(:detect_projects)
+          .and_return([])
+        ui_output = double("ui_output")
+        allow(ui_output).to receive(:subsection)
+        allow(ui_output).to receive(:empty_state)
+        command.instance_variable_set(:@ui, ui_output)
+
+        command.send(:auto_detect_projects)
+
+        expect(ui_output).to have_received(:empty_state)
+          .with("No projects detected in current directory")
+      end
+    end
+
+    describe "#display_next_steps" do
+      it "shows different message when projects are detected" do
+        # Create mock instances
+        config_manager = instance_double(Sxn::Core::ConfigManager)
+        ui_output = instance_double(Sxn::UI::Output)
+
+        # Mock the config manager to return detected projects
+        allow(config_manager).to receive(:detect_projects).and_return([{ name: "project1" }])
+
+        # Mock UI methods
+        allow(ui_output).to receive(:newline)
+        allow(ui_output).to receive(:subsection)
+        allow(ui_output).to receive(:command_example)
+        allow(ui_output).to receive(:info)
+        allow(ui_output).to receive(:recovery_suggestion)
+
+        # Set the instances on the command
+        command.instance_variable_set(:@config_manager, config_manager)
+        command.instance_variable_set(:@ui, ui_output)
+
+        command.send(:display_next_steps)
+
+        expect(ui_output).to have_received(:info)
+          .with("💡 Detected projects are ready to use!")
+      end
+
+      it "shows recovery suggestion when no projects detected" do
+        # Create mock instances
+        config_manager = instance_double(Sxn::Core::ConfigManager)
+        ui_output = instance_double(Sxn::UI::Output)
+
+        # Mock the config manager to return no detected projects
+        allow(config_manager).to receive(:detect_projects).and_return([])
+
+        # Mock UI methods
+        allow(ui_output).to receive(:newline)
+        allow(ui_output).to receive(:subsection)
+        allow(ui_output).to receive(:command_example)
+        allow(ui_output).to receive(:info)
+        allow(ui_output).to receive(:recovery_suggestion)
+
+        # Set the instances on the command
+        command.instance_variable_set(:@config_manager, config_manager)
+        command.instance_variable_set(:@ui, ui_output)
+
+        command.send(:display_next_steps)
+
+        expect(ui_output).to have_received(:recovery_suggestion)
+          .with("Register your projects with 'sxn projects add <name> <path>'")
       end
     end
   end

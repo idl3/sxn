@@ -36,8 +36,8 @@ if ENV["ENABLE_SIMPLECOV"] == "true"
 
       track_files "lib/**/*.rb"
 
-      # Disable minimum coverage thresholds - they default to 90% if not set
-      minimum_coverage 0
+      # Enforce 95% minimum coverage thresholds
+      minimum_coverage line: 95, branch: 95
       minimum_coverage_by_file 0
     end
   end

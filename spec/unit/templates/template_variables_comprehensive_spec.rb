@@ -584,5 +584,258 @@ RSpec.describe Sxn::Templates::TemplateVariables, "comprehensive coverage for mi
       result = variables.send(:execute_git_command, project_path, "status")
       expect(result).to be_nil
     end
+
+    it "handles detect_rails_version when rails_available? returns false" do
+      allow(variables).to receive(:rails_available?).and_return(false)
+
+      result = variables.send(:detect_rails_version)
+      expect(result).to be_nil
+    end
+
+    it "handles detect_rails_version when result doesn't have :version key" do
+      allow(variables).to receive(:rails_available?).and_return(true)
+      allow(variables).to receive(:collect_rails_version).and_return({ other: "data" })
+
+      result = variables.send(:detect_rails_version)
+      expect(result).to be_nil
+    end
+
+    it "handles detect_node_version when node_available? returns false" do
+      allow(variables).to receive(:node_available?).and_return(false)
+
+      result = variables.send(:detect_node_version)
+      expect(result).to be_nil
+    end
+
+    it "handles detect_node_version when result doesn't have :version key" do
+      allow(variables).to receive(:node_available?).and_return(true)
+      allow(variables).to receive(:collect_node_version).and_return({ other: "data" })
+
+      result = variables.send(:detect_node_version)
+      expect(result).to be_nil
+    end
+
+    it "handles validate_collected_variables with non-Hash input" do
+      result = variables.send(:validate_collected_variables, "not a hash")
+      expect(result).to eq("not a hash")
+    end
+
+    it "handles validate_collected_variables with non-Hash category data" do
+      mock_logger = double("Logger")
+      allow(Sxn).to receive(:logger).and_return(mock_logger)
+      allow(mock_logger).to receive(:warn).and_return(nil)
+
+      variables_input = { valid_category: { key: "value" }, invalid_category: "not a hash" }
+      result = variables.send(:validate_collected_variables, variables_input)
+
+      expect(result).to eq(variables_input)
+    end
+
+    it "handles validate_collected_variables with value that doesn't respond to :to_s" do
+      mock_logger = double("Logger")
+      allow(Sxn).to receive(:logger).and_return(mock_logger)
+      allow(mock_logger).to receive(:warn)
+
+      bad_value = double("BadValue")
+      allow(bad_value).to receive(:respond_to?).with(:to_s).and_return(false)
+
+      variables_input = { test: { bad: bad_value } }
+      variables.send(:validate_collected_variables, variables_input)
+
+      expect(mock_logger).to have_received(:warn).with(/cannot be safely stringified/)
+    end
+
+    it "handles validate_collected_variables error during iteration" do
+      mock_logger = double("Logger")
+      allow(Sxn).to receive(:logger).and_return(mock_logger)
+      allow(mock_logger).to receive(:error)
+
+      variables_input = { test: { key: "value" } }
+      allow(variables_input).to receive(:each).and_raise(StandardError, "Validation error")
+
+      result = variables.send(:validate_collected_variables, variables_input)
+
+      expect(mock_logger).to have_received(:error).with(/Template variable validation failed/)
+      expect(result).to eq(variables_input)
+    end
+
+    it "handles git_repository? with execute_git_command returning nil output" do
+      allow(File).to receive(:exist?).with("#{project_path}/.git").and_return(false)
+      allow(variables).to receive(:execute_git_command).and_return(nil)
+
+      result = variables.send(:git_repository?, project_path)
+      expect(result).to be false
+    end
+
+    it "handles git_repository? with execute_git_command returning empty output" do
+      allow(File).to receive(:exist?).with("#{project_path}/.git").and_return(false)
+      allow(variables).to receive(:execute_git_command) do |&block|
+        block&.call("")
+      end
+
+      result = variables.send(:git_repository?, project_path)
+      expect(result).to be false
+    end
+
+    it "handles collect_git_commit_info with incomplete commit data" do
+      git_dir = project_path
+      allow(variables).to receive(:execute_git_command)
+        .with(git_dir, "log", "-1", "--format=%H|%s|%an|%ae|%ai")
+        .and_yield("abc123|message|author")
+
+      allow(variables).to receive(:execute_git_command)
+        .with(git_dir, "rev-parse", "--short", "HEAD")
+        .and_yield("abc123")
+
+      result = variables.send(:collect_git_commit_info, git_dir)
+
+      expect(result[:last_commit]).to be_nil
+      expect(result[:short_sha]).to eq("abc123")
+    end
+
+    it "handles detect_project_type with Next.js project" do
+      File.write(File.join(project_path, "package.json"), '{"dependencies": {"next": "13.0.0"}}')
+      FileUtils.rm_f(File.join(project_path, "Gemfile"))
+
+      result = variables.send(:detect_project_type, Pathname.new(project_path))
+      expect(result).to eq("nextjs")
+    end
+
+    it "handles detect_project_type with React project" do
+      File.write(File.join(project_path, "package.json"), '{"dependencies": {"react": "18.0.0"}}')
+      FileUtils.rm_f(File.join(project_path, "Gemfile"))
+
+      result = variables.send(:detect_project_type, Pathname.new(project_path))
+      expect(result).to eq("react")
+    end
+
+    it "handles detect_project_type with TypeScript project" do
+      File.write(File.join(project_path, "package.json"), "{}")
+      File.write(File.join(project_path, "tsconfig.json"), "{}")
+      FileUtils.rm_f(File.join(project_path, "Gemfile"))
+
+      result = variables.send(:detect_project_type, Pathname.new(project_path))
+      expect(result).to eq("typescript")
+    end
+
+    it "handles collect_rails_project_info when project path is nil" do
+      no_project_variables = described_class.new(flexible_session, nil)
+      result = no_project_variables.send(:collect_rails_project_info)
+      expect(result).to eq({})
+    end
+
+    it "handles collect_rails_project_info when database.yml doesn't exist" do
+      result = variables.send(:collect_rails_project_info)
+      # Without database.yml, should return empty hash or minimal data
+      expect(result).to be_a(Hash)
+    end
+
+    it "handles collect_js_project_info when project path is nil" do
+      no_project_variables = described_class.new(flexible_session, nil)
+      result = no_project_variables.send(:collect_js_project_info)
+      expect(result).to eq({})
+    end
+
+    it "handles collect_js_project_info when package.json doesn't exist" do
+      result = variables.send(:collect_js_project_info)
+      # Without package.json, should return empty hash
+      expect(result).to eq({})
+    end
+
+    it "handles collect_js_project_info with scripts in package.json" do
+      File.write(File.join(project_path, "package.json"), '{"scripts": {"test": "jest", "build": "webpack"}}')
+
+      result = variables.send(:collect_js_project_info)
+      expect(result[:scripts]).to eq({ "test" => "jest", "build" => "webpack" })
+    end
+
+    it "handles collect_js_project_info with dependencies in package.json" do
+      File.write(File.join(project_path, "package.json"), '{"dependencies": {"react": "18.0.0", "lodash": "4.17.0"}}')
+
+      result = variables.send(:collect_js_project_info)
+      expect(result[:dependencies]).to eq(%w[react lodash])
+    end
+
+    it "handles collect_js_project_info with devDependencies in package.json" do
+      File.write(File.join(project_path, "package.json"), '{"devDependencies": {"jest": "27.0.0"}}')
+
+      result = variables.send(:collect_js_project_info)
+      expect(result[:dev_dependencies]).to eq(["jest"])
+    end
+
+    it "handles collect_ruby_project_info when project path is nil" do
+      no_project_variables = described_class.new(flexible_session, nil)
+      result = no_project_variables.send(:collect_ruby_project_info)
+      expect(result).to eq({})
+    end
+
+    it "handles collect_ruby_project_info when Gemfile doesn't exist" do
+      result = variables.send(:collect_ruby_project_info)
+      # Without Gemfile, should return empty hash
+      expect(result).to eq({})
+    end
+
+    it "handles detect_package_manager when project path is nil" do
+      no_project_variables = described_class.new(flexible_session, nil)
+      result = no_project_variables.send(:detect_package_manager)
+      expect(result).to eq("npm")
+    end
+
+    it "handles detect_package_manager with pnpm" do
+      File.write(File.join(project_path, "pnpm-lock.yaml"), "")
+
+      result = variables.send(:detect_package_manager)
+      expect(result).to eq("pnpm")
+    end
+
+    it "handles detect_package_manager with yarn" do
+      File.write(File.join(project_path, "yarn.lock"), "")
+
+      result = variables.send(:detect_package_manager)
+      expect(result).to eq("yarn")
+    end
+
+    it "handles detect_package_manager with npm" do
+      File.write(File.join(project_path, "package-lock.json"), "")
+
+      result = variables.send(:detect_package_manager)
+      expect(result).to eq("npm")
+    end
+
+    it "handles collect_node_version when node_available? is false" do
+      allow(variables).to receive(:node_available?).and_return(false)
+
+      result = variables.send(:collect_node_version)
+      expect(result).to eq({})
+    end
+
+    it "handles collect_node_version when version is empty" do
+      allow(variables).to receive(:node_available?).and_return(true)
+      allow(variables).to receive(:`).with("node --version 2>/dev/null").and_return("\n")
+
+      result = variables.send(:collect_node_version)
+      expect(result).to eq({})
+    end
+
+    it "handles collect_database_info with nil postgresql version" do
+      allow(variables).to receive(:`).and_return("")
+
+      result = variables.send(:collect_database_info)
+      expect(result[:postgresql]).to be_nil
+    end
+
+    it "handles collect_database_info with nil mysql version" do
+      allow(variables).to receive(:`).and_return("")
+
+      result = variables.send(:collect_database_info)
+      expect(result[:mysql]).to be_nil
+    end
+
+    it "handles collect_database_info with nil sqlite version" do
+      allow(variables).to receive(:`).and_return("")
+
+      result = variables.send(:collect_database_info)
+      expect(result[:sqlite3]).to be_nil
+    end
   end
 end

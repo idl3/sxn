@@ -484,6 +484,32 @@ RSpec.describe Sxn::Core::WorktreeManager do
         status = worktree_manager.send(:get_worktree_status, test_path)
         expect(status).to eq("untracked")
       end
+
+      it "returns 'clean' when repository has no changes (line 370 else branch)" do
+        FileUtils.mkdir_p(test_path)
+        Dir.chdir(test_path) do
+          system("git init", out: File::NULL, err: File::NULL)
+          system("git config user.email 'test@example.com'", out: File::NULL, err: File::NULL)
+          system("git config user.name 'Test User'", out: File::NULL, err: File::NULL)
+          File.write("test.txt", "content")
+          system("git add test.txt", out: File::NULL, err: File::NULL)
+          system("git commit -m 'Initial commit'", out: File::NULL, err: File::NULL)
+        end
+
+        # Mock system calls to ensure all checks return false (no changes)
+        allow(worktree_manager).to receive(:system).with(
+          "git diff-index --quiet --cached HEAD", out: File::NULL, err: File::NULL
+        ).and_return(true)
+        allow(worktree_manager).to receive(:system).with(
+          "git diff-files --quiet", out: File::NULL, err: File::NULL
+        ).and_return(true)
+        allow(worktree_manager).to receive(:system).with(
+          "git ls-files --others --exclude-standard --quiet", out: File::NULL, err: File::NULL
+        ).and_return(true)
+
+        status = worktree_manager.send(:get_worktree_status, test_path)
+        expect(status).to eq("clean")
+      end
     end
 
     describe "#add_worktree edge cases" do
@@ -1025,6 +1051,55 @@ RSpec.describe Sxn::Core::WorktreeManager do
         expect do
           worktree_manager.send(:create_git_worktree, project_path, test_worktree_path, "test-branch")
         end.to output(/\[DEBUG\] Git worktree command failed/).to_stdout
+      end.to raise_error(Sxn::WorktreeCreationError)
+    end
+
+    it "uses stdout when stderr is empty (line 266 then branch)" do
+      require "open3"
+      status = double("status", success?: false, exitstatus: 128)
+      allow(Open3).to receive(:capture3).and_return(["error from stdout", "", status])
+      allow(worktree_manager).to receive(:system).and_return(false)
+
+      expect do
+        worktree_manager.send(:create_git_worktree, project_path, test_worktree_path, "test-branch")
+      end.to raise_error(Sxn::WorktreeCreationError, /error from stdout/)
+    end
+
+    it "uses fallback message when both stdout and stderr are empty (line 267 then branch)" do
+      require "open3"
+      status = double("status", success?: false, exitstatus: 128)
+      allow(Open3).to receive(:capture3).and_return(["", "", status])
+      allow(worktree_manager).to receive(:system).and_return(false)
+
+      expect do
+        worktree_manager.send(:create_git_worktree, project_path, test_worktree_path, "test-branch")
+      end.to raise_error(Sxn::WorktreeCreationError, /Git worktree command failed/)
+    end
+
+    it "uses original error_msg when no fatal: line found (line 281 else branch)" do
+      require "open3"
+      status = double("status", success?: false, exitstatus: 128)
+      stderr = "error: some error without fatal prefix\nanother line"
+      allow(Open3).to receive(:capture3).and_return(["", stderr, status])
+      allow(worktree_manager).to receive(:system).and_return(false)
+
+      expect do
+        worktree_manager.send(:create_git_worktree, project_path, test_worktree_path, "test-branch")
+      end.to raise_error(Sxn::WorktreeCreationError, /some error without fatal prefix/)
+    end
+
+    it "includes non-empty stdout in details (line 292 then branch)" do
+      require "open3"
+      status = double("status", success?: false, exitstatus: 128)
+      allow(Open3).to receive(:capture3).and_return(["stdout has content", "stderr error", status])
+      allow(worktree_manager).to receive(:system).and_return(false)
+      allow(ENV).to receive(:[]).with("SXN_DEBUG").and_return("true")
+      allow(ENV).to receive(:[]).with(anything).and_call_original
+
+      expect do
+        expect do
+          worktree_manager.send(:create_git_worktree, project_path, test_worktree_path, "test-branch")
+        end.to output(/STDOUT: stdout has content/).to_stdout
       end.to raise_error(Sxn::WorktreeCreationError)
     end
 

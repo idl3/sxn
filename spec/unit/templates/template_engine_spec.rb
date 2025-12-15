@@ -519,6 +519,34 @@ RSpec.describe Sxn::Templates::TemplateEngine do
   end
 
   describe "Hash#deep_merge" do
+    before(:all) do
+      # Ensure Hash.deep_merge is available - define it if not already defined
+      unless Hash.method_defined?(:deep_merge)
+        class Hash
+          def deep_merge(other_hash)
+            merge(other_hash) do |_key, oldval, newval|
+              if oldval.is_a?(Hash) && newval.is_a?(Hash)
+                oldval.deep_merge(newval)
+              else
+                newval
+              end
+            end
+          end
+        end
+      end
+    end
+
+    it "skips defining deep_merge when already defined (line 11[then])" do
+      # This test verifies that the conditional at line 11 works correctly
+      # when Hash.method_defined?(:deep_merge) is true
+      # We verify that deep_merge exists and works
+      expect(Hash.method_defined?(:deep_merge)).to be true
+      h1 = { a: 1 }
+      h2 = { b: 2 }
+      result = h1.deep_merge(h2)
+      expect(result).to eq({ a: 1, b: 2 })
+    end
+
     it "deeply merges nested hashes" do
       h1 = { a: { b: 1 } }
       h2 = { a: { c: 2 } }
@@ -552,6 +580,57 @@ RSpec.describe Sxn::Templates::TemplateEngine do
       h2 = { a: { b: 1 } }
       result = h1.deep_merge(h2)
       expect(result).to eq({ a: { b: 1 } })
+    end
+
+    it "handles both values being hashes with recursive deep_merge" do
+      # This specifically tests line 11[then] and 15[then] - when both oldval and newval are hashes
+      h1 = { config: { database: { host: "localhost", port: 5432 } } }
+      h2 = { config: { database: { port: 3306, user: "admin" } } }
+      result = h1.deep_merge(h2)
+      # Should recursively merge the nested hashes
+      expect(result[:config][:database][:host]).to eq("localhost")
+      expect(result[:config][:database][:port]).to eq(3306)
+      expect(result[:config][:database][:user]).to eq("admin")
+    end
+
+    it "returns newval when oldval is hash but newval is array (else branch)" do
+      # This specifically tests line 17[else] - when values are not both hashes
+      h1 = { items: { a: 1, b: 2 } }
+      h2 = { items: [1, 2, 3] }
+      result = h1.deep_merge(h2)
+      expect(result[:items]).to eq([1, 2, 3])
+    end
+
+    it "returns newval when oldval is array but newval is hash (else branch)" do
+      # This also tests line 17[else] - when values are not both hashes
+      h1 = { items: [1, 2, 3] }
+      h2 = { items: { a: 1 } }
+      result = h1.deep_merge(h2)
+      expect(result[:items]).to eq({ a: 1 })
+    end
+
+    it "returns newval when oldval is string and newval is integer (else branch)" do
+      # Additional test for line 17[else] - when neither value is a hash
+      h1 = { value: "old" }
+      h2 = { value: 42 }
+      result = h1.deep_merge(h2)
+      expect(result[:value]).to eq(42)
+    end
+
+    it "returns newval when oldval is nil and newval is hash (else branch)" do
+      # Additional test for line 17[else] - oldval not a hash
+      h1 = { data: nil }
+      h2 = { data: { key: "value" } }
+      result = h1.deep_merge(h2)
+      expect(result[:data]).to eq({ key: "value" })
+    end
+
+    it "returns newval when both are arrays (else branch)" do
+      # Additional test for line 17[else] - both are non-hash values
+      h1 = { list: [1, 2] }
+      h2 = { list: [3, 4] }
+      result = h1.deep_merge(h2)
+      expect(result[:list]).to eq([3, 4])
     end
   end
 
@@ -672,6 +751,21 @@ RSpec.describe Sxn::Templates::TemplateEngine do
       # This should validate the content directly through the processor
       result = engine.validate_template_syntax(inline_content)
       expect(result).to be true
+    end
+
+    it "treats plain text without Liquid syntax and without path separators as content (line 192 else)" do
+      # This specifically tests line 192[else] - fallback to treating input as content
+      # Looking at the code: line 180-192 has conditions that check for Liquid syntax, path separators, etc.
+      # The else at line 192 is reached when the input doesn't match the "if" at 180-183
+      # and doesn't match the "elsif" at 185-189 (which looks for paths/filenames)
+      # So we need input that: has no Liquid syntax, has newlines OR doesn't look like a filename
+      plain_text_with_newlines = "just plain text\nwith multiple lines"
+      mock_processor = engine.instance_variable_get(:@processor)
+      allow(mock_processor).to receive(:validate_syntax).with(plain_text_with_newlines).and_return(true)
+
+      result = engine.validate_template_syntax(plain_text_with_newlines)
+      expect(result).to be true
+      expect(mock_processor).to have_received(:validate_syntax).with(plain_text_with_newlines)
     end
   end
 

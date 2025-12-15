@@ -367,6 +367,33 @@ RSpec.describe Sxn::Templates::TemplateSecurity do
                "Key #{key} should be rejected"
       end
     end
+
+    it "rejects deeply nested variables that exceed MAX_TEMPLATE_DEPTH (line 260 then)" do
+      # This specifically tests line 260[then] - when depth exceeds MAX_TEMPLATE_DEPTH
+      deeply_nested = { level: "value" }
+      current_level = deeply_nested
+
+      # Create a structure that exceeds MAX_TEMPLATE_DEPTH
+      (described_class::MAX_TEMPLATE_DEPTH + 2).times do |i|
+        current_level[:nested] = { level: "value_#{i}" }
+        current_level = current_level[:nested]
+      end
+
+      expect do
+        security.send(:validate_variable_value, deeply_nested, depth: 0)
+      end.to raise_error(Sxn::Templates::Errors::TemplateSecurityError, /nesting too deep/)
+    end
+
+    it "validates unknown object types by converting to string (line 279 else)" do
+      # This specifically tests line 279[else] - when value is not a known safe type
+      require "ostruct"
+      custom_object = OpenStruct.new(name: "test", value: 123)
+
+      # Should not raise error, as it converts to string and validates
+      expect do
+        security.send(:validate_variable_value, custom_object, depth: 0)
+      end.not_to raise_error
+    end
   end
 
   describe "string validation" do
@@ -498,6 +525,28 @@ RSpec.describe Sxn::Templates::TemplateSecurity do
         expect(sanitized["user"]["nested"]["also_nil"]).to be nil
       end.not_to raise_error
     end
+
+    it "rejects templates with File system method calls in Liquid tags (line 190 then)" do
+      # This specifically tests line 190[then] - detecting file system access attempts
+      # The pattern at line 189 matches {{ ... File.method ... }} where method is read/write/delete/create/open
+      # We need templates that match line 189's specific pattern but NOT the earlier DANGEROUS_PATTERNS
+      # The pattern is: /\{\{\s*.*(?:File|Dir|IO)\.(?:read|write|delete|create|open).*\s*\}\}/
+      # To avoid earlier patterns, we need to avoid \b before File/Dir/IO
+      # So use cases where File/Dir/IO doesn't have a word boundary before it
+      dangerous_templates = [
+        "{{ variable.something_File.read('/etc/passwd') }}", # _File (no word boundary)
+        "{{ xFile.open('/tmp') }}",                          # xFile (no word boundary)
+        "{{ myIO.write('file.txt') }}",                      # myIO (no word boundary)
+        "{{ customDir.delete('/path') }}" # customDir (no word boundary)
+      ]
+
+      dangerous_templates.each do |template|
+        expect do
+          security.validate_template_content(template)
+        end.to raise_error(Sxn::Templates::Errors::TemplateSecurityError, /file system access/),
+               "Template should be rejected: #{template}"
+      end
+    end
   end
 
   describe "#validate_template_path" do
@@ -529,6 +578,38 @@ RSpec.describe Sxn::Templates::TemplateSecurity do
       expect do
         security.validate_template_path(dangerous_path)
       end.to raise_error(Sxn::Templates::Errors::TemplateSecurityError, /not accessible/)
+    end
+
+    it "rejects paths with directory names containing .. (line 400 then)" do
+      # This specifically tests line 400[then] - checking for ".." in expanded path
+      # Create a real directory with ".." in its name
+      test_dir = File.join(Dir.tmpdir, "..sneaky_dir_#{rand(10_000)}")
+      FileUtils.mkdir_p(test_dir)
+      test_file = File.join(test_dir, "template.liquid")
+      File.write(test_file, "content")
+
+      # The expanded path will contain ".." in the directory name
+      expect do
+        security.validate_template_path(test_file)
+      end.to raise_error(Sxn::Templates::Errors::TemplateSecurityError, /traversal attempt/)
+    ensure
+      FileUtils.rm_rf(test_dir) if test_dir && Dir.exist?(test_dir)
+    end
+
+    it "rejects paths with directory names containing tilde (line 400 then)" do
+      # This tests line 400[then] for tilde detection in expanded path
+      # Create a directory with ~ in its name
+      test_dir = File.join(Dir.tmpdir, "~sneaky_dir_#{rand(10_000)}")
+      FileUtils.mkdir_p(test_dir)
+      test_file = File.join(test_dir, "template.liquid")
+      File.write(test_file, "content")
+
+      # The expanded path will contain "~" in the directory name
+      expect do
+        security.validate_template_path(test_file)
+      end.to raise_error(Sxn::Templates::Errors::TemplateSecurityError, /traversal attempt/)
+    ensure
+      FileUtils.rm_rf(test_dir) if test_dir && Dir.exist?(test_dir)
     end
 
     it "rejects non-existent paths" do
@@ -593,6 +674,23 @@ RSpec.describe Sxn::Templates::TemplateSecurity do
 
       expect do
         security.validate_template(nested_template, safe_variables)
+      end.not_to raise_error
+    end
+
+    it "decreases nesting depth on end tags (line 225 else)" do
+      # This specifically tests line 225[else] - the elsif branch that decreases nesting depth
+      # Template with proper opening and closing tags
+      balanced_template = <<~LIQUID
+        {% if condition %}
+          {% for item in list %}
+            Content
+          {% endfor %}
+        {% endif %}
+      LIQUID
+
+      # Should validate without error because nesting is balanced
+      expect do
+        security.validate_template(balanced_template, safe_variables)
       end.not_to raise_error
     end
   end

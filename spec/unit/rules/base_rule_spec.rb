@@ -97,6 +97,15 @@ RSpec.describe Sxn::Rules::BaseRule do
       end.to raise_error(ArgumentError, /Project path is not a directory/)
     end
 
+    it "raises error for non-directory session path" do
+      file_path = File.join(session_path, "file.txt")
+      File.write(file_path, "test")
+
+      expect do
+        test_rule_class.new(project_path, file_path, config)
+      end.to raise_error(ArgumentError, /Session path is not a directory/)
+    end
+
     it "raises error for non-writable session path" do
       # Make session path read-only
       File.chmod(0o444, session_path)
@@ -132,6 +141,17 @@ RSpec.describe Sxn::Rules::BaseRule do
 
       expect(invalid_rule.state).to eq(:failed)
       expect(invalid_rule.errors).not_to be_empty
+    end
+
+    it "fails validation when config is not a Hash" do
+      # Test line 299 - config must be a Hash
+      non_hash_rule = test_rule_class.new(project_path, session_path, "not a hash")
+
+      expect do
+        non_hash_rule.validate
+      end.to raise_error(Sxn::Rules::ValidationError, "Config must be a Hash")
+
+      expect(non_hash_rule.state).to eq(:failed)
     end
 
     it "validates dependencies" do
@@ -179,6 +199,12 @@ RSpec.describe Sxn::Rules::BaseRule do
       rule.apply
       expect(rule.duration).to be_a(Float)
       expect(rule.duration).to be > 0
+    end
+
+    it "returns nil duration when end_time is not set" do
+      # Manually set start_time but not end_time to test line 163
+      rule.instance_variable_set(:@start_time, Time.now)
+      expect(rule.duration).to be_nil
     end
 
     it "raises NotImplementedError when calling apply on BaseRule directly" do
@@ -270,6 +296,14 @@ RSpec.describe Sxn::Rules::BaseRule do
       expect(hash[:duration]).to be_a(Float)
       expect(hash[:applied_at]).to be_a(String)
     end
+
+    it "handles nil end_time gracefully" do
+      # Test line 233 - when @end_time is nil
+      rule.instance_variable_set(:@end_time, nil)
+      hash = rule.to_h
+
+      expect(hash[:applied_at]).to be_nil
+    end
   end
 
   describe "RuleChange" do
@@ -310,6 +344,26 @@ RSpec.describe Sxn::Rules::BaseRule do
         expect(File.directory?(temp_dir)).to be false
       end
 
+      it "does not remove non-empty directories" do
+        # Test line 345 - directory is not empty
+        Dir.mkdir(temp_dir)
+        File.write(File.join(temp_dir, "file.txt"), "content")
+        change = described_class::RuleChange.new(:directory_created, temp_dir)
+
+        # Should not raise error, directory should remain
+        expect { change.rollback }.not_to raise_error
+        expect(File.directory?(temp_dir)).to be true
+      end
+
+      it "handles rollback when directory does not exist" do
+        # Test line 345 - directory doesn't exist
+        non_existent_dir = File.join(session_path, "non_existent")
+        change = described_class::RuleChange.new(:directory_created, non_existent_dir)
+
+        # Should not raise error
+        expect { change.rollback }.not_to raise_error
+      end
+
       it "restores modified files from backup" do
         original_content = "original"
         backup_file = "#{temp_file}.backup"
@@ -324,6 +378,15 @@ RSpec.describe Sxn::Rules::BaseRule do
         expect(File.exist?(backup_file)).to be false
       end
 
+      it "handles file_modified without backup_path" do
+        # Test line 343 - when backup_path is nil or doesn't exist
+        File.write(temp_file, "modified")
+        change = described_class::RuleChange.new(:file_modified, temp_file, {})
+
+        # Should not raise error even without backup
+        expect { change.rollback }.not_to raise_error
+      end
+
       it "removes symlinks" do
         source_file = File.join(project_path, "source.txt")
         File.write(source_file, "test")
@@ -334,6 +397,15 @@ RSpec.describe Sxn::Rules::BaseRule do
         expect(File.symlink?(temp_file)).to be true
         change.rollback
         expect(File.exist?(temp_file)).to be false
+      end
+
+      it "handles rollback when symlink does not exist" do
+        # Test line 347 - symlink doesn't exist
+        non_existent_link = File.join(session_path, "non_existent_link")
+        change = described_class::RuleChange.new(:symlink_created, non_existent_link)
+
+        # Should not raise error
+        expect { change.rollback }.not_to raise_error
       end
 
       it "handles command execution rollback" do

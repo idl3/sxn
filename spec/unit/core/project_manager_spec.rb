@@ -695,6 +695,59 @@ RSpec.describe Sxn::Core::ProjectManager do
         project_manager.get_project_rules("non-existent")
       end.to raise_error(Sxn::ProjectNotFoundError, "Project 'non-existent' not found")
     end
+
+    it "handles OpenStruct projects config with symbol key" do
+      project[:type] = "rails"
+      config_hash = { "test-project": { "rules" => custom_rules } }
+      ostruct_config = OpenStruct.new(projects: OpenStruct.new(config_hash))
+      allow(mock_config_manager).to receive(:get_config).and_return(ostruct_config)
+
+      result = project_manager.get_project_rules("test-project")
+
+      expect(result).to have_key("copy_files")
+      expect(result).to have_key("custom_rule")
+    end
+
+    it "handles OpenStruct project_config with symbol key for rules" do
+      project[:type] = "rails"
+      project_config_hash = { rules: custom_rules }
+      config_hash = { "test-project" => OpenStruct.new(project_config_hash) }
+      ostruct_config = OpenStruct.new(projects: OpenStruct.new(config_hash))
+      allow(mock_config_manager).to receive(:get_config).and_return(ostruct_config)
+
+      result = project_manager.get_project_rules("test-project")
+
+      expect(result).to have_key("copy_files")
+      expect(result).to have_key("custom_rule")
+    end
+
+    it "handles OpenStruct rules conversion" do
+      project[:type] = "rails"
+      ostruct_rules = OpenStruct.new(custom_rules)
+      project_config_with_ostruct_rules = { "rules" => ostruct_rules }
+      config = double(projects: { "test-project" => project_config_with_ostruct_rules })
+      allow(mock_config_manager).to receive(:get_config).and_return(config)
+
+      result = project_manager.get_project_rules("test-project")
+
+      # OpenStruct.to_h converts keys to symbols, which are then added to the result
+      # They won't merge with default rules that have string keys, but will be added as new keys
+      expect(result).to have_key("copy_files")
+      expect(result).to have_key(:custom_rule) # Symbol key from OpenStruct.to_h
+      expect(result[:custom_rule]).to eq("custom_value")
+    end
+
+    it "handles Hash projects with symbol key for rules" do
+      project[:type] = "rails"
+      custom_rules_with_symbol = { rules: custom_rules }
+      config = double(projects: { "test-project" => custom_rules_with_symbol })
+      allow(mock_config_manager).to receive(:get_config).and_return(config)
+
+      result = project_manager.get_project_rules("test-project")
+
+      expect(result).to have_key("copy_files")
+      expect(result).to have_key("custom_rule")
+    end
   end
 
   describe "private methods" do
