@@ -1,6 +1,0 @@
-module Sxn
-  module Commands
-    # Commands module contains all CLI command classes
-    # Each command class is defined in its own RBS file under sig/sxn/commands/
-  end
-end

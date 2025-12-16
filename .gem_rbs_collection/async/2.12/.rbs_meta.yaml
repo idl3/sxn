@@ -1,9 +1,0 @@
----
-name: async
-version: '2.12'
-source:
-  type: git
-  name: ruby/gem_rbs_collection
-  revision: 6a12ebdb5a08a2eecc32622efce9c644684c1c52
-  remote: https://github.com/ruby/gem_rbs_collection.git
-  repo_dir: gems
