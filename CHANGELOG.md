@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2025-12-16
+
+### Added
+- Session templates support for creating sessions from predefined configurations
+  - `sxn templates list` to view available templates
+  - `sxn templates show <name>` to view template details
+  - `--template` option for `sxn sessions add` to create sessions from templates
+- TemplateManager for template operations and validation
+- TemplatesConfig for loading templates from `templates.yml`
+- Session template error classes for better error handling
+
+### Fixed
+- Project rules now correctly apply when creating sessions from templates
+
 ## [0.2.5] - 2025-11-30
 
 ### Added
@@ -101,6 +115,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial placeholder release
 - Basic gem structure
 
+[0.3.0]: https://github.com/idl3/sxn/compare/v0.2.5...v0.3.0
+[0.2.5]: https://github.com/idl3/sxn/compare/v0.2.4...v0.2.5
 [0.2.4]: https://github.com/idl3/sxn/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/idl3/sxn/compare/v0.2.1...v0.2.3
 [0.2.1]: https://github.com/idl3/sxn/compare/v0.2.0...v0.2.1

@@ -21,7 +21,7 @@ RSpec.describe Sxn::VERSION do
   end
 
   it "has a valid version value" do
-    expect(Sxn::VERSION).to eq("0.2.5")
+    expect(Sxn::VERSION).to eq("0.3.0")
   end
 end
 
