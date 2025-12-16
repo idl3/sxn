@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "thor"
+require "json"
 
 module Sxn
   module Commands
@@ -11,6 +12,11 @@ module Sxn
       # Shell integration marker - used to identify sxn shell functions
       SHELL_MARKER = "# sxn shell integration"
       SHELL_MARKER_END = "# end sxn shell integration"
+
+      # Claude Code integration paths
+      CLAUDE_HELPERS_DIR = File.join(Dir.home, ".claude", "helpers")
+      CLAUDE_HOOK_SCRIPT = "sxn-session-check.sh"
+      CLAUDE_HOOK_PATH = File.join(CLAUDE_HELPERS_DIR, CLAUDE_HOOK_SCRIPT)
 
       # Shell function that gets installed
       SHELL_FUNCTION = <<~SHELL.freeze
@@ -40,6 +46,7 @@ module Sxn
       option :force, type: :boolean, desc: "Force initialization even if already initialized"
       option :auto_detect, type: :boolean, default: true, desc: "Automatically detect and register projects"
       option :quiet, type: :boolean, aliases: "-q", desc: "Suppress interactive prompts"
+      option :claude_code, type: :boolean, default: true, desc: "Install Claude Code session enforcement hooks"
 
       def initialize(args = ARGV, local_options = {}, config = {})
         super
@@ -72,6 +79,9 @@ module Sxn
           # Auto-detect projects if enabled
           auto_detect_projects if options[:auto_detect] && !options[:quiet]
 
+          # Install Claude Code hooks if enabled
+          setup_claude_code_hooks if options[:claude_code]
+
           display_next_steps
         rescue Sxn::Error => e
           @ui.error("Initialization failed: #{e.message}")
@@ -80,6 +90,27 @@ module Sxn
           @ui.error("Unexpected error: #{e.message}")
           @ui.debug(e.backtrace.join("\n")) if ENV["SXN_DEBUG"]
           exit(1)
+        end
+      end
+
+      desc "install_claude_hooks", "Install Claude Code session enforcement hooks"
+      option :force, type: :boolean, default: false, desc: "Force reinstallation even if already installed"
+      option :uninstall, type: :boolean, default: false, desc: "Remove Claude Code hooks"
+      def install_claude_hooks
+        @ui.section("Claude Code Hooks")
+
+        # Check if sxn is initialized
+        unless @config_manager.initialized?
+          @ui.error("Project not initialized. Run 'sxn init' first.")
+          exit(1)
+        end
+
+        if options[:uninstall]
+          uninstall_claude_code_hooks
+        else
+          setup_claude_code_hooks
+          @ui.newline
+          @ui.recovery_suggestion("Claude Code will now enforce session-based development in this project")
         end
       end
 
@@ -266,6 +297,180 @@ module Sxn
           @ui.info("💡 Detected projects are ready to use!")
         else
           @ui.recovery_suggestion("Register your projects with 'sxn projects add <name> <path>'")
+        end
+      end
+
+      # Claude Code Integration
+      def setup_claude_code_hooks
+        @ui.subsection("Claude Code Integration")
+
+        # Step 1: Install global hook script
+        install_claude_hook_script
+
+        # Step 2: Setup project-level settings
+        setup_project_claude_settings
+      end
+
+      def install_claude_hook_script
+        # Create helpers directory if needed
+        FileUtils.mkdir_p(CLAUDE_HELPERS_DIR)
+
+        if File.exist?(CLAUDE_HOOK_PATH) && !options[:force]
+          @ui.info("Global hook script already installed at #{CLAUDE_HOOK_PATH}")
+          return
+        end
+
+        @ui.progress_start("Installing global hook script")
+
+        # Use template engine to generate hook script
+        template_path = File.join(
+          File.dirname(__FILE__), "..", "templates", "claude_code", "sxn-session-check.sh.liquid"
+        )
+
+        if File.exist?(template_path)
+          # Process template with variables
+          template_content = File.read(template_path)
+          processor = Sxn::Templates::TemplateProcessor.new
+          result = processor.process(template_content, { timestamp: Time.now })
+          File.write(CLAUDE_HOOK_PATH, result)
+        else
+          # Fallback: copy from existing global location if available
+          @ui.warning("Template not found, skipping hook script installation")
+          @ui.progress_done
+          return
+        end
+
+        # Make executable
+        FileUtils.chmod(0o755, CLAUDE_HOOK_PATH)
+
+        @ui.progress_done
+        @ui.success("Installed hook script to #{CLAUDE_HOOK_PATH}")
+      end
+
+      def setup_project_claude_settings
+        project_claude_dir = File.join(Dir.pwd, ".claude")
+        project_settings_path = File.join(project_claude_dir, "settings.json")
+
+        # Create .claude directory if needed
+        FileUtils.mkdir_p(project_claude_dir)
+
+        @ui.progress_start("Configuring project Claude settings")
+
+        if File.exist?(project_settings_path)
+          # Merge hooks into existing settings
+          merge_claude_hooks_into_settings(project_settings_path)
+        else
+          # Create new settings file
+          create_claude_settings(project_settings_path)
+        end
+
+        @ui.progress_done
+        @ui.success("Claude Code session enforcement enabled")
+        @ui.info("Hook script: #{CLAUDE_HOOK_PATH}")
+      end
+
+      def create_claude_settings(settings_path)
+        settings = {
+          "hooks" => {
+            "UserPromptSubmit" => [
+              {
+                "matcher" => "",
+                "hooks" => [
+                  {
+                    "type" => "command",
+                    "command" => CLAUDE_HOOK_PATH,
+                    "timeout" => 15_000
+                  }
+                ]
+              }
+            ]
+          }
+        }
+
+        File.write(settings_path, JSON.pretty_generate(settings))
+      end
+
+      def merge_claude_hooks_into_settings(settings_path)
+        existing = JSON.parse(File.read(settings_path))
+
+        # Initialize hooks if not present
+        existing["hooks"] ||= {}
+
+        # Check if UserPromptSubmit already configured
+        if existing["hooks"]["UserPromptSubmit"]
+          # Check if our hook is already there
+          hooks = existing["hooks"]["UserPromptSubmit"]
+          already_installed = hooks.any? do |h|
+            h["hooks"]&.any? { |inner| inner["command"]&.include?("sxn-session-check") }
+          end
+
+          if already_installed
+            @ui.info("Claude Code hooks already configured in project settings")
+            return
+          end
+        end
+
+        # Add our hook
+        existing["hooks"]["UserPromptSubmit"] ||= []
+        existing["hooks"]["UserPromptSubmit"] << {
+          "matcher" => "",
+          "hooks" => [
+            {
+              "type" => "command",
+              "command" => CLAUDE_HOOK_PATH,
+              "timeout" => 15_000
+            }
+          ]
+        }
+
+        File.write(settings_path, JSON.pretty_generate(existing))
+      end
+
+      def uninstall_claude_code_hooks
+        @ui.subsection("Removing Claude Code Integration")
+
+        # Remove from project settings
+        remove_project_claude_hooks
+
+        # NOTE: We don't remove the global hook script as other projects may use it
+        @ui.info("Note: Global hook script at #{CLAUDE_HOOK_PATH} was not removed")
+        @ui.info("      (other projects may still use it)")
+      end
+
+      def remove_project_claude_hooks
+        project_settings_path = File.join(Dir.pwd, ".claude", "settings.json")
+
+        unless File.exist?(project_settings_path)
+          @ui.info("No Claude settings file found in this project")
+          return
+        end
+
+        @ui.progress_start("Removing hooks from project settings")
+
+        existing = JSON.parse(File.read(project_settings_path))
+
+        if existing["hooks"]&.dig("UserPromptSubmit")
+          # Remove hooks that reference sxn-session-check
+          existing["hooks"]["UserPromptSubmit"].reject! do |h|
+            h["hooks"]&.any? { |inner| inner["command"]&.include?("sxn-session-check") }
+          end
+
+          # Clean up empty arrays
+          existing["hooks"].delete("UserPromptSubmit") if existing["hooks"]["UserPromptSubmit"] && existing["hooks"]["UserPromptSubmit"].empty?
+          existing.delete("hooks") if existing["hooks"] && existing["hooks"].empty?
+
+          if existing.empty?
+            File.delete(project_settings_path)
+            @ui.progress_done
+            @ui.success("Removed settings.json (was empty after removing hooks)")
+          else
+            File.write(project_settings_path, JSON.pretty_generate(existing))
+            @ui.progress_done
+            @ui.success("Removed sxn hooks from project settings")
+          end
+        else
+          @ui.progress_done
+          @ui.info("No sxn hooks found in project settings")
         end
       end
     end

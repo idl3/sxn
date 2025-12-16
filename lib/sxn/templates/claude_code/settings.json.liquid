@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{ hook_script_path }}",
+            "timeout": 15000
+          }
+        ]
+      }
+    ]
+  }
+}
