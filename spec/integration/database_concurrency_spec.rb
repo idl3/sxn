@@ -31,7 +31,7 @@ RSpec.describe "Database Concurrency and Transactions", type: :integration do
 
       threads = 2.times.map do |i|
         Thread.new do
-          db = i == 0 ? db1 : db2
+          db = i.zero? ? db1 : db2
           10.times do
             session = db.get_session(session_id)
             results << session[:name]
