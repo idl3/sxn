@@ -1,0 +1,58 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "bundler/setup"
+require "sxn"
+require "sxn/mcp"
+
+# Parse command line options
+require "optparse"
+
+options = {}
+OptionParser.new do |opts|
+  opts.banner = "Usage: sxn-mcp [options]"
+
+  opts.on("-w", "--workspace PATH", "Workspace path (default: auto-discover)") do |path|
+    options[:workspace] = path
+  end
+
+  opts.on("-t", "--transport TYPE", "Transport type: stdio (default), http") do |type|
+    options[:transport] = type
+  end
+
+  opts.on("-p", "--port PORT", Integer, "HTTP port (default: 3000)") do |port|
+    options[:port] = port
+  end
+
+  opts.on("-v", "--version", "Show version") do
+    puts "sxn-mcp #{Sxn::VERSION}"
+    exit
+  end
+
+  opts.on("-h", "--help", "Show help") do
+    puts opts
+    exit
+  end
+end.parse!
+
+# Create and run server
+begin
+  server = Sxn::MCP::Server.new(workspace_path: options[:workspace])
+
+  case options[:transport]
+  when "http"
+    port = options[:port] || 3000
+    warn "Starting sxn MCP server on http://localhost:#{port}"
+    server.run_http(port: port)
+  else
+    # Default to stdio transport
+    server.run_stdio
+  end
+rescue Interrupt
+  # Clean exit on Ctrl+C
+  exit 0
+rescue StandardError => e
+  warn "Error: #{e.message}"
+  warn e.backtrace.first(5).join("\n") if ENV["SXN_DEBUG"]
+  exit 1
+end

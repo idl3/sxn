@@ -53,6 +53,7 @@ Gem::Specification.new do |spec|
   # MCP server dependencies
   spec.add_dependency "async", "~> 2.0"                  # Async operations
   spec.add_dependency "json-schema", "~> 4.0"            # Schema validation
+  spec.add_dependency "mcp", "~> 0.4"                    # MCP server SDK
 
   # Security and encryption
   spec.add_dependency "bcrypt", "~> 3.1"                 # Password hashing
