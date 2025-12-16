@@ -115,7 +115,7 @@ RSpec.describe "Templates Performance", :performance do
       elapsed = Time.now - start_time
 
       expect(elapsed).to be < 5.0, "Many conditionals processing took #{elapsed}s, expected < 5.0s"
-      expect(result.length).to be.positive?
+      expect(result.length).to be_positive
     end
   end
 

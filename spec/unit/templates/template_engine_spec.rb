@@ -261,7 +261,7 @@ RSpec.describe Sxn::Templates::TemplateEngine do
 
       expect(info[:name]).to eq("test")
       expect(info[:path]).to eq(template_path)
-      expect(info[:size]).to be.positive?
+      expect(info[:size]).to be_positive
       expect(info[:variables]).to include("user", "git")
       expect(info[:syntax_valid]).to be true
     end

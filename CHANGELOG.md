@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2025-12-17
+
+### Added
+- **MCP Server**: Model Context Protocol server for AI assistant integration
+  - Enables Claude Code and other AI assistants to manage sessions programmatically
+  - STDIO and HTTP transport support
+  - Session management tools: create, list, get, delete, archive, activate, swap
+  - Worktree management tools: list, add, remove
+  - Project management tools: list, add, get
+  - Template and rules tools for automation
+  - Guided workflow prompts for session creation
+  - Dynamic resources for session data access
+- New CLI command: `sxn mcp start` to launch the MCP server
+- New binary: `sxn-mcp` for direct MCP server execution
+- `--template` option for `sxn sessions add` command
+
+### Documentation
+- Added MCP_IMPLEMENTATION.md with architecture and usage details
+
 ## [0.2.5] - 2025-11-30
 
 ### Added

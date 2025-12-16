@@ -974,7 +974,7 @@ RSpec.describe Sxn::Rules::ProjectDetector do
         File.write(File.join(project_path, "package.json"), JSON.pretty_generate(package_json))
 
         confidence = detector.send(:calculate_type_confidence, :nodejs, described_class::PROJECT_TYPES[:nodejs])
-        expect(confidence).to be.positive?
+        expect(confidence).to be_positive
       end
     end
 
@@ -1484,7 +1484,7 @@ RSpec.describe Sxn::Rules::ProjectDetector do
     it "returns confidence score for known project type" do
       File.write(File.join(project_path, "package.json"), '{"name": "test"}')
       confidence = detector.send(:calculate_confidence_score, :javascript)
-      expect(confidence).to be.positive?
+      expect(confidence).to be_positive
     end
   end
 
@@ -1494,7 +1494,7 @@ RSpec.describe Sxn::Rules::ProjectDetector do
         File.write(File.join(project_path, "package.json"), '{"name": "test"}')
         confidence = detector.send(:calculate_type_confidence, :nodejs,
                                    { files: ["package.json"], patterns: {}, confidence: :medium })
-        expect(confidence).to be.positive?
+        expect(confidence).to be_positive
       end
 
       it "applies confidence modifiers" do

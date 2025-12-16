@@ -373,7 +373,7 @@ RSpec.describe "Templates Integration", type: :integration do
       # Verify all files were created
       created_files.each do |file_path|
         expect(File).to exist(file_path), "Expected file to exist: #{file_path}"
-        expect(File.size(file_path)).to be.positive?, "Expected file to have content: #{file_path}"
+        expect(File.size(file_path)).to be_positive, "Expected file to have content: #{file_path}"
       end
     end
 

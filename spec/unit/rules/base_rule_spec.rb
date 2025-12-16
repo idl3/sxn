@@ -178,7 +178,7 @@ RSpec.describe Sxn::Rules::BaseRule do
     it "calculates duration" do
       rule.apply
       expect(rule.duration).to be_a(Float)
-      expect(rule.duration).to be.positive?
+      expect(rule.duration).to be_positive
     end
 
     it "raises NotImplementedError when calling apply on BaseRule directly" do
