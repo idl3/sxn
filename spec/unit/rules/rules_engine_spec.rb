@@ -140,7 +140,7 @@ RSpec.describe Sxn::Rules::RulesEngine do
       it "returns execution result with timing" do
         result = engine.apply_rules(simple_rules_config)
 
-        expect(result.total_duration).to be > 0
+        expect(result.total_duration).to be_positive
         expect(result.to_h).to include(
           success: true,
           total_rules: 1,
@@ -525,7 +525,7 @@ RSpec.describe Sxn::Rules::RulesEngine do
         sleep(0.01) # Small delay to ensure measurable duration
         result.finish!
 
-        expect(result.total_duration).to be > 0
+        expect(result.total_duration).to be_positive
       end
     end
 

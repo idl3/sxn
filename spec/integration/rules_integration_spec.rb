@@ -258,7 +258,7 @@ RSpec.describe "Rules System Integration" do
         expect(result_hash[:applied_rules]).to contain_exactly(
           "copy_sensitive_files", "install_dependencies", "generate_documentation"
         )
-        expect(result_hash[:total_duration]).to be > 0
+        expect(result_hash[:total_duration]).to be_positive
       end
     end
 

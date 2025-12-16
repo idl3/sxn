@@ -225,6 +225,13 @@ module Sxn
       handle_error(e)
     end
 
+    desc "mcp SUBCOMMAND", "Manage MCP server for Claude Code"
+    def mcp(subcommand = nil, *args)
+      Commands::MCP.start([subcommand, *args].compact)
+    rescue Sxn::Error => e
+      handle_error(e)
+    end
+
     desc "status", "Show overall sxn status"
     def status
       show_status

@@ -115,7 +115,7 @@ RSpec.describe "Database Module Comprehensive Coverage" do
       results = db.search_sessions("test", limit: 10)
 
       # Should find sessions with descriptions containing the search term
-      expect(results.length).to be > 0
+      expect(results.length).to be_positive
       results.each do |session|
         description_match = session[:description]&.match(/test/i)
         name_match = session[:name]&.match(/test/i)
@@ -277,7 +277,7 @@ RSpec.describe "Database Module Comprehensive Coverage" do
 
       # At least some operations should succeed
       successful_operations = results.compact.length
-      expect(successful_operations).to be > 0
+      expect(successful_operations).to be_positive
     end
 
     it "recovers from transaction rollbacks" do

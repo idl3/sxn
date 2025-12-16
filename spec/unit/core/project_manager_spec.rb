@@ -325,7 +325,7 @@ RSpec.describe Sxn::Core::ProjectManager do
         Dir.chdir(test_base_path)
         results = project_manager.detect_projects
 
-        expect(results.size).to be > 0
+        expect(results.size).to be_positive
         detected_names = results.map { |p| p[:name] }
         expect(detected_names).to include("rails_project")
       ensure

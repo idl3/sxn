@@ -13,6 +13,7 @@ require_relative "sxn/templates"
 require_relative "sxn/ui"
 require_relative "sxn/commands"
 require_relative "sxn/CLI"
+# MCP module is loaded on demand via require "sxn/mcp"
 
 module Sxn
   class << self

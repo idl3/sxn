@@ -198,7 +198,7 @@ RSpec.describe Sxn::Rules::BaseRule do
     it "calculates duration" do
       rule.apply
       expect(rule.duration).to be_a(Float)
-      expect(rule.duration).to be > 0
+      expect(rule.duration).to be_positive
     end
 
     it "returns nil duration when end_time is not set" do
