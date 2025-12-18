@@ -16,6 +16,16 @@ RSpec.describe Sxn::Commands::Init, "Claude Code Integration" do
   let(:project_claude_dir) { File.join(project_dir, ".claude") }
   let(:project_settings_path) { File.join(project_claude_dir, "settings.json") }
 
+  # Template paths - use temp dir to avoid modifying real source files
+  let(:real_template_path) do
+    File.join(
+      File.dirname(__FILE__), "..", "..", "..", "lib", "sxn",
+      "templates", "claude_code", "sxn-session-check.sh.liquid"
+    )
+  end
+  let(:temp_template_dir) { File.join(temp_dir, "lib", "sxn", "templates", "claude_code") }
+  let(:temp_template_path) { File.join(temp_template_dir, "sxn-session-check.sh.liquid") }
+
   let(:init_command) { described_class.new }
   let(:ui_output) { instance_double(Sxn::UI::Output) }
   let(:config_manager) { instance_double(Sxn::Core::ConfigManager) }
@@ -66,20 +76,20 @@ RSpec.describe Sxn::Commands::Init, "Claude Code Integration" do
   end
 
   describe "#install_claude_hook_script" do
-    let(:template_path) do
-      File.join(
-        File.dirname(__FILE__), "..", "..", "..", "lib", "sxn",
-        "templates", "claude_code", "sxn-session-check.sh.liquid"
-      )
-    end
     let(:template_content) { "#!/usr/bin/env bash\n# Template content" }
     let(:processed_content) { "#!/usr/bin/env bash\n# Processed content" }
 
     before do
-      # Create actual template file for realistic testing
-      template_dir = File.dirname(template_path)
-      FileUtils.mkdir_p(template_dir)
-      File.write(template_path, template_content)
+      # Create template file in temp directory (not the real source tree!)
+      FileUtils.mkdir_p(temp_template_dir)
+      File.write(temp_template_path, template_content)
+
+      # Stub the template path lookup to use our temp directory
+      stub_const("Sxn::Commands::Init::TEMPLATE_DIR", File.join(temp_dir, "lib", "sxn", "templates"))
+      allow(File).to receive(:join).and_call_original
+      allow(File).to receive(:join)
+        .with(anything, "..", "templates", "claude_code", "sxn-session-check.sh.liquid")
+        .and_return(temp_template_path)
     end
 
     context "when helpers directory does not exist" do
@@ -174,8 +184,8 @@ RSpec.describe Sxn::Commands::Init, "Claude Code Integration" do
 
     context "when template file does not exist" do
       before do
-        # Remove the template file we created
-        FileUtils.rm_f(template_path)
+        # Remove the template file from our temp directory (not the real source!)
+        FileUtils.rm_f(temp_template_path)
       end
 
       it "shows warning and skips installation" do
@@ -496,13 +506,15 @@ RSpec.describe Sxn::Commands::Init, "Claude Code Integration" do
       # Stub prompt
       allow(prompt).to receive(:sessions_folder_setup).and_return("sessions")
 
-      # Create template for hook script
-      template_path = File.join(
-        File.dirname(__FILE__), "..", "..", "..", "lib", "sxn",
-        "templates", "claude_code", "sxn-session-check.sh.liquid"
-      )
-      FileUtils.mkdir_p(File.dirname(template_path))
-      File.write(template_path, "#!/usr/bin/env bash\n# Test template")
+      # Create template for hook script in temp directory (not real source!)
+      FileUtils.mkdir_p(temp_template_dir)
+      File.write(temp_template_path, "#!/usr/bin/env bash\n# Test template")
+
+      # Stub the template path lookup to use our temp directory
+      allow(File).to receive(:join).and_call_original
+      allow(File).to receive(:join)
+        .with(anything, "..", "templates", "claude_code", "sxn-session-check.sh.liquid")
+        .and_return(temp_template_path)
 
       allow(template_processor).to receive(:process).and_return("#!/usr/bin/env bash\n# Processed")
     end
@@ -563,17 +575,16 @@ RSpec.describe Sxn::Commands::Init, "Claude Code Integration" do
   end
 
   describe "error handling" do
-    let(:template_path) do
-      File.join(
-        File.dirname(__FILE__), "..", "..", "..", "lib", "sxn",
-        "templates", "claude_code", "sxn-session-check.sh.liquid"
-      )
-    end
-
     before do
-      # Ensure template exists for error tests
-      FileUtils.mkdir_p(File.dirname(template_path))
-      File.write(template_path, "#!/usr/bin/env bash\n")
+      # Create template in temp directory (not real source!)
+      FileUtils.mkdir_p(temp_template_dir)
+      File.write(temp_template_path, "#!/usr/bin/env bash\n")
+
+      # Stub the template path lookup to use our temp directory
+      allow(File).to receive(:join).and_call_original
+      allow(File).to receive(:join)
+        .with(anything, "..", "templates", "claude_code", "sxn-session-check.sh.liquid")
+        .and_return(temp_template_path)
     end
 
     context "when helpers directory creation fails" do
@@ -663,16 +674,17 @@ RSpec.describe Sxn::Commands::Init, "Claude Code Integration" do
   end
 
   describe "file permissions and ownership" do
-    let(:template_path) do
-      File.join(
-        File.dirname(__FILE__), "..", "..", "..", "lib", "sxn",
-        "templates", "claude_code", "sxn-session-check.sh.liquid"
-      )
-    end
-
     before do
-      FileUtils.mkdir_p(File.dirname(template_path))
-      File.write(template_path, "#!/usr/bin/env bash\n")
+      # Create template in temp directory (not real source!)
+      FileUtils.mkdir_p(temp_template_dir)
+      File.write(temp_template_path, "#!/usr/bin/env bash\n")
+
+      # Stub the template path lookup to use our temp directory
+      allow(File).to receive(:join).and_call_original
+      allow(File).to receive(:join)
+        .with(anything, "..", "templates", "claude_code", "sxn-session-check.sh.liquid")
+        .and_return(temp_template_path)
+
       allow(template_processor).to receive(:process).and_return("#!/usr/bin/env bash\n")
     end
 
