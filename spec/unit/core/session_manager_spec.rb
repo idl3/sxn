@@ -226,6 +226,52 @@ RSpec.describe Sxn::Core::SessionManager do
         end.to raise_error(Sxn::SessionHasChangesError)
       end
     end
+
+    context "with clean worktree (no uncommitted changes)" do
+      let(:worktree_path) { File.join(sessions_dir, "test-session", "clean-worktree") }
+
+      before do
+        session_manager.add_worktree_to_session("test-session", "clean-project", worktree_path, "main")
+
+        # Create a clean git repository with no uncommitted changes
+        FileUtils.mkdir_p(worktree_path)
+        Dir.chdir(worktree_path) do
+          system("git init", out: File::NULL, err: File::NULL)
+          system("git config user.email 'test@example.com'", out: File::NULL, err: File::NULL)
+          system("git config user.name 'Test User'", out: File::NULL, err: File::NULL)
+          File.write("test.txt", "content")
+          system("git add test.txt", out: File::NULL, err: File::NULL)
+          system("git commit -m 'Initial commit'", out: File::NULL, err: File::NULL)
+        end
+      end
+
+      it "allows removal without force flag when worktree is clean" do
+        # Test line 308: uncommitted << project if staged || unstaged || untracked
+        # This tests the else branch (when there are no changes)
+        result = session_manager.remove_session("test-session")
+
+        expect(result).to be(true)
+        expect(session_manager.get_session("test-session")).to be_nil
+      end
+    end
+
+    context "with non-existent worktree directory" do
+      let(:worktree_path) { File.join(sessions_dir, "test-session", "missing-worktree") }
+
+      before do
+        # Add worktree reference but don't create the directory
+        session_manager.add_worktree_to_session("test-session", "missing-project", worktree_path, "main")
+      end
+
+      it "skips checking non-existent worktree and allows removal" do
+        # Test line 296: next unless File.directory?(path)
+        # This tests when directory doesn't exist
+        result = session_manager.remove_session("test-session")
+
+        expect(result).to be(true)
+        expect(session_manager.get_session("test-session")).to be_nil
+      end
+    end
   end
 
   describe "#list_sessions" do
@@ -257,6 +303,17 @@ RSpec.describe Sxn::Core::SessionManager do
       sessions = session_manager.list_sessions(limit: 1)
 
       expect(sessions.length).to eq(1)
+    end
+
+    it "merges additional options into filters" do
+      # Test line 97: filter_hash.merge!(options) if options.any?
+      database = session_manager.instance_variable_get(:@database)
+      expect(database).to receive(:list_sessions).with(
+        filters: hash_including(custom_field: "custom_value"),
+        limit: 100
+      ).and_return([])
+
+      session_manager.list_sessions(custom_field: "custom_value")
     end
   end
 
@@ -611,6 +668,35 @@ RSpec.describe Sxn::Core::SessionManager do
       # Verify directory was removed
       expect(File.exist?(worktree_path)).to be(false)
     end
+
+    it "successfully removes worktree when git command succeeds" do
+      # Test line 333: warn "..." unless success
+      # This tests when success is true (no warning should be output)
+      allow(session_manager).to receive(:find_parent_repository).and_return("/fake/repo/.git")
+      allow(Dir).to receive(:chdir).with("/fake/repo/.git").and_yield
+      allow(session_manager).to receive(:system).and_return(true)
+
+      expect do
+        session_manager.send(:remove_session_worktrees, session_manager.get_session("test-session"))
+      end.not_to output(/Warning/).to_stderr
+    end
+
+    context "with non-existent worktree directory" do
+      let(:missing_worktree_path) { File.join(sessions_dir, "test-session", "missing") }
+
+      before do
+        # Add worktree reference but don't create the directory
+        session_manager.add_worktree_to_session("test-session", "missing-project", missing_worktree_path, "main")
+      end
+
+      it "skips removal for non-existent directory" do
+        # Test line 324: next unless File.directory?(path)
+        # This tests when the directory doesn't exist during removal
+        expect do
+          session_manager.send(:remove_session_worktrees, session_manager.get_session("test-session"))
+        end.not_to raise_error
+      end
+    end
   end
 
   describe "private methods" do
@@ -636,6 +722,15 @@ RSpec.describe Sxn::Core::SessionManager do
 
       it "returns nil if gitdir doesn't contain worktrees" do
         File.write(git_file_path, "gitdir: /repo/.git")
+
+        parent_repo = session_manager.send(:find_parent_repository, worktree_path)
+        expect(parent_repo).to be_nil
+      end
+
+      it "returns nil if content doesn't start with gitdir:" do
+        # Test line 352: if content.start_with?("gitdir:")
+        # This tests the else branch (when content doesn't start with "gitdir:")
+        File.write(git_file_path, "ref: refs/heads/main")
 
         parent_repo = session_manager.send(:find_parent_repository, worktree_path)
         expect(parent_repo).to be_nil

@@ -772,30 +772,211 @@ RSpec.describe Sxn::Rules::RulesEngine do
       end
     end
 
-    describe "logging edge cases" do
-      context "when logger is nil" do
-        let(:nil_logger_engine) { described_class.new(project_path, session_path, logger: nil) }
+    describe "logging edge cases with nil logger" do
+      let(:nil_logger_engine) { described_class.new(project_path, session_path, logger: nil) }
 
-        it "handles nil logger in apply_rules (line 153 else branch)" do
-          result = nil_logger_engine.apply_rules(simple_rules_config)
-          expect(result.success?).to be true
-        end
+      it "handles nil logger in apply_rules execution info (line 153)" do
+        # Test the safe navigation operator when logger is nil
+        result = nil_logger_engine.apply_rules(simple_rules_config)
+        expect(result.success?).to be true
+      end
 
-        it "handles nil logger in rollback_rules (line 181 else branch)" do
+      it "handles nil logger in ValidationError rescue (line 163)" do
+        # Test nil logger when ValidationError is caught
+        allow(nil_logger_engine).to receive(:load_rules).and_raise(Sxn::Rules::ValidationError, "Validation failed")
+
+        expect do
           nil_logger_engine.apply_rules(simple_rules_config)
-          expect(nil_logger_engine.rollback_rules).to be true
-        end
+        end.to raise_error(Sxn::Rules::ValidationError)
+      end
 
-        it "handles nil logger in rule rollback (line 186, 188, 191 else branches)" do
-          # Apply a rule first
-          nil_logger_engine.apply_rules(simple_rules_config)
+      it "handles nil logger in StandardError rescue (line 166)" do
+        # Test nil logger when StandardError is caught
+        allow(nil_logger_engine).to receive(:load_rules).and_raise(StandardError, "Engine error")
 
-          # Mock rollback failure to test line 191 else branch
-          applied_rules = nil_logger_engine.instance_variable_get(:@applied_rules)
-          allow(applied_rules.first).to receive(:rollback).and_raise(StandardError, "Rollback failed")
+        result = nil_logger_engine.apply_rules(simple_rules_config)
+        expect(result.success?).to be false
+        expect(result.errors.first[:rule]).to eq("engine")
+      end
 
-          expect(nil_logger_engine.rollback_rules).to be true
-        end
+      it "handles nil logger in rollback_rules info (line 181)" do
+        # Test nil logger in rollback
+        nil_logger_engine.apply_rules(simple_rules_config)
+        expect(nil_logger_engine.rollback_rules).to be true
+      end
+
+      it "handles nil logger when rule is rolled back (line 186)" do
+        # Apply a rule first, then rollback with rollbackable rule
+        nil_logger_engine.apply_rules(simple_rules_config)
+        applied_rules = nil_logger_engine.instance_variable_get(:@applied_rules)
+        allow(applied_rules.first).to receive(:rollbackable?).and_return(true)
+        allow(applied_rules.first).to receive(:rollback)
+
+        expect(nil_logger_engine.rollback_rules).to be true
+      end
+
+      it "handles nil logger when rule is not rollbackable (line 188)" do
+        # Apply a rule first, then rollback with non-rollbackable rule
+        nil_logger_engine.apply_rules(simple_rules_config)
+        applied_rules = nil_logger_engine.instance_variable_get(:@applied_rules)
+        allow(applied_rules.first).to receive(:rollbackable?).and_return(false)
+
+        expect(nil_logger_engine.rollback_rules).to be true
+      end
+
+      it "handles nil logger when rollback fails (line 191)" do
+        # Apply a rule first, then make rollback fail
+        nil_logger_engine.apply_rules(simple_rules_config)
+        applied_rules = nil_logger_engine.instance_variable_get(:@applied_rules)
+        allow(applied_rules.first).to receive(:rollback).and_raise(StandardError, "Rollback error")
+
+        expect(nil_logger_engine.rollback_rules).to be true
+      end
+
+      it "handles nil logger when rule loading fails (line 267)" do
+        # Test nil logger when rule creation fails
+        allow(nil_logger_engine).to receive(:load_single_rule).and_raise(RuntimeError, "Load error")
+
+        rules = nil_logger_engine.send(:load_rules, simple_rules_config)
+        expect(rules).to be_empty
+      end
+
+      it "handles nil logger when rule validation fails (line 309)" do
+        # Test nil logger when validation fails during validate_rules
+        config = {
+          "failing_rule" => {
+            "type" => "copy_files",
+            "config" => { "files" => [{ "source" => "config/test.key", "strategy" => "copy", "required" => false }] }
+          }
+        }
+
+        allow_any_instance_of(Sxn::Rules::CopyFilesRule).to receive(:validate).and_raise(StandardError, "Validation error")
+
+        valid_rules = nil_logger_engine.send(:validate_rules, nil_logger_engine.send(:load_rules, config))
+        expect(valid_rules).to be_empty
+      end
+    end
+
+    describe "logging edge cases with real logger" do
+      let(:mock_logger) { instance_double(Logger, info: nil, debug: nil, error: nil, warn: nil) }
+      let(:logged_engine) { described_class.new(project_path, session_path, logger: mock_logger) }
+
+      it "logs execution info (line 153)" do
+        expect(mock_logger).to receive(:info).at_least(:once)
+        result = logged_engine.apply_rules(simple_rules_config)
+        expect(result.success?).to be true
+      end
+
+      it "logs ValidationError (line 163)" do
+        allow(logged_engine).to receive(:load_rules).and_raise(Sxn::Rules::ValidationError, "Validation failed")
+        expect(mock_logger).to receive(:error).with(/Rules validation error/)
+
+        expect do
+          logged_engine.apply_rules(simple_rules_config)
+        end.to raise_error(Sxn::Rules::ValidationError)
+      end
+
+      it "logs StandardError (line 166)" do
+        allow(logged_engine).to receive(:load_rules).and_raise(StandardError, "Engine error")
+        expect(mock_logger).to receive(:error).with(/Rules engine error/)
+
+        result = logged_engine.apply_rules(simple_rules_config)
+        expect(result.success?).to be false
+      end
+
+      it "logs rollback info (line 181)" do
+        logged_engine.apply_rules(simple_rules_config)
+        expect(mock_logger).to receive(:info).with(/Rolling back/)
+        logged_engine.rollback_rules
+      end
+
+      it "logs when rule is rolled back (line 186)" do
+        logged_engine.apply_rules(simple_rules_config)
+        expect(mock_logger).to receive(:debug).with(/Rolled back rule/)
+        logged_engine.rollback_rules
+      end
+
+      it "logs when rule is not rollbackable (line 188)" do
+        logged_engine.apply_rules(simple_rules_config)
+        applied_rules = logged_engine.instance_variable_get(:@applied_rules)
+        allow(applied_rules.first).to receive(:rollbackable?).and_return(false)
+        expect(mock_logger).to receive(:debug).with(/Rule not rollbackable/)
+        logged_engine.rollback_rules
+      end
+
+      it "logs when rollback fails (line 191)" do
+        logged_engine.apply_rules(simple_rules_config)
+        applied_rules = logged_engine.instance_variable_get(:@applied_rules)
+        allow(applied_rules.first).to receive(:rollback).and_raise(StandardError, "Rollback error")
+        expect(mock_logger).to receive(:error).with(/Failed to rollback rule/)
+        logged_engine.rollback_rules
+      end
+
+      it "logs when rule loading fails (line 267)" do
+        allow(logged_engine).to receive(:load_single_rule).and_raise(RuntimeError, "Load error")
+        expect(mock_logger).to receive(:warn).with(/Failed to load rule/)
+
+        logged_engine.send(:load_rules, simple_rules_config)
+      end
+
+      it "logs when rule validation fails (line 309)" do
+        config = {
+          "failing_rule" => {
+            "type" => "copy_files",
+            "config" => { "files" => [{ "source" => "config/test.key", "strategy" => "copy", "required" => false }] }
+          }
+        }
+
+        allow_any_instance_of(Sxn::Rules::CopyFilesRule).to receive(:validate).and_raise(StandardError, "Validation error")
+        expect(mock_logger).to receive(:warn).with(/Rule .* validation failed/)
+
+        logged_engine.send(:validate_rules, logged_engine.send(:load_rules, config))
+      end
+
+      it "logs phase execution (line 405)" do
+        expect(mock_logger).to receive(:debug).with(/Executing phase/)
+        logged_engine.apply_rules(simple_rules_config)
+      end
+
+      it "logs parallel execution details (line 424)" do
+        parallel_config = {
+          "rule1" => {
+            "type" => "copy_files",
+            "config" => { "files" => [{ "source" => "config/test.key", "strategy" => "copy", "required" => false }] }
+          },
+          "rule2" => {
+            "type" => "copy_files",
+            "config" => { "files" => [{ "source" => "config/test.key", "strategy" => "copy", "required" => false }] }
+          }
+        }
+
+        expect(mock_logger).to receive(:debug).with(/Using .* threads for parallel execution/)
+        logged_engine.apply_rules(parallel_config, parallel: true, max_parallelism: 2)
+      end
+
+      it "logs individual rule execution (line 450)" do
+        expect(mock_logger).to receive(:debug).with(/Executing rule:/)
+        logged_engine.apply_rules(simple_rules_config)
+      end
+
+      it "logs successful rule application (line 463)" do
+        expect(mock_logger).to receive(:info).with(/Successfully applied rule:/)
+        logged_engine.apply_rules(simple_rules_config)
+      end
+
+      it "logs failed rule application (line 465)" do
+        allow_any_instance_of(Sxn::Rules::CopyFilesRule).to receive(:apply).and_raise(StandardError, "Rule failed")
+        expect(mock_logger).to receive(:error).with(/Failed to apply rule/)
+
+        logged_engine.apply_rules(simple_rules_config, continue_on_failure: true)
+      end
+
+      it "logs rollback failure during rule execution (line 477)" do
+        allow_any_instance_of(Sxn::Rules::CopyFilesRule).to receive(:apply).and_raise(StandardError, "Rule failed")
+        allow_any_instance_of(Sxn::Rules::CopyFilesRule).to receive(:rollback).and_raise(StandardError, "Rollback failed")
+        expect(mock_logger).to receive(:error).with(/Failed to rollback rule/)
+
+        logged_engine.apply_rules(simple_rules_config, continue_on_failure: true)
       end
     end
 
@@ -843,6 +1024,18 @@ RSpec.describe Sxn::Rules::RulesEngine do
     end
 
     describe "path validation edge cases" do
+      it "handles session path that is a file instead of directory (line 246)" do
+        # Create a file instead of a directory for session path
+        file_path = File.join(project_path, "session_file.txt")
+        File.write(file_path, "not a directory")
+
+        expect do
+          described_class.new(project_path, file_path)
+        end.to raise_error(ArgumentError, /Session path is not a directory/)
+      ensure
+        File.delete(file_path) if file_path && File.exist?(file_path)
+      end
+
       it "handles session path that exists but is not writable (line 246, 250 branches)" do
         # Create a non-writable session path (line 246 false, line 250 raises)
         non_writable_session = Dir.mktmpdir("non_writable")
@@ -988,6 +1181,97 @@ RSpec.describe Sxn::Rules::RulesEngine do
         allow(applied_rules.first).to receive(:rollbackable?).and_return(false)
 
         expect(engine.rollback_rules).to be true
+      end
+    end
+
+    describe "real execution paths without heavy mocking" do
+      let(:real_logger) { Logger.new(StringIO.new) }
+      let(:real_engine) { described_class.new(project_path, session_path, logger: real_logger) }
+
+      it "exercises full apply_rules code path with logging" do
+        result = real_engine.apply_rules(simple_rules_config)
+        expect(result.success?).to be true
+      end
+
+      it "exercises parallel execution path" do
+        parallel_config = {
+          "rule1" => {
+            "type" => "copy_files",
+            "config" => { "files" => [{ "source" => "config/test.key", "strategy" => "copy", "required" => false }] }
+          },
+          "rule2" => {
+            "type" => "copy_files",
+            "config" => { "files" => [{ "source" => "config/test.key", "strategy" => "copy", "required" => false }] }
+          }
+        }
+
+        result = real_engine.apply_rules(parallel_config, parallel: true)
+        expect(result.success?).to be true
+      end
+
+      it "exercises error handling path" do
+        # Create a config that will fail validation
+        invalid_type_config = {
+          "bad_rule" => {
+            "type" => "nonexistent_type",
+            "config" => {}
+          }
+        }
+
+        expect do
+          real_engine.apply_rules(invalid_type_config)
+        end.to raise_error(Sxn::Rules::ValidationError)
+      end
+
+      it "exercises rollback with logging" do
+        real_engine.apply_rules(simple_rules_config)
+        expect(real_engine.rollback_rules).to be true
+      end
+
+      it "exercises unresolvable dependencies path" do
+        unresolvable_config = {
+          "rule1" => {
+            "type" => "copy_files",
+            "config" => { "files" => [{ "source" => "config/test.key", "strategy" => "copy", "required" => false }] },
+            "dependencies" => ["missing_dependency"]
+          }
+        }
+
+        expect do
+          real_engine.apply_rules(unresolvable_config)
+        end.to raise_error(Sxn::Rules::ValidationError, /depends on non-existent rule/)
+      end
+
+      it "exercises rule failure and rollback with logging" do
+        # Make rule fail to test error logging paths
+        allow_any_instance_of(Sxn::Rules::CopyFilesRule).to receive(:apply).and_raise(StandardError, "Test failure")
+
+        result = real_engine.apply_rules(simple_rules_config, continue_on_failure: true)
+        expect(result.success?).to be false
+      end
+
+      it "exercises rule loading failure with logging" do
+        # Make rule loading fail
+        bad_config = {
+          "rule1" => {
+            "type" => "copy_files",
+            "config" => "invalid" # Invalid config type
+          }
+        }
+
+        allow(Sxn::Rules::CopyFilesRule).to receive(:new).and_raise(RuntimeError, "Loading failed")
+
+        result = real_engine.apply_rules(bad_config, continue_on_failure: true)
+        # Rules should be empty due to loading failure
+        expect(result.applied_rules).to be_empty
+      end
+
+      it "exercises validation failure with logging" do
+        # Make validation fail
+        allow_any_instance_of(Sxn::Rules::CopyFilesRule).to receive(:validate).and_raise(StandardError, "Validation failed")
+
+        result = real_engine.apply_rules(simple_rules_config, continue_on_failure: true)
+        expect(result.skipped_rules).not_to be_empty
       end
     end
   end

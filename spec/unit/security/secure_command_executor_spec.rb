@@ -580,4 +580,142 @@ RSpec.describe Sxn::Security::SecureCommandExecutor do
       expect(close_errors).not_to be_empty
     end
   end
+
+  describe "branch coverage edge cases" do
+    describe "build_command_whitelist with String path_spec" do
+      it "excludes command when String path doesn't exist" do
+        # Test line 218 - String path_spec that doesn't exist
+        non_existent_path = File.join(temp_dir, "nonexistent_command")
+
+        stub_const("#{described_class}::ALLOWED_COMMANDS", {
+                     "nonexistent_cmd" => non_existent_path
+                   })
+
+        test_executor = described_class.new(temp_dir)
+
+        # The command should not be in the whitelist because the file doesn't exist
+        expect(test_executor.allowed_commands).not_to include("nonexistent_cmd")
+        expect(test_executor.command_allowed?(["nonexistent_cmd"])).to be false
+      end
+
+      it "excludes command when String path is not executable" do
+        # Test line 218 - String path_spec where file exists but is not executable
+        non_exec_path = File.join(temp_dir, "non_executable_command")
+        File.write(non_exec_path, "#!/bin/sh\necho test")
+        File.chmod(0o644, non_exec_path) # Make it non-executable
+
+        stub_const("#{described_class}::ALLOWED_COMMANDS", {
+                     "non_exec_cmd" => non_exec_path
+                   })
+
+        test_executor = described_class.new(temp_dir)
+
+        # The command should not be in the whitelist because the file is not executable
+        expect(test_executor.allowed_commands).not_to include("non_exec_cmd")
+        expect(test_executor.command_allowed?(["non_exec_cmd"])).to be false
+      end
+
+      it "excludes command when path_spec is an unsupported type" do
+        # Test line 216 - case statement else branch for unsupported path_spec types
+        stub_const("#{described_class}::ALLOWED_COMMANDS", {
+                     "unknown_type_cmd" => { invalid: "type" } # Hash is not a supported type
+                   })
+
+        test_executor = described_class.new(temp_dir)
+
+        # The command should not be in the whitelist because Hash is not a supported path_spec type
+        expect(test_executor.allowed_commands).not_to include("unknown_type_cmd")
+        expect(test_executor.command_allowed?(["unknown_type_cmd"])).to be false
+      end
+    end
+
+    describe "validate_work_directory with file instead of directory" do
+      it "raises error when chdir points to a file" do
+        # Test line 286 - validated path exists but is a file, not a directory
+        test_file = File.join(temp_dir, "testfile.txt")
+        File.write(test_file, "test content")
+
+        echo_path = %w[/bin/echo /usr/bin/echo].find { |path| File.executable?(path) }
+        skip "echo not available" unless echo_path
+
+        whitelist = { "echo" => echo_path }
+        allow_any_instance_of(described_class).to receive(:build_command_whitelist).and_return(whitelist)
+
+        test_executor = described_class.new(temp_dir)
+
+        expect do
+          test_executor.execute(%w[echo test], chdir: "testfile.txt")
+        end.to raise_error(Sxn::CommandExecutionError, /Working directory does not exist/)
+      end
+    end
+
+    describe "audit_log without logger" do
+      it "skips logging when logger is nil" do
+        # Test line 347 - early return when @logger is nil
+        # Mock Sxn.logger to return nil
+        allow(Sxn).to receive(:logger).and_return(nil)
+
+        echo_path = %w[/bin/echo /usr/bin/echo].find { |path| File.executable?(path) }
+        skip "echo not available" unless echo_path
+
+        whitelist = { "echo" => echo_path }
+        allow_any_instance_of(described_class).to receive(:build_command_whitelist).and_return(whitelist)
+
+        # Create executor without logger
+        test_executor = described_class.new(temp_dir, logger: nil)
+
+        # This should not raise an error and should complete successfully
+        result = test_executor.execute(%w[echo test])
+        expect(result).to be_a(described_class::CommandResult)
+        expect(result.success?).to be true
+      end
+    end
+
+    describe "audit_log with non-array command" do
+      it "handles non-array command parameter" do
+        # Test line 355 - command.to_s branch when command is not an array
+        log_output = StringIO.new
+        test_logger = Logger.new(log_output)
+
+        echo_path = %w[/bin/echo /usr/bin/echo].find { |path| File.executable?(path) }
+        skip "echo not available" unless echo_path
+
+        whitelist = { "echo" => echo_path }
+        allow_any_instance_of(described_class).to receive(:build_command_whitelist).and_return(whitelist)
+
+        test_executor = described_class.new(temp_dir, logger: test_logger)
+
+        # We need to call audit_log directly with a non-array command
+        # Since audit_log is private, we'll use send to test it
+        test_executor.send(:audit_log, "TEST_EVENT", "string_command", temp_dir, { test: "value" })
+
+        log_content = log_output.string
+        expect(log_content).to include("TEST_EVENT")
+        expect(log_content).to include("string_command")
+      end
+    end
+
+    describe "audit_log with non-hash details" do
+      it "handles non-hash details parameter" do
+        # Test line 350 - details = {} unless details.is_a?(Hash)
+        log_output = StringIO.new
+        test_logger = Logger.new(log_output)
+
+        echo_path = %w[/bin/echo /usr/bin/echo].find { |path| File.executable?(path) }
+        skip "echo not available" unless echo_path
+
+        whitelist = { "echo" => echo_path }
+        allow_any_instance_of(described_class).to receive(:build_command_whitelist).and_return(whitelist)
+
+        test_executor = described_class.new(temp_dir, logger: test_logger)
+
+        # Call audit_log with non-hash details (e.g., an array)
+        test_executor.send(:audit_log, "TEST_EVENT", %w[echo test], temp_dir, %w[not a hash])
+
+        log_content = log_output.string
+        expect(log_content).to include("TEST_EVENT")
+        expect(log_content).to include("echo")
+      end
+    end
+  end
 end

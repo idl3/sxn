@@ -367,6 +367,143 @@ RSpec.describe Sxn::Config::ConfigDiscovery do
     end
   end
 
+  describe "merge behavior with nil and empty configs" do
+    context "when config sources are nil" do
+      it "handles nil global_config gracefully" do
+        allow(discovery).to receive(:load_all_configs).and_return({
+                                                                    system_defaults: { "version" => 1, "sessions_folder" => ".sessions" },
+                                                                    global_config: nil,
+                                                                    workspace_config: { "sessions_folder" => "workspace" },
+                                                                    local_config: { "sessions_folder" => "local" },
+                                                                    env_config: {}
+                                                                  })
+
+        config = discovery.discover_config
+        expect(config["sessions_folder"]).to eq "local"
+        expect(config["version"]).to eq 1
+      end
+
+      it "handles nil workspace_config gracefully" do
+        allow(discovery).to receive(:load_all_configs).and_return({
+                                                                    system_defaults: { "version" => 1, "sessions_folder" => ".sessions" },
+                                                                    global_config: { "sessions_folder" => "global" },
+                                                                    workspace_config: nil,
+                                                                    local_config: { "sessions_folder" => "local" },
+                                                                    env_config: {}
+                                                                  })
+
+        config = discovery.discover_config
+        expect(config["sessions_folder"]).to eq "local"
+        expect(config["version"]).to eq 1
+      end
+
+      it "handles nil local_config gracefully" do
+        allow(discovery).to receive(:load_all_configs).and_return({
+                                                                    system_defaults: { "version" => 1, "sessions_folder" => ".sessions" },
+                                                                    global_config: { "sessions_folder" => "global" },
+                                                                    workspace_config: { "sessions_folder" => "workspace" },
+                                                                    local_config: nil,
+                                                                    env_config: {}
+                                                                  })
+
+        config = discovery.discover_config
+        expect(config["sessions_folder"]).to eq "workspace"
+        expect(config["version"]).to eq 1
+      end
+
+      it "handles nil env_config gracefully" do
+        allow(discovery).to receive(:load_all_configs).and_return({
+                                                                    system_defaults: { "version" => 1, "sessions_folder" => ".sessions" },
+                                                                    global_config: { "sessions_folder" => "global" },
+                                                                    workspace_config: { "sessions_folder" => "workspace" },
+                                                                    local_config: { "sessions_folder" => "local" },
+                                                                    env_config: nil
+                                                                  })
+
+        config = discovery.discover_config({ "current_session" => "cli-session" })
+        expect(config["sessions_folder"]).to eq "local"
+        expect(config["current_session"]).to eq "cli-session"
+      end
+
+      it "handles all configs as nil except defaults" do
+        allow(discovery).to receive(:load_all_configs).and_return({
+                                                                    system_defaults: { "version" => 1, "sessions_folder" => ".sessions" },
+                                                                    global_config: nil,
+                                                                    workspace_config: nil,
+                                                                    local_config: nil,
+                                                                    env_config: nil
+                                                                  })
+
+        config = discovery.discover_config
+        expect(config["sessions_folder"]).to eq ".sessions"
+        expect(config["version"]).to eq 1
+      end
+    end
+
+    context "when config sources contain non-hash values" do
+      it "handles deep_merge with non-hash source value" do
+        allow(discovery).to receive(:load_all_configs).and_return({
+                                                                    system_defaults: { "version" => 1, "sessions_folder" => ".sessions", "settings" => { "max_sessions" => 10 } },
+                                                                    global_config: {},
+                                                                    workspace_config: {},
+                                                                    local_config: {},
+                                                                    env_config: {}
+                                                                  })
+
+        # Test deep_merge! behavior with non-hash values
+        config = discovery.discover_config({ "settings" => "string_value" })
+        # CLI option with string value should override the hash
+        expect(config["settings"]).to eq "string_value"
+      end
+
+      it "handles deep_merge with non-hash source in nested config" do
+        allow(discovery).to receive(:load_all_configs).and_return({
+                                                                    system_defaults: {
+                                                                      "version" => 1,
+                                                                      "settings" => {
+                                                                        "auto_cleanup" => true,
+                                                                        "max_sessions" => 10
+                                                                      }
+                                                                    },
+                                                                    global_config: {
+                                                                      "settings" => {
+                                                                        "auto_cleanup" => false,
+                                                                        "nested" => { "key" => "value" }
+                                                                      }
+                                                                    },
+                                                                    workspace_config: {},
+                                                                    local_config: {
+                                                                      "settings" => {
+                                                                        "nested" => "overridden_with_string"
+                                                                      }
+                                                                    },
+                                                                    env_config: {}
+                                                                  })
+
+        config = discovery.discover_config
+        # Local config's string value should override the hash
+        expect(config["settings"]["nested"]).to eq "overridden_with_string"
+        expect(config["settings"]["auto_cleanup"]).to be false
+      end
+    end
+
+    context "when config sources are empty hashes" do
+      it "merges empty hashes correctly" do
+        allow(discovery).to receive(:load_all_configs).and_return({
+                                                                    system_defaults: { "version" => 1, "sessions_folder" => ".sessions" },
+                                                                    global_config: {},
+                                                                    workspace_config: {},
+                                                                    local_config: {},
+                                                                    env_config: {}
+                                                                  })
+
+        config = discovery.discover_config
+        expect(config["sessions_folder"]).to eq ".sessions"
+        expect(config["version"]).to eq 1
+      end
+    end
+  end
+
   describe "performance" do
     context "with deep directory structure" do
       let(:deep_path) { File.join(temp_dir, *(["level"] * 20)) }

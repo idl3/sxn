@@ -261,6 +261,17 @@ RSpec.describe Sxn::Rules::ProjectDetector do
         expect(detector.detect_package_manager).to eq(:bundler)
       end
     end
+
+    context "with Gemfile only (no other package manager files)" do
+      before do
+        File.write(File.join(project_path, "Gemfile"), 'gem "sinatra"\ngem "rspec"')
+      end
+
+      it "returns bundler for Ruby projects without lock files" do
+        result = detector.detect_package_manager
+        expect(result).to eq(:bundler)
+      end
+    end
   end
 
   describe "#detect_package_manager" do
@@ -556,9 +567,56 @@ RSpec.describe Sxn::Rules::ProjectDetector do
       # Check documentation
       expect(analysis[:documentation]).to include("README.md", "docs/guide.md")
     end
+
+    it "handles analyze_dependencies when Gemfile exists without Gemfile.lock" do
+      File.write(File.join(project_path, "Gemfile"), 'gem "rspec"')
+
+      analysis = detector.analyze_project_structure
+
+      # Should not include ruby dependencies when Gemfile.lock doesn't exist
+      expect(analysis[:dependencies][:ruby]).to be_nil
+    end
+
+    it "handles analyze_dependencies when Gemfile.lock exists" do
+      File.write(File.join(project_path, "Gemfile.lock"), "GEM\n  remote: https://rubygems.org/\n  specs:\n    rspec (3.12.0)")
+
+      analysis = detector.analyze_project_structure
+
+      # Should include ruby dependencies when Gemfile.lock exists
+      expect(analysis[:dependencies][:ruby]).not_to be_nil
+      expect(analysis[:dependencies][:ruby]).not_to be_empty
+    end
   end
 
   describe "framework detection" do
+    context "with Next.js" do
+      before do
+        package_json = {
+          "dependencies" => { "next" => "^13.0.0", "react" => "^18.0.0" }
+        }
+        File.write(File.join(project_path, "package.json"), JSON.pretty_generate(package_json))
+      end
+
+      it "detects Next.js framework" do
+        info = detector.detect_project_info
+        expect(info[:framework]).to eq(:nextjs)
+      end
+    end
+
+    context "with React (without Next.js)" do
+      before do
+        package_json = {
+          "dependencies" => { "react" => "^18.0.0", "react-dom" => "^18.0.0" }
+        }
+        File.write(File.join(project_path, "package.json"), JSON.pretty_generate(package_json))
+      end
+
+      it "detects React framework" do
+        info = detector.detect_project_info
+        expect(info[:framework]).to eq(:react)
+      end
+    end
+
     context "with Express.js" do
       before do
         package_json = {
@@ -757,6 +815,21 @@ RSpec.describe Sxn::Rules::ProjectDetector do
       it "detects the primary language based on file count" do
         info = detector.detect_project_info
         expect(info[:language]).to eq(:ruby)
+      end
+    end
+
+    context "with project that has only non-code files" do
+      before do
+        # Create only documentation and config files, no source code
+        File.write(File.join(project_path, "README.txt"), "# Documentation")
+        File.write(File.join(project_path, "config.ini"), "[settings]\nkey=value")
+        File.write(File.join(project_path, "data.csv"), "col1,col2\nval1,val2")
+      end
+
+      it "detects the language with highest score even if scores are low" do
+        info = detector.detect_project_info
+        # Should detect some language (even if score is low) or unknown
+        expect(info[:language]).to be_a(Symbol)
       end
     end
   end
@@ -1350,6 +1423,23 @@ RSpec.describe Sxn::Rules::ProjectDetector do
         expect(command_strings).to include("bin/rails db:migrate")
       end
     end
+
+    context "with non-Rails Ruby project (bundler package manager)" do
+      it "only includes bundle install, not Rails-specific commands" do
+        project_info = { type: :ruby, package_manager: :bundler }
+        rules = detector.send(:suggest_setup_commands_rules, project_info)
+
+        commands = rules["config"]["commands"]
+        command_strings = commands.map { |c| c["command"].join(" ") }
+
+        # Should include bundle install
+        expect(command_strings).to include("bundle install")
+
+        # Should NOT include Rails-specific commands
+        expect(command_strings).not_to include("bin/rails db:create")
+        expect(command_strings).not_to include("bin/rails db:migrate")
+      end
+    end
   end
 
   describe "dependency parsing methods" do
@@ -1546,6 +1636,37 @@ RSpec.describe Sxn::Rules::ProjectDetector do
         # Medium confidence type with requirements_contains pattern
         criteria = { files: ["requirements.txt"], patterns: { requirements_contains: ["requests"] }, confidence: :medium }
         confidence = detector.send(:calculate_type_confidence, :python, criteria)
+
+        # Should get bonus for pattern match
+        expect(confidence).to be > 10
+      end
+
+      # Test for line 286: High-confidence pattern matching with gemfile_contains (when condition is false)
+      it "handles high-confidence types when gemfile_contains pattern doesn't match" do
+        File.write(File.join(project_path, "Gemfile"), 'gem "sinatra"')
+        FileUtils.mkdir_p(File.join(project_path, "config"))
+        File.write(File.join(project_path, "config/application.rb"), "class Application; end")
+
+        # Rails requires both files AND rails gem in Gemfile
+        criteria = { files: %w[Gemfile config/application.rb], patterns: { gemfile_contains: ["rails"] },
+                     confidence: :high }
+        confidence = detector.send(:calculate_type_confidence, :rails, criteria)
+
+        # Should return 0 because pattern doesn't match (no "rails" in Gemfile)
+        expect(confidence).to eq(0)
+      end
+
+      # Test for line 302: Non-high-confidence type with package_json_deps pattern
+      it "adds confidence for package_json_deps pattern in non-high confidence type" do
+        package_json = {
+          "name" => "my-app",
+          "dependencies" => { "express" => "^4.18.0" }
+        }
+        File.write(File.join(project_path, "package.json"), JSON.pretty_generate(package_json))
+
+        # Medium confidence type with package_json_deps pattern
+        criteria = { files: ["package.json"], patterns: { package_json_deps: ["express"] }, confidence: :medium }
+        confidence = detector.send(:calculate_type_confidence, :nodejs, criteria)
 
         # Should get bonus for pattern match
         expect(confidence).to be > 10

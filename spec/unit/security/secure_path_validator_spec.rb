@@ -1167,6 +1167,194 @@ RSpec.describe Sxn::Security::SecurePathValidator do
     end
   end
 
+  # FOCUSED BRANCH COVERAGE TESTS for lines 184, 191, 198, 202, 204
+  describe "targeted branch coverage for uncovered lines" do
+    let(:test_subdir) { File.join(temp_dir, "coverage_test") }
+
+    before do
+      FileUtils.mkdir_p(test_subdir)
+    end
+
+    context "Line 184: relative path branch in validate_symlink_safety!" do
+      it "validates relative path directly (not absolute)" do
+        # Create a simple file
+        file_path = File.join(test_subdir, "simple.txt")
+        File.write(file_path, "content")
+
+        # Call validate_symlink_safety! with a RELATIVE path directly using send
+        # This hits line 184 (else branch) because pathname.absolute? is false
+        relative_path = "coverage_test/simple.txt"
+        expect do
+          validator.send(:validate_symlink_safety!, relative_path)
+        end.not_to raise_error
+      end
+
+      it "validates nested relative path with multiple components" do
+        # Create nested structure
+        nested_path = File.join(test_subdir, "level1", "level2")
+        FileUtils.mkdir_p(nested_path)
+        file = File.join(nested_path, "file.txt")
+        File.write(file, "data")
+
+        # Call with relative path to hit line 184
+        relative_path = "coverage_test/level1/level2/file.txt"
+        expect do
+          validator.send(:validate_symlink_safety!, relative_path)
+        end.not_to raise_error
+      end
+    end
+
+    context "Line 191: next unless current_path.symlink? - FALSE branch" do
+      it "iterates through non-symlink directories" do
+        # Create regular directories (no symlinks)
+        regular_path = File.join(test_subdir, "dir1", "dir2", "dir3")
+        FileUtils.mkdir_p(regular_path)
+        file = File.join(regular_path, "regular.txt")
+        File.write(file, "content")
+
+        # Validate path - each component is NOT a symlink, so line 191 'next unless' skips
+        expect do
+          validator.validate_path("coverage_test/dir1/dir2/dir3/regular.txt")
+        end.not_to raise_error
+      end
+
+      it "validates simple file with no symlinks in path" do
+        # Single level, no symlinks
+        simple_file = File.join(test_subdir, "nosymlink.txt")
+        File.write(simple_file, "data")
+
+        # Line 191: current_path.symlink? is false, so next unless skips the block
+        expect do
+          validator.validate_path("coverage_test/nosymlink.txt")
+        end.not_to raise_error
+      end
+    end
+
+    context "Line 198: absolute symlink target File.exist? ternary" do
+      it "validates absolute symlink pointing to EXISTING file (TRUE branch)" do
+        # Create target file that exists
+        target_file = File.join(temp_dir, "existing_target.txt")
+        File.write(target_file, "target content")
+
+        # Create symlink with absolute path to existing file
+        link = File.join(test_subdir, "abs_link_to_existing")
+        File.symlink(target_file, link)
+
+        # Line 191: symlink? is true
+        # Line 196: target.absolute? is true
+        # Line 198: File.exist?(target.to_s) is TRUE -> File.realpath branch
+        expect do
+          validator.validate_path("coverage_test/abs_link_to_existing")
+        end.not_to raise_error
+      end
+
+      it "validates absolute symlink pointing to NON-EXISTING file (FALSE branch)" do
+        # Create symlink with absolute path to non-existent file (within project)
+        non_existent = File.join(temp_dir, "does_not_exist_yet.txt")
+        link = File.join(test_subdir, "abs_link_to_nonexistent")
+        File.symlink(non_existent, link)
+
+        # Line 191: symlink? is true
+        # Line 196: target.absolute? is true
+        # Line 198: File.exist?(target.to_s) is FALSE -> target.to_s branch
+        expect do
+          validator.validate_path("coverage_test/abs_link_to_nonexistent", allow_creation: true)
+        end.not_to raise_error
+      end
+    end
+
+    context "Line 202 and 204: relative symlink resolution and File.exist? ternary" do
+      it "validates relative symlink to EXISTING file (line 204 TRUE branch)" do
+        # Create target file
+        target = File.join(test_subdir, "rel_existing_target.txt")
+        File.write(target, "content")
+
+        # Create relative symlink to existing file
+        link = File.join(test_subdir, "rel_link_to_existing")
+        File.symlink("rel_existing_target.txt", link)
+
+        # Line 191: symlink? is true
+        # Line 196: target.absolute? is false (enters else)
+        # Line 202: executes - resolves relative symlink
+        # Line 204: File.exist?(resolved_target.to_s) is TRUE -> File.realpath branch
+        expect do
+          validator.validate_path("coverage_test/rel_link_to_existing")
+        end.not_to raise_error
+      end
+
+      it "validates relative symlink to NON-EXISTING file (line 204 FALSE branch)" do
+        # Create relative symlink to non-existent file (within project bounds)
+        link = File.join(test_subdir, "rel_link_to_nonexistent")
+        File.symlink("does_not_exist.txt", link)
+
+        # Line 191: symlink? is true
+        # Line 196: target.absolute? is false (enters else)
+        # Line 202: executes - resolves relative symlink
+        # Line 204: File.exist?(resolved_target.to_s) is FALSE -> resolved_target.to_s branch
+        expect do
+          validator.validate_path("coverage_test/rel_link_to_nonexistent", allow_creation: true)
+        end.not_to raise_error
+      end
+
+      it "validates relative symlink with complex path (../) to existing file" do
+        # Create nested structure
+        subdir = File.join(test_subdir, "sub1", "sub2")
+        FileUtils.mkdir_p(subdir)
+
+        # Create target at parent level
+        target = File.join(test_subdir, "parent_level.txt")
+        File.write(target, "data")
+
+        # Create relative symlink using ../
+        link = File.join(subdir, "link_to_parent")
+        File.symlink("../../parent_level.txt", link)
+
+        # Line 202: resolves with dirname.join(target).cleanpath
+        # Line 204: File.exist? is TRUE
+        expect do
+          validator.validate_path("coverage_test/sub1/sub2/link_to_parent")
+        end.not_to raise_error
+      end
+    end
+
+    context "Combined: paths with mix of symlinks and regular directories" do
+      it "validates path with regular dirs then symlink at end" do
+        # Create regular directories
+        regular = File.join(test_subdir, "regular1", "regular2")
+        FileUtils.mkdir_p(regular)
+
+        # Create target
+        target = File.join(temp_dir, "final_target.txt")
+        File.write(target, "final")
+
+        # Create symlink in the nested directory
+        link = File.join(regular, "final_link")
+        File.symlink(target, link)
+
+        # This path has regular dirs (line 191 false) then symlink (line 191 true, 196 true, 198)
+        expect do
+          validator.validate_path("coverage_test/regular1/regular2/final_link")
+        end.not_to raise_error
+      end
+
+      it "validates path with symlink dir in middle followed by regular file" do
+        # Create target directory
+        target_dir = File.join(test_subdir, "real_target_dir")
+        FileUtils.mkdir_p(target_dir)
+        File.write(File.join(target_dir, "file.txt"), "content")
+
+        # Create symlink directory
+        link_dir = File.join(test_subdir, "symlinked_dir")
+        File.symlink(target_dir, link_dir)
+
+        # Access file through symlinked directory
+        expect do
+          validator.validate_path("coverage_test/symlinked_dir/file.txt")
+        end.not_to raise_error
+      end
+    end
+  end
+
   # NEW TESTS: Additional comprehensive branch coverage for validate_symlink_safety!
   describe "comprehensive symlink validation branch coverage" do
     let(:test_subdir) { File.join(temp_dir, "test_area") }
