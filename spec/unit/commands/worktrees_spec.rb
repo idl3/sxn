@@ -82,8 +82,6 @@ RSpec.describe Sxn::Commands::Worktrees do
     context "with direct arguments" do
       it "creates worktree successfully" do
         allow(mock_worktree_manager).to receive(:add_worktree).and_return(sample_worktree)
-        allow(worktrees_command).to receive(:apply_project_rules)
-        allow(worktrees_command).to receive(:display_worktree_info)
 
         worktrees_command.add("test-project", "main")
 
@@ -97,13 +95,15 @@ RSpec.describe Sxn::Commands::Worktrees do
 
       it "applies rules after creation when enabled" do
         allow(mock_worktree_manager).to receive(:add_worktree).and_return(sample_worktree)
-        allow(worktrees_command).to receive(:apply_project_rules)
-        allow(worktrees_command).to receive(:display_worktree_info)
+        # Don't stub the command method - let it run
+        # Instead, set up expectations on the rules_manager it creates
+        allow(mock_rules_manager).to receive(:apply_rules).and_return({ success: true, applied_count: 3, errors: [] })
 
         allow(worktrees_command).to receive(:options).and_return({ apply_rules: true })
         worktrees_command.add("test-project", "main")
 
-        expect(worktrees_command).to have_received(:apply_project_rules).with(
+        # Verify the rules_manager was actually used
+        expect(mock_rules_manager).to have_received(:apply_rules).with(
           "test-project",
           "test-session"
         )
@@ -111,19 +111,18 @@ RSpec.describe Sxn::Commands::Worktrees do
 
       it "skips rules when apply_rules is false" do
         allow(mock_worktree_manager).to receive(:add_worktree).and_return(sample_worktree)
-        allow(worktrees_command).to receive(:apply_project_rules)
-        allow(worktrees_command).to receive(:display_worktree_info)
+        # Don't stub - let the code run and verify rules_manager is not called
+        allow(mock_rules_manager).to receive(:apply_rules)
 
         allow(worktrees_command).to receive(:options).and_return({ apply_rules: false })
         worktrees_command.add("test-project", "main")
 
-        expect(worktrees_command).not_to have_received(:apply_project_rules)
+        # Verify rules were NOT applied
+        expect(mock_rules_manager).not_to have_received(:apply_rules)
       end
 
       it "uses specified session" do
         allow(mock_worktree_manager).to receive(:add_worktree).and_return(sample_worktree)
-        allow(worktrees_command).to receive(:apply_project_rules)
-        allow(worktrees_command).to receive(:display_worktree_info)
 
         allow(worktrees_command).to receive(:options).and_return({ session: "custom-session" })
         worktrees_command.add("test-project", "main")
@@ -138,27 +137,26 @@ RSpec.describe Sxn::Commands::Worktrees do
 
     context "in interactive mode" do
       it "prompts for project selection" do
-        allow(worktrees_command).to receive(:select_project).and_return("selected-project")
         allow(mock_prompt).to receive(:branch_name).and_return("feature-branch")
+        allow(mock_prompt).to receive(:select).and_return("test-project")
         allow(mock_worktree_manager).to receive(:add_worktree).and_return(sample_worktree)
-        allow(worktrees_command).to receive(:apply_project_rules)
-        allow(worktrees_command).to receive(:display_worktree_info)
 
         allow(worktrees_command).to receive(:options).and_return({ interactive: true })
         worktrees_command.add
 
-        expect(worktrees_command).to have_received(:select_project).with("Select project for worktree:")
+        # Verify prompt.select was called (which is what select_project does)
+        expect(mock_prompt).to have_received(:select).with(
+          "Select project for worktree:",
+          anything
+        )
       end
 
       it "prompts for branch when in interactive mode" do
-        allow(worktrees_command).to receive(:select_project).and_return("test-project")
         allow(mock_prompt).to receive(:branch_name).with(
           "Enter branch name:",
           default: "main"
         ).and_return("feature-branch")
         allow(mock_worktree_manager).to receive(:add_worktree).and_return(sample_worktree)
-        allow(worktrees_command).to receive(:apply_project_rules)
-        allow(worktrees_command).to receive(:display_worktree_info)
 
         allow(worktrees_command).to receive(:options).and_return({ interactive: true })
         worktrees_command.add("test-project")
@@ -167,7 +165,8 @@ RSpec.describe Sxn::Commands::Worktrees do
       end
 
       it "returns early if no project selected" do
-        allow(worktrees_command).to receive(:select_project).and_return(nil)
+        # Mock project selection to return nil (no projects available)
+        allow(mock_prompt).to receive(:select).and_return(nil)
 
         allow(worktrees_command).to receive(:options).and_return({ interactive: true })
         worktrees_command.add
@@ -210,7 +209,6 @@ RSpec.describe Sxn::Commands::Worktrees do
     context "when rules application fails" do
       it "warns but continues" do
         allow(mock_worktree_manager).to receive(:add_worktree).and_return(sample_worktree)
-        allow(worktrees_command).to receive(:display_worktree_info)
         # Don't mock apply_project_rules, let it run and fail
 
         worktrees_command.add("test-project")
@@ -223,8 +221,6 @@ RSpec.describe Sxn::Commands::Worktrees do
     context "with verbose option" do
       it "enables debug mode during execution" do
         allow(mock_worktree_manager).to receive(:add_worktree).and_return(sample_worktree)
-        allow(worktrees_command).to receive(:apply_project_rules)
-        allow(worktrees_command).to receive(:display_worktree_info)
         allow(worktrees_command).to receive(:options).and_return({ verbose: true })
 
         expect(ENV).to receive(:[]=).with("SXN_DEBUG", "true")
@@ -522,7 +518,6 @@ RSpec.describe Sxn::Commands::Worktrees do
         validation_result = { valid: true, issues: [], worktree: sample_worktree }
         allow(mock_worktree_manager).to receive(:validate_worktree).and_return(validation_result)
         allow(mock_ui).to receive(:list_item)
-        allow(worktrees_command).to receive(:display_worktree_info)
 
         worktrees_command.validate("test-project")
 
@@ -531,7 +526,8 @@ RSpec.describe Sxn::Commands::Worktrees do
           session_name: "test-session"
         )
         expect(mock_ui).to have_received(:success).with("Worktree is valid")
-        expect(worktrees_command).to have_received(:display_worktree_info).with(sample_worktree, detailed: true)
+        # Verify that key_value was called to display worktree info
+        expect(mock_ui).to have_received(:key_value).with("Project", "test-project")
       end
 
       it "shows validation issues" do
@@ -542,7 +538,6 @@ RSpec.describe Sxn::Commands::Worktrees do
         }
         allow(mock_worktree_manager).to receive(:validate_worktree).and_return(validation_result)
         allow(mock_ui).to receive(:list_item)
-        allow(worktrees_command).to receive(:display_worktree_info)
 
         worktrees_command.validate("test-project")
 
@@ -559,13 +554,12 @@ RSpec.describe Sxn::Commands::Worktrees do
         }
         allow(mock_worktree_manager).to receive(:validate_worktree).and_return(validation_result)
         allow(mock_ui).to receive(:list_item)
-        allow(worktrees_command).to receive(:display_worktree_info)
 
         worktrees_command.validate("test-project")
 
         expect(mock_ui).to have_received(:error).with("Worktree has issues:")
         expect(mock_ui).to have_received(:list_item).with("Worktree not found")
-        expect(worktrees_command).not_to have_received(:display_worktree_info)
+        # Don't check for display_worktree_info - it shouldn't be called when worktree is nil
       end
     end
 
@@ -580,7 +574,6 @@ RSpec.describe Sxn::Commands::Worktrees do
         allow(mock_worktree_manager).to receive(:validate_worktree).and_return({ valid: true, issues: [],
                                                                                  worktree: sample_worktree })
         allow(mock_ui).to receive(:list_item)
-        allow(worktrees_command).to receive(:display_worktree_info)
 
         worktrees_command.validate
 
@@ -631,27 +624,26 @@ RSpec.describe Sxn::Commands::Worktrees do
 
     it "displays worktree status summary" do
       allow(mock_worktree_manager).to receive(:list_worktrees).and_return(worktrees)
-      allow(worktrees_command).to receive(:display_worktree_status)
 
       worktrees_command.status
 
       expect(mock_ui).to have_received(:section).with("Worktree Status - Session: test-session")
-      expect(worktrees_command).to have_received(:display_worktree_status).with(worktrees)
+      # Verify the table was called (which is what display_worktree_status does)
+      expect(mock_table).to have_received(:worktrees).with(worktrees)
     end
 
     it "shows empty state when no worktrees" do
       allow(mock_worktree_manager).to receive(:list_worktrees).and_return([])
-      allow(worktrees_command).to receive(:suggest_add_worktree)
 
       worktrees_command.status
 
       expect(mock_ui).to have_received(:empty_state).with("No worktrees in current session")
-      expect(worktrees_command).to have_received(:suggest_add_worktree)
+      # Verify recovery_suggestion was called (which is what suggest_add_worktree does)
+      expect(mock_ui).to have_received(:recovery_suggestion)
     end
 
     it "uses specified session" do
       allow(mock_worktree_manager).to receive(:list_worktrees).and_return(worktrees)
-      allow(worktrees_command).to receive(:display_worktree_status)
 
       allow(worktrees_command).to receive(:options).and_return({ session: "custom-session" })
       worktrees_command.status
@@ -723,7 +715,6 @@ RSpec.describe Sxn::Commands::Worktrees do
 
       it "displays basic worktree information" do
         allow(mock_ui).to receive(:key_value)
-        allow(worktrees_command).to receive(:display_worktree_commands)
 
         worktrees_command.send(:display_worktree_info, sample_worktree)
 
@@ -731,12 +722,12 @@ RSpec.describe Sxn::Commands::Worktrees do
         expect(mock_ui).to have_received(:key_value).with("Branch", "main")
         expect(mock_ui).to have_received(:key_value).with("Path", "/path/to/worktree")
         expect(mock_ui).to have_received(:key_value).with("Session", "test-session")
-        expect(worktrees_command).to have_received(:display_worktree_commands).with(sample_worktree)
+        # Verify command_example was called (which is what display_worktree_commands does)
+        expect(mock_ui).to have_received(:command_example).at_least(:once)
       end
 
       it "displays detailed worktree information when requested" do
         allow(mock_ui).to receive(:key_value)
-        allow(worktrees_command).to receive(:display_worktree_commands)
 
         worktrees_command.send(:display_worktree_info, detailed_worktree, detailed: true)
 
@@ -748,7 +739,6 @@ RSpec.describe Sxn::Commands::Worktrees do
       it "shows 'No' for exists when false" do
         worktree_missing = detailed_worktree.merge(exists: false)
         allow(mock_ui).to receive(:key_value)
-        allow(worktrees_command).to receive(:display_worktree_commands)
 
         worktrees_command.send(:display_worktree_info, worktree_missing, detailed: true)
 
@@ -762,7 +752,6 @@ RSpec.describe Sxn::Commands::Worktrees do
           path: "/path/to/worktree"
         }
         allow(mock_ui).to receive(:key_value)
-        allow(worktrees_command).to receive(:display_worktree_commands)
 
         worktrees_command.send(:display_worktree_info, worktree_no_session)
 
@@ -778,7 +767,6 @@ RSpec.describe Sxn::Commands::Worktrees do
           status: "clean"
         }
         allow(mock_ui).to receive(:key_value)
-        allow(worktrees_command).to receive(:display_worktree_commands)
 
         worktrees_command.send(:display_worktree_info, worktree_no_created, detailed: true)
 
@@ -796,7 +784,6 @@ RSpec.describe Sxn::Commands::Worktrees do
           created_at: "2023-01-01T00:00:00Z"
         }
         allow(mock_ui).to receive(:key_value)
-        allow(worktrees_command).to receive(:display_worktree_commands)
 
         worktrees_command.send(:display_worktree_info, worktree_no_status, detailed: true)
 

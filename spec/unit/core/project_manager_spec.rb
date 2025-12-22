@@ -834,7 +834,8 @@ RSpec.describe Sxn::Core::ProjectManager do
         end
 
         it "handles StandardError exceptions gracefully" do
-          # Mock to raise an exception
+          # Mock to raise an exception for the specific path, but allow original calls for cleanup
+          allow(Dir).to receive(:chdir).and_call_original
           allow(Dir).to receive(:chdir).with(test_git_path).and_raise(StandardError.new("Test error"))
 
           branch = project_manager.send(:detect_default_branch, test_git_path)

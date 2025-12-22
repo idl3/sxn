@@ -10,6 +10,16 @@ RSpec.describe Sxn::Core::WorktreeManager do
   let(:session_path) { File.join(temp_dir, "test_session") }
   let(:worktree_path) { File.join(session_path, "test-project") }
 
+  # Ensure we always restore the original directory to prevent order-dependent test failures
+  around do |example|
+    original_dir = Dir.pwd
+    begin
+      example.run
+    ensure
+      Dir.chdir(original_dir)
+    end
+  end
+
   let(:mock_config_manager) do
     instance_double(Sxn::Core::ConfigManager).tap do |mgr|
       allow(mgr).to receive(:current_session).and_return("test-session")
@@ -76,20 +86,22 @@ RSpec.describe Sxn::Core::WorktreeManager do
   describe "#initialize" do
     it "creates default managers when none provided" do
       # Create temp dir for config
-      temp_dir = Dir.mktmpdir("sxn_test")
+      init_test_dir = Dir.mktmpdir("sxn_test")
 
-      expect(Sxn::Core::ConfigManager).to receive(:new).and_call_original
-      expect(Sxn::Core::SessionManager).to receive(:new).and_call_original
+      begin
+        expect(Sxn::Core::ConfigManager).to receive(:new).and_call_original
+        expect(Sxn::Core::SessionManager).to receive(:new).and_call_original
 
-      # Initialize config properly
-      allow_any_instance_of(Sxn::Core::ConfigManager).to receive(:sessions_folder_path).and_return(temp_dir)
-      allow_any_instance_of(Sxn::Core::ConfigManager).to receive(:initialized?).and_return(true)
-      allow_any_instance_of(Sxn::Core::ConfigManager).to receive(:current_session).and_return(nil)
-      allow_any_instance_of(Sxn::Core::ConfigManager).to receive(:config_path).and_return(File.join(temp_dir, "config.yml"))
+        # Initialize config properly
+        allow_any_instance_of(Sxn::Core::ConfigManager).to receive(:sessions_folder_path).and_return(init_test_dir)
+        allow_any_instance_of(Sxn::Core::ConfigManager).to receive(:initialized?).and_return(true)
+        allow_any_instance_of(Sxn::Core::ConfigManager).to receive(:current_session).and_return(nil)
+        allow_any_instance_of(Sxn::Core::ConfigManager).to receive(:config_path).and_return(File.join(init_test_dir, "config.yml"))
 
-      described_class.new
-
-      FileUtils.rm_rf(temp_dir)
+        described_class.new
+      ensure
+        FileUtils.rm_rf(init_test_dir)
+      end
     end
 
     it "uses provided managers" do
@@ -635,6 +647,7 @@ RSpec.describe Sxn::Core::WorktreeManager do
         File.write(File.join(test_path, ".git"), "corrupted git data that will cause errors")
 
         # Mock Dir.chdir to raise an exception to simulate git command failure
+        allow(Dir).to receive(:chdir).and_call_original
         allow(Dir).to receive(:chdir).with(test_path).and_raise("Git command failed")
 
         status = worktree_manager.send(:get_worktree_status, test_path)
@@ -775,7 +788,8 @@ RSpec.describe Sxn::Core::WorktreeManager do
     describe "#handle_orphaned_worktree" do
       it "prunes and removes orphaned worktrees" do
         # Setup mocks for the private method
-        allow(Dir).to receive(:chdir).and_yield
+        allow(Dir).to receive(:chdir).and_call_original
+        allow(Dir).to receive(:chdir).with(project_path).and_yield
         allow(worktree_manager).to receive(:system).with("git worktree prune", out: File::NULL, err: File::NULL).and_return(true)
         allow(worktree_manager).to receive(:`).with("git worktree list --porcelain 2>/dev/null").and_return("worktree #{worktree_path}")
         allow(worktree_manager).to receive(:system).with("git worktree remove --force #{worktree_path}", out: File::NULL, err: File::NULL).and_return(true)
@@ -792,7 +806,8 @@ RSpec.describe Sxn::Core::WorktreeManager do
 
     describe "#fetch_remote_branch" do
       it "fetches and tracks remote branch successfully" do
-        allow(Dir).to receive(:chdir).and_yield
+        allow(Dir).to receive(:chdir).and_call_original
+        allow(Dir).to receive(:chdir).with(project_path).and_yield
         allow(worktree_manager).to receive(:system).with("git fetch --all", out: File::NULL, err: File::NULL).and_return(true)
         allow(worktree_manager).to receive(:`).with("git remote").and_return("origin\n")
         allow(worktree_manager).to receive(:system).with(
@@ -810,7 +825,8 @@ RSpec.describe Sxn::Core::WorktreeManager do
       end
 
       it "raises error when remote branch not found" do
-        allow(Dir).to receive(:chdir).and_yield
+        allow(Dir).to receive(:chdir).and_call_original
+        allow(Dir).to receive(:chdir).with(project_path).and_yield
         allow(worktree_manager).to receive(:system).with("git fetch --all", out: File::NULL, err: File::NULL).and_return(true)
         allow(worktree_manager).to receive(:`).with("git remote").and_return("origin\n")
         allow(worktree_manager).to receive(:system).with(
@@ -824,7 +840,8 @@ RSpec.describe Sxn::Core::WorktreeManager do
       end
 
       it "raises error when git fetch fails" do
-        allow(Dir).to receive(:chdir).and_yield
+        allow(Dir).to receive(:chdir).and_call_original
+        allow(Dir).to receive(:chdir).with(project_path).and_yield
         allow(worktree_manager).to receive(:system).with("git fetch --all", out: File::NULL, err: File::NULL).and_return(false)
 
         expect do
@@ -1141,7 +1158,8 @@ RSpec.describe Sxn::Core::WorktreeManager do
       allow(ENV).to receive(:[]).with(anything).and_call_original
       allow(File).to receive(:directory?).with("/non/existent/path").and_return(false)
       allow(File).to receive(:directory?).and_call_original
-      # Mock Dir.chdir to avoid raising ENOENT
+      # Mock Dir.chdir to avoid raising ENOENT but allow original calls for cleanup
+      allow(Dir).to receive(:chdir).and_call_original
       allow(Dir).to receive(:chdir).with("/non/existent/path").and_yield
 
       expect do

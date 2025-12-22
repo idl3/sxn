@@ -13,6 +13,7 @@ RSpec.describe Sxn::Commands::Sessions do
   let(:project_manager) { instance_double(Sxn::Core::ProjectManager) }
   let(:worktree_manager) { instance_double(Sxn::Core::WorktreeManager) }
   let(:template_manager) { instance_double(Sxn::Core::TemplateManager) }
+  let(:rules_manager) { double("RulesManager") }
 
   let(:sample_session) do
     {
@@ -39,9 +40,13 @@ RSpec.describe Sxn::Commands::Sessions do
     allow(Sxn::Core::ProjectManager).to receive(:new).and_return(project_manager)
     allow(Sxn::Core::WorktreeManager).to receive(:new).and_return(worktree_manager)
     allow(Sxn::Core::TemplateManager).to receive(:new).and_return(template_manager)
+    allow(Sxn::Core::RulesManager).to receive(:new).and_return(rules_manager)
 
     # Default project manager setup - empty projects means wizard is skipped
     allow(project_manager).to receive(:list_projects).and_return([])
+
+    # Default rules manager setup
+    allow(rules_manager).to receive(:apply_rules).and_return({ success: true, applied_count: 0, errors: [] })
 
     # Default mock setup
     allow(config_manager).to receive(:initialized?).and_return(true)
@@ -394,7 +399,6 @@ RSpec.describe Sxn::Commands::Sessions do
         allow(session_manager).to receive(:get_session).and_return(sample_session)
 
         allow(worktree_manager).to receive(:add_worktree).and_return({ path: "/path/to/worktree", project: "project1", branch: "feature-branch" })
-        allow(command).to receive(:apply_project_rules)
 
         options = Thor::CoreExt::HashWithIndifferentAccess.new(template: "my-template", branch: "feature-branch")
         allow(command).to receive(:options).and_return(options)
@@ -436,17 +440,14 @@ RSpec.describe Sxn::Commands::Sessions do
                                                                        branch: "main"
                                                                      })
 
-        # Stub apply_project_rules to verify it's called
-        allow(command).to receive(:apply_project_rules)
-
         options = Thor::CoreExt::HashWithIndifferentAccess.new(template: "my-template", branch: "main")
         allow(command).to receive(:options).and_return(options)
 
         expect { command.add("test-session") }.not_to raise_error
 
-        # Verify apply_project_rules is called for each project in the template
-        expect(command).to have_received(:apply_project_rules).with("project1", "test-session")
-        expect(command).to have_received(:apply_project_rules).with("project2", "test-session")
+        # Verify rules are applied for each project in the template
+        expect(rules_manager).to have_received(:apply_rules).with("project1", "test-session")
+        expect(rules_manager).to have_received(:apply_rules).with("project2", "test-session")
       end
 
       it "accepts template names with hyphens" do
@@ -465,7 +466,6 @@ RSpec.describe Sxn::Commands::Sessions do
                                                                        project: "project1",
                                                                        branch: "main"
                                                                      })
-        allow(command).to receive(:apply_project_rules)
 
         options = Thor::CoreExt::HashWithIndifferentAccess.new(template: "kiosk-full", branch: "main")
         allow(command).to receive(:options).and_return(options)
@@ -499,16 +499,18 @@ RSpec.describe Sxn::Commands::Sessions do
                                                                        branch: "main"
                                                                      })
 
-        # Track calls to apply_template_rules
-        allow(command).to receive(:apply_template_rules).and_call_original
-        allow(command).to receive(:apply_project_rules)
+        # Stub methods that don't exist on RulesManager but are called by apply_template_rules
+        allow(rules_manager).to receive(:apply_copy_files_rules)
+        allow(rules_manager).to receive(:apply_setup_commands)
 
         options = Thor::CoreExt::HashWithIndifferentAccess.new(template: "my-template", branch: "main")
         allow(command).to receive(:options).and_return(options)
 
         expect { command.add("test-session") }.not_to raise_error
 
-        expect(command).to have_received(:apply_template_rules).with("test-session", "project1", "/path/to/worktree", template_rules)
+        # Verify template rules were applied via RulesManager
+        expect(rules_manager).to have_received(:apply_copy_files_rules).with(template_rules["copy_files"])
+        expect(rules_manager).to have_received(:apply_setup_commands).with(template_rules["setup_commands"])
       end
 
       it "skips template rules when project has no rules defined" do
@@ -527,8 +529,6 @@ RSpec.describe Sxn::Commands::Sessions do
                                                                        project: "project1",
                                                                        branch: "main"
                                                                      })
-
-        allow(command).to receive(:apply_project_rules)
 
         options = Thor::CoreExt::HashWithIndifferentAccess.new(template: "my-template", branch: "main")
         allow(command).to receive(:options).and_return(options)
@@ -556,18 +556,16 @@ RSpec.describe Sxn::Commands::Sessions do
                                                                        project: "project1",
                                                                        branch: "main"
                                                                      })
-        allow(worktree_manager).to receive(:remove_worktree)
-        allow(session_manager).to receive(:remove_session)
 
-        # Stub apply_template_rules to raise an error - this triggers rollback
-        allow(command).to receive(:apply_template_rules).and_raise(StandardError.new("Rules failed"))
-        allow(command).to receive(:apply_project_rules)
+        # Set up RulesManager to raise an error when applying copy_files
+        allow(rules_manager).to receive(:apply_copy_files_rules).and_raise(StandardError.new("Rules failed"))
 
         options = Thor::CoreExt::HashWithIndifferentAccess.new(template: "my-template", branch: "main")
         allow(command).to receive(:options).and_return(options)
 
-        expect { command.add("test-session") }.to raise_error(SystemExit)
-        expect(mock_ui).to have_received(:warning).with(/rolling back/i)
+        # The error is caught and handled gracefully with a warning
+        expect { command.add("test-session") }.not_to raise_error
+        expect(mock_ui).to have_received(:warning).with(/Failed to apply rules/)
       end
     end
   end

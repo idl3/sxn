@@ -22,6 +22,7 @@ RSpec.describe Sxn::UI::Table, "comprehensive coverage for missing areas" do
   describe "comprehensive helper method coverage" do
     describe "#git_clean?" do
       it "returns true when git diff-index succeeds" do
+        allow(Dir).to receive(:chdir).and_call_original
         allow(Dir).to receive(:chdir).with("/clean/repo").and_yield
         allow(table).to receive(:system).with("git diff-index --quiet HEAD --", out: File::NULL, err: File::NULL).and_return(true)
 
@@ -30,6 +31,7 @@ RSpec.describe Sxn::UI::Table, "comprehensive coverage for missing areas" do
       end
 
       it "returns false when git diff-index fails" do
+        allow(Dir).to receive(:chdir).and_call_original
         allow(Dir).to receive(:chdir).with("/dirty/repo").and_yield
         allow(table).to receive(:system).with("git diff-index --quiet HEAD --", out: File::NULL, err: File::NULL).and_return(false)
 
@@ -38,6 +40,7 @@ RSpec.describe Sxn::UI::Table, "comprehensive coverage for missing areas" do
       end
 
       it "returns false when git command raises exception" do
+        allow(Dir).to receive(:chdir).and_call_original
         allow(Dir).to receive(:chdir).with("/error/repo").and_raise(StandardError, "Git error")
 
         result = table.send(:git_clean?, "/error/repo")
@@ -45,6 +48,7 @@ RSpec.describe Sxn::UI::Table, "comprehensive coverage for missing areas" do
       end
 
       it "returns false when directory change fails" do
+        allow(Dir).to receive(:chdir).and_call_original
         allow(Dir).to receive(:chdir).with("/nonexistent").and_raise(Errno::ENOENT, "No such directory")
 
         result = table.send(:git_clean?, "/nonexistent")
@@ -52,6 +56,7 @@ RSpec.describe Sxn::UI::Table, "comprehensive coverage for missing areas" do
       end
 
       it "returns false when system call raises exception" do
+        allow(Dir).to receive(:chdir).and_call_original
         allow(Dir).to receive(:chdir).with("/system/error").and_yield
         allow(table).to receive(:system).and_raise(StandardError, "System error")
 

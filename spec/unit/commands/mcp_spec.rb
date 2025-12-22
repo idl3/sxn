@@ -7,6 +7,16 @@ require "json"
 RSpec.describe Sxn::Commands::MCP do
   let(:temp_dir) { Dir.mktmpdir("sxn_mcp_cmd_test") }
 
+  # Ensure we always restore the original directory to prevent order-dependent test failures
+  around do |example|
+    original_dir = Dir.pwd
+    begin
+      example.run
+    ensure
+      Dir.chdir(original_dir)
+    end
+  end
+
   after { FileUtils.rm_rf(temp_dir) }
 
   describe "#find_sxn_mcp_executable" do

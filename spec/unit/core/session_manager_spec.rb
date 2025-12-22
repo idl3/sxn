@@ -639,7 +639,8 @@ RSpec.describe Sxn::Core::SessionManager do
       # Mock find_parent_repository to return a valid path
       allow(session_manager).to receive(:find_parent_repository).and_return("/fake/repo/.git")
 
-      # Mock Dir.chdir to yield but system to fail
+      # Mock Dir.chdir to yield for the specific path, but allow other calls (like spec_helper cleanup)
+      allow(Dir).to receive(:chdir).and_call_original
       allow(Dir).to receive(:chdir).with("/fake/repo/.git").and_yield
       allow(session_manager).to receive(:system).and_return(false)
 
@@ -658,7 +659,9 @@ RSpec.describe Sxn::Core::SessionManager do
 
     it "removes directory even when git operations fail" do
       allow(session_manager).to receive(:find_parent_repository).and_return("/fake/repo/.git")
-      allow(Dir).to receive(:chdir).and_raise(StandardError.new("Cannot chdir"))
+      # Allow original chdir calls to work, but raise for the fake repo path
+      allow(Dir).to receive(:chdir).and_call_original
+      allow(Dir).to receive(:chdir).with("/fake/repo/.git").and_raise(StandardError.new("Cannot chdir"))
 
       # We don't need to mock FileUtils.rm_rf, just verify directory is removed
       expect do
@@ -673,6 +676,8 @@ RSpec.describe Sxn::Core::SessionManager do
       # Test line 333: warn "..." unless success
       # This tests when success is true (no warning should be output)
       allow(session_manager).to receive(:find_parent_repository).and_return("/fake/repo/.git")
+      # Allow original chdir calls to work, but yield for the fake repo path
+      allow(Dir).to receive(:chdir).and_call_original
       allow(Dir).to receive(:chdir).with("/fake/repo/.git").and_yield
       allow(session_manager).to receive(:system).and_return(true)
 

@@ -401,6 +401,7 @@ RSpec.describe Sxn::UI::Table do
 
     describe "#git_clean?" do
       it "returns true when git diff-index succeeds" do
+        allow(Dir).to receive(:chdir).and_call_original
         allow(Dir).to receive(:chdir).with("/path").and_yield
         allow(table).to receive(:system).and_return(true)
 
@@ -410,6 +411,7 @@ RSpec.describe Sxn::UI::Table do
       end
 
       it "returns false when git diff-index fails" do
+        allow(Dir).to receive(:chdir).and_call_original
         allow(Dir).to receive(:chdir).with("/path").and_yield
         allow(table).to receive(:system).and_return(false)
 
@@ -419,7 +421,8 @@ RSpec.describe Sxn::UI::Table do
       end
 
       it "returns false when error occurs" do
-        allow(Dir).to receive(:chdir).and_raise("Error")
+        allow(Dir).to receive(:chdir).and_call_original
+        allow(Dir).to receive(:chdir).with("/path").and_raise("Error")
 
         result = table.send(:git_clean?, "/path")
 
