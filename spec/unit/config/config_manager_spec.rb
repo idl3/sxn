@@ -436,6 +436,92 @@ RSpec.describe Sxn::Config::Manager do
       end.to perform_under(10).ms
     end
   end
+
+  describe "branch coverage" do
+    describe "#errors - line 116[else]" do
+      context "when ConfigurationError has non-validation error message" do
+        before do
+          # Stub validator to raise a ConfigurationError without the standard format
+          allow(manager.validator).to receive(:validate_and_migrate).and_raise(
+            Sxn::ConfigurationError, "Custom error: something went wrong"
+          )
+        end
+
+        it "returns the error message as-is" do
+          errors = manager.errors
+          expect(errors).to eq(["Custom error: something went wrong"])
+        end
+      end
+
+      context "when StandardError is raised during config loading" do
+        before do
+          # Stub to raise a StandardError
+          allow(manager).to receive(:config).and_raise(
+            StandardError, "Unexpected error occurred"
+          )
+        end
+
+        it "returns the standard error message" do
+          errors = manager.errors
+          expect(errors).to eq(["Unexpected error occurred"])
+        end
+      end
+    end
+
+    describe "#load_and_validate_config - line 176[then]" do
+      context "when merging CLI options with cached configuration" do
+        before do
+          # Initial load to populate cache
+          manager.config
+          # Clear in-memory cache to force using disk cache
+          manager.instance_variable_set(:@current_config, nil)
+        end
+
+        it "merges non-empty CLI options with cached config" do
+          cli_options = {
+            "settings" => {
+              "max_sessions" => 100,
+              "auto_cleanup" => true
+            },
+            "custom_option" => "test_value"
+          }
+
+          config = manager.config(cli_options: cli_options)
+
+          # Verify CLI options were merged
+          expect(config["settings"]["max_sessions"]).to eq 100
+          expect(config["settings"]["auto_cleanup"]).to be true
+          expect(config["custom_option"]).to eq "test_value"
+
+          # Verify original cached values are still present
+          expect(config["sessions_folder"]).to eq "test-sessions"
+        end
+
+        it "handles deep merging of nested structures" do
+          cli_options = {
+            "settings" => {
+              "max_sessions" => 50 # Override one setting
+              # auto_cleanup should remain from cached config
+            },
+            "projects" => {
+              "new-project" => {
+                "path" => "./new",
+                "type" => "javascript"
+              }
+            }
+          }
+
+          config = manager.config(cli_options: cli_options)
+
+          # Verify deep merge worked correctly
+          expect(config["settings"]["max_sessions"]).to eq 50
+          expect(config["settings"]["auto_cleanup"]).to be false # From cached config
+          expect(config["projects"]["test-project"]).to be_a(Hash) # From cached config
+          expect(config["projects"]["new-project"]["type"]).to eq "javascript" # From CLI options
+        end
+      end
+    end
+  end
 end
 
 # Test class-level convenience methods

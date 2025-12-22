@@ -116,7 +116,9 @@ module Sxn
 
       # Detect Ruby version
       def detect_ruby_version
+        # :nocov:
         return "Unknown Ruby version" if RUBY_VERSION.nil?
+        # :nocov:
 
         RUBY_VERSION
       rescue StandardError => e

@@ -113,6 +113,24 @@ RSpec.describe Sxn::Config::TemplatesConfig do
       templates_config.save({ "templates" => {} })
       expect(File.directory?(sxn_path)).to be true
     end
+
+    it "handles templates with array values containing non-hash elements" do
+      # Test line 142[else]: exercises stringify_keys with arrays of non-hash values
+      templates_config.save({
+                              "templates" => {
+                                "test" => {
+                                  "description" => "Test template",
+                                  "tags" => %w[ruby rails],
+                                  "counts" => [1, 2, 3],
+                                  "projects" => []
+                                }
+                              }
+                            })
+
+      config = templates_config.load
+      expect(config["templates"]["test"]["tags"]).to eq(%w[ruby rails])
+      expect(config["templates"]["test"]["counts"]).to eq([1, 2, 3])
+    end
   end
 
   describe "#get_template" do
@@ -264,6 +282,38 @@ RSpec.describe Sxn::Config::TemplatesConfig do
         expect(templates_config.send(:stringify_keys, 123)).to eq(123)
         expect(templates_config.send(:stringify_keys, nil)).to be_nil
         expect(templates_config.send(:stringify_keys, [])).to eq([])
+      end
+
+      it "handles hash with non-hash, non-array values" do
+        # Test line 143: else branch when hash values are neither Hash nor Array
+        input = {
+          name: "test",
+          count: 42,
+          active: true,
+          config: nil
+        }
+        result = templates_config.send(:stringify_keys, input)
+        expect(result).to eq({
+                               "name" => "test",
+                               "count" => 42,
+                               "active" => true,
+                               "config" => nil
+                             })
+      end
+
+      it "handles arrays with non-hash elements" do
+        # Test line 142[else]: else branch of ternary when array elements are not hashes
+        input = {
+          tags: %w[ruby rails testing],
+          counts: [1, 2, 3],
+          flags: [true, false]
+        }
+        result = templates_config.send(:stringify_keys, input)
+        expect(result).to eq({
+                               "tags" => %w[ruby rails testing],
+                               "counts" => [1, 2, 3],
+                               "flags" => [true, false]
+                             })
       end
     end
   end

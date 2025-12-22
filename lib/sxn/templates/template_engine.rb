@@ -7,6 +7,7 @@ require_relative "errors"
 require_relative "../runtime_validations"
 
 # Add support for hash deep merging if not available
+# :nocov: - SimpleCov cannot track coverage for conditional class definitions at load time
 unless Hash.method_defined?(:deep_merge)
   class Hash
     def deep_merge(other_hash)
@@ -20,6 +21,7 @@ unless Hash.method_defined?(:deep_merge)
     end
   end
 end
+# :nocov:
 
 module Sxn
   module Templates

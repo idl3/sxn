@@ -699,6 +699,89 @@ RSpec.describe Sxn::Core::SessionManager do
     end
   end
 
+  describe "branch coverage" do
+    describe "line 308: uncommitted changes detection" do
+      let!(:session) { session_manager.create_session("branch-test-session") }
+      let(:worktree_path) { File.join(sessions_dir, "branch-test-session", "test-worktree") }
+
+      context "then branch: when there are uncommitted changes" do
+        before do
+          session_manager.add_worktree_to_session("branch-test-session", "test-project", worktree_path, "main")
+          FileUtils.mkdir_p(worktree_path)
+          Dir.chdir(worktree_path) do
+            system("git init", out: File::NULL, err: File::NULL)
+            system("git config user.email 'test@example.com'", out: File::NULL, err: File::NULL)
+            system("git config user.name 'Test User'", out: File::NULL, err: File::NULL)
+            File.write("test.txt", "content")
+            system("git add test.txt", out: File::NULL, err: File::NULL)
+            system("git commit -m 'Initial commit'", out: File::NULL, err: File::NULL)
+            # Add uncommitted changes to trigger line 308 then branch
+            File.write("test.txt", "modified content")
+          end
+        end
+
+        it "detects uncommitted changes and prevents removal without force" do
+          # This tests line 308 THEN branch: uncommitted << project if (condition is TRUE)
+          expect do
+            session_manager.remove_session("branch-test-session")
+          end.to raise_error(Sxn::SessionHasChangesError, /uncommitted changes/)
+        end
+      end
+
+      context "else branch: when worktree is clean (no changes)" do
+        before do
+          session_manager.add_worktree_to_session("branch-test-session", "clean-project", worktree_path, "main")
+          FileUtils.mkdir_p(worktree_path)
+          Dir.chdir(worktree_path) do
+            system("git init", out: File::NULL, err: File::NULL)
+            system("git config user.email 'test@example.com'", out: File::NULL, err: File::NULL)
+            system("git config user.name 'Test User'", out: File::NULL, err: File::NULL)
+            File.write("test.txt", "content")
+            system("git add test.txt", out: File::NULL, err: File::NULL)
+            system("git commit -m 'Initial commit'", out: File::NULL, err: File::NULL)
+            # No uncommitted changes - worktree is clean
+          end
+        end
+
+        it "allows removal when worktree is clean" do
+          # This tests line 308 ELSE branch: uncommitted << project if (condition is FALSE)
+          # When there are no staged, unstaged, or untracked changes, the condition is false
+          # and the project is NOT added to the uncommitted list
+          result = session_manager.remove_session("branch-test-session")
+          expect(result).to be(true)
+          expect(session_manager.get_session("branch-test-session")).to be_nil
+        end
+      end
+    end
+
+    describe "line 329: parent repository check in remove_session_worktrees" do
+      let!(:session) { session_manager.create_session("worktree-test-session") }
+      let(:worktree_path) { File.join(sessions_dir, "worktree-test-session", "no-parent-worktree") }
+
+      context "else branch: when parent_repo is nil" do
+        before do
+          session_manager.add_worktree_to_session("worktree-test-session", "no-parent-project", worktree_path, "main")
+          FileUtils.mkdir_p(worktree_path)
+          # Create directory without .git file, so find_parent_repository returns nil
+          # This will cause the else branch at line 329 to execute
+        end
+
+        it "skips git worktree removal when no parent repository is found" do
+          # This tests line 329 ELSE branch: when parent_repo is nil
+          # The method should skip the git worktree remove command and just remove the directory
+          expect do
+            session_manager.remove_session("worktree-test-session", force: true)
+          end.not_to raise_error
+
+          # Verify the session was removed
+          expect(session_manager.get_session("worktree-test-session")).to be_nil
+          # Verify the directory was removed
+          expect(File.exist?(worktree_path)).to be(false)
+        end
+      end
+    end
+  end
+
   describe "private methods" do
     let!(:session) { session_manager.create_session("test-session") }
 

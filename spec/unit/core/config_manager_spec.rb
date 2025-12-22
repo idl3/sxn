@@ -1096,5 +1096,27 @@ RSpec.describe Sxn::Core::ConfigManager do
       content = File.read(gitignore_path)
       expect(content).to include("my_sessions/")
     end
+
+    it "covers line 140 then branch - entry starting with dot in Dir.glob results" do
+      # Dir.glob("*") normally doesn't return hidden files, but we need to test
+      # the defensive check at line 140 that filters them out
+      # Mock Dir.glob to return an entry starting with "." to exercise the then branch
+      allow(Dir).to receive(:glob).with("*", base: temp_dir).and_return([".hidden", "visible"])
+
+      # Create the actual directories
+      FileUtils.mkdir_p(File.join(temp_dir, ".hidden"))
+      FileUtils.mkdir_p(File.join(temp_dir, "visible"))
+
+      # Mock detector
+      detector_double = instance_double(Sxn::Rules::ProjectDetector)
+      allow(Sxn::Rules::ProjectDetector).to receive(:new).with(temp_dir).and_return(detector_double)
+      allow(detector_double).to receive(:detect_type).with(File.join(temp_dir, "visible")).and_return(:rails)
+
+      projects = config_manager.detect_projects
+
+      # The .hidden entry should be skipped by line 140 (next if entry.start_with?("."))
+      expect(projects.none? { |p| p[:name] == ".hidden" }).to be true
+      expect(projects.any? { |p| p[:name] == "visible" }).to be true
+    end
   end
 end

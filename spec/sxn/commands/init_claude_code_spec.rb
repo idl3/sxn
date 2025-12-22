@@ -738,4 +738,635 @@ RSpec.describe Sxn::Commands::Init, "Claude Code Integration" do
       expect(described_class::CLAUDE_HOOK_PATH).to end_with(".claude/helpers/sxn-session-check.sh")
     end
   end
+
+  describe "#install_claude_hooks command" do
+    context "when project is not initialized" do
+      it "shows error and exits with code 1" do
+        # Test lines 103-104 [then] - error path when not initialized
+        allow(config_manager).to receive(:initialized?).and_return(false)
+        allow(ui_output).to receive(:section)
+        allow(ui_output).to receive(:error)
+
+        init_command.options = {}
+
+        expect do
+          init_command.install_claude_hooks
+        end.to raise_error(SystemExit) do |error|
+          expect(error.status).to eq(1)
+        end
+
+        expect(ui_output).to have_received(:error)
+          .with("Project not initialized. Run 'sxn init' first.")
+      end
+    end
+
+    context "when project is initialized" do
+      before do
+        allow(config_manager).to receive(:initialized?).and_return(true)
+        allow(ui_output).to receive(:section)
+      end
+
+      context "with install mode (default)" do
+        it "calls setup_claude_code_hooks and shows recovery suggestion" do
+          # Test lines 111-113 [else] - install path
+          init_command.options = { uninstall: false }
+
+          expect(init_command).to receive(:setup_claude_code_hooks)
+          allow(ui_output).to receive(:newline)
+          allow(ui_output).to receive(:recovery_suggestion)
+
+          init_command.install_claude_hooks
+
+          expect(ui_output).to have_received(:newline)
+          expect(ui_output).to have_received(:recovery_suggestion)
+            .with("Claude Code will now enforce session-based development in this project")
+        end
+      end
+
+      context "with uninstall mode" do
+        it "calls uninstall_claude_code_hooks" do
+          # Test lines 109 [then] - uninstall path
+          init_command.options = { uninstall: true }
+
+          expect(init_command).to receive(:uninstall_claude_code_hooks)
+
+          init_command.install_claude_hooks
+        end
+      end
+    end
+  end
+
+  describe "#uninstall_claude_code_hooks" do
+    before do
+      allow(ui_output).to receive(:subsection)
+      allow(ui_output).to receive(:info)
+    end
+
+    it "shows subsection and calls remove_project_claude_hooks" do
+      expect(init_command).to receive(:remove_project_claude_hooks)
+
+      init_command.send(:uninstall_claude_code_hooks)
+
+      expect(ui_output).to have_received(:subsection)
+        .with("Removing Claude Code Integration")
+    end
+
+    it "shows info about not removing global hook script" do
+      allow(init_command).to receive(:remove_project_claude_hooks)
+
+      init_command.send(:uninstall_claude_code_hooks)
+
+      expect(ui_output).to have_received(:info)
+        .with("Note: Global hook script at #{claude_hook_path} was not removed")
+      expect(ui_output).to have_received(:info)
+        .with("      (other projects may still use it)")
+    end
+  end
+
+  describe "#auto_detect_projects" do
+    let(:prompt) { instance_double(Sxn::UI::Prompt) }
+
+    before do
+      init_command.instance_variable_set(:@prompt, prompt)
+      allow(ui_output).to receive(:subsection)
+      allow(ui_output).to receive(:empty_state)
+      allow(ui_output).to receive(:info)
+    end
+
+    context "when no projects are detected" do
+      it "shows empty state and returns early" do
+        # Test lines 244-247 - empty detection case
+        allow(config_manager).to receive(:detect_projects).and_return([])
+        allow(prompt).to receive(:project_detection_confirm)
+
+        init_command.send(:auto_detect_projects)
+
+        expect(ui_output).to have_received(:subsection).with("Project Detection")
+        expect(ui_output).to have_received(:empty_state)
+          .with("No projects detected in current directory")
+        # Should return early without asking for confirmation
+        expect(prompt).not_to have_received(:project_detection_confirm)
+      end
+    end
+
+    context "when projects are detected" do
+      let(:detected_projects) do
+        [
+          { name: "project1", path: "/path/to/project1", type: "rails" },
+          { name: "project2", path: "/path/to/project2", type: "node" }
+        ]
+      end
+
+      before do
+        allow(config_manager).to receive(:detect_projects).and_return(detected_projects)
+      end
+
+      context "when user confirms registration" do
+        it "registers the detected projects" do
+          # Test lines 249-251 [then] - user confirms
+          allow(prompt).to receive(:project_detection_confirm).and_return(true)
+          expect(init_command).to receive(:register_detected_projects).with(detected_projects)
+
+          init_command.send(:auto_detect_projects)
+        end
+      end
+
+      context "when user rejects registration" do
+        it "skips registration and shows info message" do
+          # Test lines 252-254 [else] - user rejects
+          allow(prompt).to receive(:project_detection_confirm).and_return(false)
+
+          init_command.send(:auto_detect_projects)
+
+          expect(ui_output).to have_received(:info).with("Skipped project registration")
+          expect(ui_output).to have_received(:info)
+            .with("You can register projects later with: sxn projects add <name> <path>")
+        end
+      end
+    end
+  end
+
+  describe "#register_detected_projects" do
+    let(:projects) do
+      [
+        { name: "project1", path: "/path/to/project1", type: "rails" },
+        { name: "project2", path: "/path/to/project2", type: "node" }
+      ]
+    end
+    let(:project_manager) { instance_double(Sxn::Core::ProjectManager) }
+    let(:progress_bar) { instance_double(Sxn::UI::ProgressBar) }
+
+    before do
+      allow(Sxn::Core::ProjectManager).to receive(:new).and_return(project_manager)
+      allow(ui_output).to receive(:success)
+    end
+
+    context "when all projects register successfully" do
+      it "registers each project and shows success" do
+        # Test lines 260-272 - successful registration
+        allow(Sxn::UI::ProgressBar).to receive(:with_progress).and_yield(projects[0], progress_bar)
+                                                              .and_yield(projects[1], progress_bar)
+        allow(project_manager).to receive(:add_project).and_return(true)
+        allow(progress_bar).to receive(:log)
+
+        init_command.send(:register_detected_projects, projects)
+
+        expect(project_manager).to have_received(:add_project)
+          .with("project1", "/path/to/project1", type: "rails")
+        expect(project_manager).to have_received(:add_project)
+          .with("project2", "/path/to/project2", type: "node")
+        expect(ui_output).to have_received(:success).with("Project registration completed")
+      end
+    end
+
+    context "when a project registration fails" do
+      it "catches the error and logs failure" do
+        # Test lines 269-272 - error handling in progress bar
+        allow(Sxn::UI::ProgressBar).to receive(:with_progress).and_yield(projects[0], progress_bar)
+        allow(project_manager).to receive(:add_project).and_raise(StandardError, "Duplicate project")
+        allow(progress_bar).to receive(:log)
+
+        init_command.send(:register_detected_projects, projects)
+
+        expect(progress_bar).to have_received(:log).with("❌ project1: Duplicate project")
+      end
+    end
+  end
+
+  describe "#display_next_steps" do
+    before do
+      allow(ui_output).to receive(:newline)
+      allow(ui_output).to receive(:subsection)
+      allow(ui_output).to receive(:command_example)
+      allow(ui_output).to receive(:info)
+      allow(ui_output).to receive(:recovery_suggestion)
+    end
+
+    context "when projects were detected" do
+      it "shows info about detected projects" do
+        # Test lines 296-298 [then] - projects detected
+        allow(config_manager).to receive(:detect_projects).and_return([
+                                                                        { name: "project1", path: "/path", type: "rails" }
+                                                                      ])
+
+        init_command.send(:display_next_steps)
+
+        expect(ui_output).to have_received(:info).with("💡 Detected projects are ready to use!")
+      end
+    end
+
+    context "when no projects were detected" do
+      it "shows recovery suggestion to register projects" do
+        # Test lines 299-300 [else] - no projects detected
+        allow(config_manager).to receive(:detect_projects).and_return([])
+
+        init_command.send(:display_next_steps)
+
+        expect(ui_output).to have_received(:recovery_suggestion)
+          .with("Register your projects with 'sxn projects add <name> <path>'")
+      end
+    end
+
+    it "always shows next steps commands" do
+      allow(config_manager).to receive(:detect_projects).and_return([])
+
+      init_command.send(:display_next_steps)
+
+      expect(ui_output).to have_received(:command_example)
+        .with("sxn projects list", "View registered projects")
+      expect(ui_output).to have_received(:command_example)
+        .with("sxn add my-session", "Create your first session")
+      expect(ui_output).to have_received(:command_example)
+        .with("sxn worktree add <project> [branch]", "Add a worktree to your session")
+    end
+  end
+
+  describe "#determine_sessions_folder" do
+    let(:prompt) { instance_double(Sxn::UI::Prompt) }
+
+    before do
+      init_command.instance_variable_set(:@prompt, prompt)
+    end
+
+    context "when folder is provided and not in quiet mode" do
+      it "returns the provided folder" do
+        # Test line 228 - early return with folder && !quiet
+        init_command.options = { quiet: false }
+        allow(prompt).to receive(:sessions_folder_setup)
+
+        result = init_command.send(:determine_sessions_folder, "custom-sessions")
+
+        expect(result).to eq("custom-sessions")
+        # Should return early without calling prompt
+        expect(prompt).not_to have_received(:sessions_folder_setup)
+      end
+    end
+
+    context "when in quiet mode" do
+      before do
+        init_command.options = { quiet: true }
+      end
+
+      it "returns provided folder in quiet mode" do
+        # Test line 232 - quiet mode with folder
+        result = init_command.send(:determine_sessions_folder, "my-sessions")
+
+        expect(result).to eq("my-sessions")
+      end
+
+      it "returns default folder when no folder provided in quiet mode" do
+        # Test line 232 - quiet mode without folder, using default
+        allow(Dir).to receive(:pwd).and_return("/path/to/my-project")
+        allow(File).to receive(:basename).with("/path/to/my-project").and_return("my-project")
+
+        result = init_command.send(:determine_sessions_folder, nil)
+
+        expect(result).to eq("my-project-sessions")
+      end
+    end
+
+    context "when in interactive mode without folder" do
+      it "calls prompt.sessions_folder_setup" do
+        # Test line 236 - interactive mode
+        init_command.options = { quiet: false }
+        allow(prompt).to receive(:sessions_folder_setup).and_return("interactive-sessions")
+
+        result = init_command.send(:determine_sessions_folder, nil)
+
+        expect(result).to eq("interactive-sessions")
+        expect(prompt).to have_received(:sessions_folder_setup)
+      end
+    end
+  end
+
+  describe "#init command" do
+    let(:prompt) { instance_double(Sxn::UI::Prompt) }
+
+    before do
+      init_command.instance_variable_set(:@prompt, prompt)
+      allow(ui_output).to receive(:section)
+      allow(prompt).to receive(:sessions_folder_setup).and_return("sessions")
+    end
+
+    context "when already initialized without force flag" do
+      before do
+        allow(config_manager).to receive(:initialized?).and_return(true)
+        allow(ui_output).to receive(:warning)
+        allow(ui_output).to receive(:info)
+        init_command.options = {}
+      end
+
+      it "shows warning and returns early without initializing" do
+        # Test lines 62-66 - already initialized check
+        expect(config_manager).not_to receive(:initialize_project)
+
+        init_command.init
+
+        expect(ui_output).to have_received(:warning)
+          .with("Project already initialized")
+        expect(ui_output).to have_received(:info)
+          .with("Use --force to reinitialize")
+      end
+    end
+
+    context "when Sxn::Error is raised during initialization" do
+      let(:sxn_error) { Sxn::Error.new("Configuration failed", exit_code: 5) }
+
+      before do
+        allow(config_manager).to receive(:initialized?).and_return(false)
+        allow(config_manager).to receive(:initialize_project).and_raise(sxn_error)
+        allow(ui_output).to receive(:progress_start)
+        allow(ui_output).to receive(:error)
+        init_command.options = { auto_detect: false, claude_code: false, quiet: true }
+      end
+
+      it "catches Sxn::Error and exits with error's exit code" do
+        # Test lines 86-88 - Sxn::Error rescue block
+        expect do
+          init_command.init("test-sessions")
+        end.to raise_error(SystemExit) do |error|
+          expect(error.status).to eq(5)
+        end
+
+        expect(ui_output).to have_received(:error)
+          .with("Initialization failed: Configuration failed")
+      end
+    end
+
+    context "when StandardError is raised during initialization" do
+      let(:standard_error) { StandardError.new("Unexpected failure") }
+
+      before do
+        allow(config_manager).to receive(:initialized?).and_return(false)
+        allow(config_manager).to receive(:initialize_project).and_raise(standard_error)
+        allow(ui_output).to receive(:progress_start)
+        allow(ui_output).to receive(:error)
+        allow(ui_output).to receive(:debug)
+        init_command.options = { auto_detect: false, claude_code: false, quiet: true }
+      end
+
+      it "catches StandardError and exits with code 1" do
+        # Test lines 89-93 - StandardError rescue block
+        expect do
+          init_command.init("test-sessions")
+        end.to raise_error(SystemExit) do |error|
+          expect(error.status).to eq(1)
+        end
+
+        expect(ui_output).to have_received(:error)
+          .with("Unexpected error: Unexpected failure")
+      end
+
+      it "does not show debug output when SXN_DEBUG is not set" do
+        # Test line 91 [else] - debug not enabled
+        ENV.delete("SXN_DEBUG")
+
+        expect do
+          init_command.init("test-sessions")
+        end.to raise_error(SystemExit)
+
+        expect(ui_output).not_to have_received(:debug)
+      end
+
+      it "shows debug backtrace when SXN_DEBUG is set" do
+        # Test line 91 [then] - debug enabled
+        ENV["SXN_DEBUG"] = "1"
+
+        expect do
+          init_command.init("test-sessions")
+        end.to raise_error(SystemExit)
+
+        expect(ui_output).to have_received(:debug) do |arg|
+          expect(arg).to be_a(String)
+          expect(arg).to include("init_claude_code_spec.rb")
+        end
+
+        ENV.delete("SXN_DEBUG")
+      end
+    end
+  end
+
+  describe "#remove_project_claude_hooks" do
+    context "when settings file does not exist" do
+      it "shows info message and returns early" do
+        # Test lines 443-444 [then] - file doesn't exist path
+        allow(ui_output).to receive(:info)
+
+        init_command.send(:remove_project_claude_hooks)
+
+        expect(ui_output).to have_received(:info)
+          .with("No Claude settings file found in this project")
+        expect(ui_output).not_to have_received(:progress_start)
+      end
+    end
+
+    context "when settings file exists" do
+      before do
+        FileUtils.mkdir_p(project_claude_dir)
+        allow(ui_output).to receive(:progress_start)
+        allow(ui_output).to receive(:progress_done)
+        allow(ui_output).to receive(:success)
+        allow(ui_output).to receive(:info)
+      end
+
+      context "when settings has no hooks key" do
+        it "shows no sxn hooks found message" do
+          # Test line 472 [else] - no UserPromptSubmit hooks
+          File.write(project_settings_path, JSON.pretty_generate({ "other" => "setting" }))
+
+          init_command.send(:remove_project_claude_hooks)
+
+          expect(ui_output).to have_received(:progress_done)
+          expect(ui_output).to have_received(:info)
+            .with("No sxn hooks found in project settings")
+        end
+      end
+
+      context "when settings has hooks but no UserPromptSubmit" do
+        it "shows no sxn hooks found message" do
+          # Test line 472 [else] - hooks exist but no UserPromptSubmit
+          settings = { "hooks" => { "OtherHook" => [] } }
+          File.write(project_settings_path, JSON.pretty_generate(settings))
+
+          init_command.send(:remove_project_claude_hooks)
+
+          expect(ui_output).to have_received(:info)
+            .with("No sxn hooks found in project settings")
+        end
+      end
+
+      context "when settings has UserPromptSubmit with sxn hooks" do
+        context "and removing hooks leaves settings empty" do
+          it "deletes the settings file" do
+            # Test lines 452 [then], 454-455, 459 [then], 460 [then], 462-465 [then]
+            # Only sxn hooks, so file should be deleted when empty
+            settings = {
+              "hooks" => {
+                "UserPromptSubmit" => [
+                  {
+                    "matcher" => "",
+                    "hooks" => [
+                      {
+                        "type" => "command",
+                        "command" => claude_hook_path,
+                        "timeout" => 15_000
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+            File.write(project_settings_path, JSON.pretty_generate(settings))
+
+            init_command.send(:remove_project_claude_hooks)
+
+            expect(File.exist?(project_settings_path)).to be false
+            expect(ui_output).to have_received(:success)
+              .with("Removed settings.json (was empty after removing hooks)")
+          end
+        end
+
+        context "and removing hooks leaves other settings" do
+          it "writes updated settings file" do
+            # Test lines 452 [then], 454-455, 467-469 [else]
+            # Has other settings that should be preserved
+            settings = {
+              "hooks" => {
+                "UserPromptSubmit" => [
+                  {
+                    "matcher" => "",
+                    "hooks" => [
+                      {
+                        "type" => "command",
+                        "command" => "/path/to/sxn-session-check.sh",
+                        "timeout" => 15_000
+                      }
+                    ]
+                  }
+                ]
+              },
+              "customSetting" => "value"
+            }
+            File.write(project_settings_path, JSON.pretty_generate(settings))
+
+            init_command.send(:remove_project_claude_hooks)
+
+            expect(File.exist?(project_settings_path)).to be true
+            remaining_settings = JSON.parse(File.read(project_settings_path))
+            expect(remaining_settings).to have_key("customSetting")
+            expect(remaining_settings).not_to have_key("hooks")
+            expect(ui_output).to have_received(:success)
+              .with("Removed sxn hooks from project settings")
+          end
+        end
+
+        context "and UserPromptSubmit has both sxn and non-sxn hooks" do
+          it "removes only sxn hooks and keeps others" do
+            # Test lines 452 [then], 454-455, 459 [else], 467-469 [else]
+            # UserPromptSubmit should remain with non-sxn hooks
+            settings = {
+              "hooks" => {
+                "UserPromptSubmit" => [
+                  {
+                    "matcher" => "",
+                    "hooks" => [
+                      {
+                        "type" => "command",
+                        "command" => "/other/script.sh"
+                      }
+                    ]
+                  },
+                  {
+                    "matcher" => "",
+                    "hooks" => [
+                      {
+                        "type" => "command",
+                        "command" => "/path/sxn-session-check.sh"
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+            File.write(project_settings_path, JSON.pretty_generate(settings))
+
+            init_command.send(:remove_project_claude_hooks)
+
+            expect(File.exist?(project_settings_path)).to be true
+            remaining_settings = JSON.parse(File.read(project_settings_path))
+            expect(remaining_settings["hooks"]["UserPromptSubmit"].length).to eq(1)
+            expect(remaining_settings["hooks"]["UserPromptSubmit"][0]["hooks"][0]["command"])
+              .to eq("/other/script.sh")
+          end
+        end
+
+        context "and UserPromptSubmit has other hooks plus empty hooks" do
+          it "handles cleanup of UserPromptSubmit array correctly" do
+            # Test line 459 with empty array after removal
+            settings = {
+              "hooks" => {
+                "UserPromptSubmit" => [
+                  {
+                    "matcher" => "pattern",
+                    "hooks" => [
+                      {
+                        "type" => "command",
+                        "command" => "#{claude_helpers_dir}/sxn-session-check.sh"
+                      }
+                    ]
+                  }
+                ],
+                "OtherHook" => [{ "matcher" => "test" }]
+              }
+            }
+            File.write(project_settings_path, JSON.pretty_generate(settings))
+
+            init_command.send(:remove_project_claude_hooks)
+
+            remaining_settings = JSON.parse(File.read(project_settings_path))
+            # UserPromptSubmit should be deleted (was empty after removal)
+            expect(remaining_settings["hooks"]).not_to have_key("UserPromptSubmit")
+            # But OtherHook should remain
+            expect(remaining_settings["hooks"]).to have_key("OtherHook")
+          end
+        end
+
+        context "with nested hooks containing sxn-session-check in command" do
+          it "correctly identifies and removes hooks with sxn-session-check in path" do
+            # Test line 455 - the any? check for command inclusion
+            # The entire hook group is removed if ANY inner hook contains sxn-session-check
+            settings = {
+              "hooks" => {
+                "UserPromptSubmit" => [
+                  {
+                    "matcher" => "",
+                    "hooks" => [
+                      {
+                        "type" => "command",
+                        "command" => "/custom/path/to/sxn-session-check.sh",
+                        "timeout" => 20_000
+                      },
+                      {
+                        "type" => "command",
+                        "command" => "/another/script.sh"
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+            File.write(project_settings_path, JSON.pretty_generate(settings))
+
+            init_command.send(:remove_project_claude_hooks)
+
+            # The entire hook group should be removed because it contains sxn-session-check
+            # Since that was the only hook group, the file should be deleted
+            expect(File.exist?(project_settings_path)).to be false
+            expect(ui_output).to have_received(:success)
+              .with("Removed settings.json (was empty after removing hooks)")
+          end
+        end
+      end
+    end
+  end
 end

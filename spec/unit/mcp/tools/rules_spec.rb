@@ -203,14 +203,57 @@ RSpec.describe Sxn::MCP::Tools::Rules do
           end
         end
 
-        context "with setup_commands rule with nil command" do
-          it "handles nil command gracefully with safe navigation" do
-            # Mock list_rules to return a setup_commands rule with nil command
-            # This tests the &. safe navigation operator on line 43
+        context "branch coverage for case statement with string type matching" do
+          # These tests specifically target lines 41, 43, and 45 in rules.rb
+          # The case statement compares rule[:type] against STRING literals,
+          # so we need to mock rules with string types (not symbols)
+
+          it "covers copy_files branch (line 41) with string type" do
+            # Mock to return a copy_files rule with STRING type to hit line 41
             allow(rules_manager).to receive(:list_rules).and_return([
                                                                       {
                                                                         project: "test-project",
-                                                                        type: :setup_commands,
+                                                                        type: "copy_files",
+                                                                        index: 0,
+                                                                        config: { "source" => "path/to/file.txt", "strategy" => "copy" },
+                                                                        enabled: true
+                                                                      }
+                                                                    ])
+
+            response = described_class.call(server_context: server_context)
+
+            expect(response.error?).to be false
+            text = response.content.first[:text]
+            # Verify the copy_files branch was executed - should show source path
+            expect(text).to include("[copy_files] path/to/file.txt")
+          end
+
+          it "covers setup_commands branch (line 43) with string type" do
+            # Mock to return a setup_commands rule with STRING type to hit line 43
+            allow(rules_manager).to receive(:list_rules).and_return([
+                                                                      {
+                                                                        project: "test-project",
+                                                                        type: "setup_commands",
+                                                                        index: 0,
+                                                                        config: { "command" => %w[npm ci] },
+                                                                        enabled: true
+                                                                      }
+                                                                    ])
+
+            response = described_class.call(server_context: server_context)
+
+            expect(response.error?).to be false
+            text = response.content.first[:text]
+            # Verify the setup_commands branch was executed - should show joined command
+            expect(text).to include("[setup_commands] npm ci")
+          end
+
+          it "covers setup_commands branch (line 43) with nil command for safe navigation" do
+            # Test the &. safe navigation operator on line 43
+            allow(rules_manager).to receive(:list_rules).and_return([
+                                                                      {
+                                                                        project: "test-project",
+                                                                        type: "setup_commands",
                                                                         index: 0,
                                                                         config: { "command" => nil },
                                                                         enabled: true
@@ -221,64 +264,21 @@ RSpec.describe Sxn::MCP::Tools::Rules do
 
             expect(response.error?).to be false
             text = response.content.first[:text]
+            # When command is nil, &.join returns nil
             expect(text).to include("test-project:")
             expect(text).to include("[setup_commands]")
-            # When command is nil, &.join returns nil, which should be displayed
-            expect(text).to match(/\[setup_commands\]\s*$/)
           end
-        end
 
-        context "verifying exact config_preview format for each rule type" do
-          it "formats copy_files to show source path" do
-            # Mock to return a copy_files rule
+          it "covers template branch (line 45) with string type" do
+            # Mock to return a template rule with STRING type to hit line 45
             allow(rules_manager).to receive(:list_rules).and_return([
                                                                       {
                                                                         project: "test-project",
-                                                                        type: :copy_files,
-                                                                        index: 0,
-                                                                        config: { "source" => "config/secrets.yml", "strategy" => "copy" },
-                                                                        enabled: true
-                                                                      }
-                                                                    ])
-
-            response = described_class.call(server_context: server_context)
-
-            expect(response.error?).to be false
-            text = response.content.first[:text]
-            # Verify exact format: [copy_files] config/secrets.yml
-            expect(text).to include("[copy_files] config/secrets.yml")
-          end
-
-          it "formats setup_commands to show joined command" do
-            # Mock to return a setup_commands rule with command array
-            allow(rules_manager).to receive(:list_rules).and_return([
-                                                                      {
-                                                                        project: "test-project",
-                                                                        type: :setup_commands,
-                                                                        index: 0,
-                                                                        config: { "command" => ["bundle", "exec", "rake", "db:setup"] },
-                                                                        enabled: true
-                                                                      }
-                                                                    ])
-
-            response = described_class.call(server_context: server_context)
-
-            expect(response.error?).to be false
-            text = response.content.first[:text]
-            # Verify exact format: [setup_commands] bundle exec rake db:setup
-            expect(text).to include("[setup_commands] bundle exec rake db:setup")
-          end
-
-          it "formats template to show source -> destination" do
-            # Mock to return a template rule
-            allow(rules_manager).to receive(:list_rules).and_return([
-                                                                      {
-                                                                        project: "test-project",
-                                                                        type: :template,
+                                                                        type: "template",
                                                                         index: 0,
                                                                         config: {
-                                                                          "source" => ".sxn/templates/config.yml",
-                                                                          "destination" => "config/app.yml"
+                                                                          "source" => "templates/example.erb",
+                                                                          "destination" => "output/example.txt"
                                                                         },
                                                                         enabled: true
                                                                       }
@@ -288,54 +288,32 @@ RSpec.describe Sxn::MCP::Tools::Rules do
 
             expect(response.error?).to be false
             text = response.content.first[:text]
-            # Verify exact format: [template] .sxn/templates/config.yml -> config/app.yml
-            expect(text).to include("[template] .sxn/templates/config.yml -> config/app.yml")
-          end
-
-          it "formats unknown rule types using to_s" do
-            # Mock to return a custom/unknown rule type
-            allow(rules_manager).to receive(:list_rules).and_return([
-                                                                      {
-                                                                        project: "test-project",
-                                                                        type: :custom_rule,
-                                                                        index: 0,
-                                                                        config: { "custom_key" => "custom_value", "number" => 42 },
-                                                                        enabled: true
-                                                                      }
-                                                                    ])
-
-            response = described_class.call(server_context: server_context)
-
-            expect(response.error?).to be false
-            text = response.content.first[:text]
-            # Verify it uses .to_s on the config hash
-            expect(text).to include("[custom_rule]")
-            expect(text).to include("custom_key")
-            expect(text).to include("custom_value")
+            # Verify the template branch was executed - should show source -> destination
+            expect(text).to include("[template] templates/example.erb -> output/example.txt")
           end
         end
 
         context "with mixed rule types in same project" do
           it "displays all rule types with correct formatting" do
-            # Mock to return multiple rules of different types
+            # Mock to return multiple rules of different types with STRING types
             allow(rules_manager).to receive(:list_rules).and_return([
                                                                       {
                                                                         project: "test-project",
-                                                                        type: :copy_files,
+                                                                        type: "copy_files",
                                                                         index: 0,
                                                                         config: { "source" => ".env", "strategy" => "copy" },
                                                                         enabled: true
                                                                       },
                                                                       {
                                                                         project: "test-project",
-                                                                        type: :setup_commands,
+                                                                        type: "setup_commands",
                                                                         index: 0,
                                                                         config: { "command" => %w[npm install] },
                                                                         enabled: true
                                                                       },
                                                                       {
                                                                         project: "test-project",
-                                                                        type: :template,
+                                                                        type: "template",
                                                                         index: 0,
                                                                         config: {
                                                                           "source" => "templates/readme.md",

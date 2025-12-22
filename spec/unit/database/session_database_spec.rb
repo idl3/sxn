@@ -468,6 +468,21 @@ RSpec.describe Sxn::Database::SessionDatabase do
       session = db.get_session_by_name("")
       expect(session).to be_nil
     end
+
+    it "covers both branches of the row check at line 318" do
+      # Create a test session
+      test_id = db.create_session(name: "branch-test-session", status: "active")
+
+      # Test the else branch: row exists, should deserialize and return session
+      result = db.get_session_by_name("branch-test-session")
+      expect(result).not_to be_nil
+      expect(result[:id]).to eq(test_id)
+      expect(result[:name]).to eq("branch-test-session")
+
+      # Test the then branch: row is nil, should return nil
+      result_nil = db.get_session_by_name("definitely-does-not-exist")
+      expect(result_nil).to be_nil
+    end
   end
 
   describe "#update_session_status (private)" do
@@ -1693,19 +1708,20 @@ RSpec.describe Sxn::Database::SessionDatabase do
   describe "missing branch coverage tests" do
     # Line 99 [else] - Re-raise constraint exception that is NOT a duplicate name error
     it "re-raises constraint exception when not a duplicate name error (line 99 else)" do
-      # Create a session first
-      session_id = db.create_session(name: "test-session-for-constraint")
+      # Create a session with a specific ID
+      custom_id = "fixed-id-12345678901234567890123456789012"
+      db.create_session(name: "first-session", id: custom_id)
 
-      # Attempt to create a session with a duplicate ID but different name
+      # Attempt to create another session with the same ID but different name
       # This will cause a PRIMARY KEY constraint violation (not a name constraint)
+      # The create_session method will rescue SQLite3::ConstraintException
+      # and since the message won't contain "name", it will re-raise (line 103)
       expect do
-        db.connection.execute(
-          "INSERT INTO sessions (id, name, created_at, updated_at, status) VALUES (?, ?, ?, ?, ?)",
-          [session_id, "different-name-#{SecureRandom.hex(4)}", Time.now.utc.iso8601(6), Time.now.utc.iso8601(6), "active"]
-        )
+        db.create_session(name: "second-session", id: custom_id)
       end.to raise_error(SQLite3::ConstraintException) do |error|
         # Verify it's not a name constraint error (it's a primary key constraint)
         expect(error.message).not_to include("name")
+        expect(error.message.downcase).to include("unique")
       end
     end
 
@@ -1772,21 +1788,69 @@ RSpec.describe Sxn::Database::SessionDatabase do
     end
   end
 
-  # Helper method for some tests that need to look up by name
-  # This is used in some private method tests
-  def add_get_session_by_name_helper
-    described_class.class_eval do
-      def get_session_by_name(name)
-        stmt = prepare_statement(:get_session_by_name, "SELECT * FROM sessions WHERE name = ?")
-        row = stmt.execute(name).first
-        return nil unless row
+  describe "branch coverage" do
+    describe "validate_session_updates! early return (line 596[else])" do
+      let(:session_id) { db.create_session(name: "branch-coverage-test", status: "active") }
 
-        deserialize_session_row(row)
+      it "returns early when all update fields are valid (no unknown fields)" do
+        # This test specifically covers line 596[else] where unknown_fields.any? is false
+        # When all fields are valid, unknown_fields will be empty, causing early return
+        valid_updates = {
+          status: "inactive",
+          description: "Valid description",
+          linear_task: "ATL-123"
+        }
+
+        # The update should succeed without raising ArgumentError
+        result = db.update_session(session_id, valid_updates)
+        expect(result).to be true
+
+        # Verify the updates were applied
+        updated_session = db.get_session(session_id)
+        expect(updated_session[:status]).to eq("inactive")
+        expect(updated_session[:description]).to eq("Valid description")
+        expect(updated_session[:linear_task]).to eq("ATL-123")
+      end
+
+      it "returns early when updates hash is empty" do
+        # Edge case: empty updates should also trigger early return
+        empty_updates = {}
+
+        result = db.update_session(session_id, empty_updates)
+        expect(result).to be true
+      end
+
+      it "returns early when all special fields are valid" do
+        # Test with fields that require special serialization
+        special_updates = {
+          tags: ["new-tag"],
+          metadata: { key: "value" },
+          projects: ["project1"],
+          worktrees: { proj1: { path: "/path", branch: "main" } }
+        }
+
+        result = db.update_session(session_id, special_updates)
+        expect(result).to be true
+
+        # Verify special fields were serialized and stored correctly
+        updated_session = db.get_session(session_id)
+        expect(updated_session[:tags]).to eq(["new-tag"])
+        expect(updated_session[:metadata]).to eq({ "key" => "value" })
+        expect(updated_session[:projects]).to eq(["project1"])
+      end
+
+      it "raises error when unknown fields are present (opposite branch)" do
+        # This is the opposite branch - when unknown_fields.any? is true
+        # Included for completeness to show both branches
+        invalid_updates = {
+          status: "inactive",
+          unknown_field: "value"
+        }
+
+        expect do
+          db.update_session(session_id, invalid_updates)
+        end.to raise_error(ArgumentError, /Unknown keywords: unknown_field/)
       end
     end
-  end
-
-  before do
-    add_get_session_by_name_helper
   end
 end

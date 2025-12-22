@@ -525,4 +525,77 @@ RSpec.describe Sxn::MCP::Tools::Projects do
       end
     end
   end
+
+  describe "branch coverage" do
+    describe "ListProjects line 28[else] - when projects list is not empty" do
+      it "formats and displays projects correctly" do
+        # Add multiple projects to ensure the else branch (line 28) is executed
+        project_manager.add_project("project-one", git_repo_path, type: "ruby", default_branch: "main")
+
+        response = described_class::ListProjects.call(server_context: server_context)
+
+        # Verify the else branch was taken (projects not empty)
+        text = response.content.first[:text]
+        expect(response.error?).to be false
+        expect(text).to include("Registered projects (1)")
+        expect(text).to include("- project-one (ruby)")
+        expect(text).to include("Default branch: main")
+      end
+    end
+
+    describe "GetProject line 130[then] - when validation is valid" do
+      it "displays 'Valid' status for a valid project" do
+        project_manager.add_project("valid-proj", git_repo_path, type: "ruby", default_branch: "main")
+
+        response = described_class::GetProject.call(
+          name: "valid-proj",
+          server_context: server_context
+        )
+
+        # Verify the then branch of validation[:valid] ? "Valid" : "Invalid"
+        text = response.content.first[:text]
+        expect(text).to include("Validation: Valid")
+        expect(text).not_to include("Validation: Invalid")
+      end
+    end
+
+    describe "GetProject line 131[else] - when validation has no issues" do
+      it "does not display issues section for valid projects" do
+        project_manager.add_project("clean-proj", git_repo_path, type: "ruby", default_branch: "main")
+
+        response = described_class::GetProject.call(
+          name: "clean-proj",
+          server_context: server_context
+        )
+
+        # Verify the else branch (unless validation[:valid] is false, so no issues shown)
+        text = response.content.first[:text]
+        expect(text).to include("Validation: Valid")
+        # The issues list should not appear in the output
+        expect(text).not_to match(/  - .*Project path/)
+      end
+    end
+
+    describe "GetProject line 133[else] - when rules exist" do
+      it "displays rules summary when rules are present" do
+        # Mock get_project_rules to return rules
+        allow(server_context[:project_manager]).to receive(:get_project_rules).and_return({
+                                                                                            "copy_files" => [{ "source" => ".env" }],
+                                                                                            "setup_commands" => [{ "command" => %w[bundle install] }]
+                                                                                          })
+
+        project_manager.add_project("rules-proj", git_repo_path, type: "ruby", default_branch: "main")
+
+        response = described_class::GetProject.call(
+          name: "rules-proj",
+          server_context: server_context
+        )
+
+        # Verify the else branch of rules_summary.empty? ? "(none)" : rules_summary
+        text = response.content.first[:text]
+        expect(text).to include("Rules: copy_files: 1, setup_commands: 1")
+        expect(text).not_to include("Rules: (none)")
+      end
+    end
+  end
 end

@@ -953,6 +953,26 @@ RSpec.describe Sxn::CLI do
       end
     end
 
+    # Test lines 368-369: Handle nil settings (safe navigation operator)
+    context "when config.settings is nil" do
+      let(:config_without_settings) do
+        OpenStruct.new(sessions_folder: "sessions", settings: nil)
+      end
+
+      before do
+        allow(config_manager).to receive(:get_config).and_return(config_without_settings)
+        allow(ui_output).to receive(:section) { |msg| puts msg }
+      end
+
+      it "handles nil settings gracefully" do
+        expect(config_table).to receive(:config_summary).with(hash_including(
+                                                                auto_cleanup: nil,
+                                                                max_sessions: nil
+                                                              ))
+        expect { cli.send(:show_config) }.to output(/Configuration/).to_stdout
+      end
+    end
+
     # Test lines 257-258: Exception handling in show_config
     context "when configuration loading fails" do
       before do
