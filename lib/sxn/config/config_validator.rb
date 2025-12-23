@@ -168,6 +168,11 @@ module Sxn
               min: 1,
               max: 365
             },
+            "default_branch" => {
+              type: :string,
+              required: false,
+              default: "master"
+            },
             "default_rules" => {
               type: :hash,
               required: false,

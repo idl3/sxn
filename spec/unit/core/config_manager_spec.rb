@@ -101,6 +101,7 @@ RSpec.describe Sxn::Core::ConfigManager do
         expect(config["settings"]["auto_cleanup"]).to be true
         expect(config["settings"]["max_sessions"]).to eq(10)
         expect(config["settings"]["worktree_cleanup_days"]).to eq(30)
+        expect(config["settings"]["default_branch"]).to eq("master")
       end
 
       it "sets up database" do
@@ -221,6 +222,32 @@ RSpec.describe Sxn::Core::ConfigManager do
     it "returns current session when set" do
       config_manager.update_current_session("active_session")
       expect(config_manager.current_session).to eq("active_session")
+    end
+  end
+
+  describe "#default_branch" do
+    before do
+      config_manager.initialize_project(sessions_folder)
+    end
+
+    it "returns master as the default" do
+      expect(config_manager.default_branch).to eq("master")
+    end
+
+    it "returns configured default_branch when set" do
+      config = YAML.safe_load_file(config_path)
+      config["settings"]["default_branch"] = "main"
+      File.write(config_path, YAML.dump(config))
+
+      expect(config_manager.default_branch).to eq("main")
+    end
+
+    it "falls back to master when setting is missing" do
+      config = YAML.safe_load_file(config_path)
+      config["settings"].delete("default_branch")
+      File.write(config_path, YAML.dump(config))
+
+      expect(config_manager.default_branch).to eq("master")
     end
   end
 

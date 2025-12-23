@@ -2,6 +2,7 @@
 
 require "thor"
 require "json"
+require "English"
 
 module Sxn
   module Commands
@@ -75,6 +76,9 @@ module Sxn
           @ui.progress_done
 
           @ui.success("Initialized sxn in #{result_folder}")
+
+          # Automatically add root project
+          add_root_project
 
           # Auto-detect projects if enabled
           auto_detect_projects if options[:auto_detect] && !options[:quiet]
@@ -234,6 +238,70 @@ module Sxn
 
         # Interactive mode
         @prompt.sessions_folder_setup
+      end
+
+      def add_root_project
+        @ui.subsection("Root Project Registration")
+
+        project_name = sanitize_project_name(File.basename(Dir.pwd))
+        project_path = Dir.pwd
+
+        # Check if the project already exists (e.g., on --force reinit)
+        if @config_manager.get_project(project_name)
+          @ui.info("Root project '#{project_name}' already registered")
+          return
+        end
+
+        # Detect project type
+        detector = Sxn::Rules::ProjectDetector.new(project_path)
+        project_type = detector.detect_project_type.to_s
+
+        # Detect default branch if it's a git repo
+        default_branch = detect_root_default_branch(project_path)
+
+        # Add the project directly via config manager (path is "." for root)
+        @config_manager.add_project(
+          project_name,
+          project_path,
+          type: project_type,
+          default_branch: default_branch
+        )
+
+        @ui.success("Registered root project: #{project_name} (#{project_type})")
+      rescue StandardError => e
+        @ui.warning("Could not register root project: #{e.message}")
+        @ui.info("You can manually add it with: sxn projects add <name> .")
+      end
+
+      def sanitize_project_name(name)
+        # Replace invalid characters with hyphens, collapse multiple hyphens, strip leading/trailing
+        sanitized = name.gsub(/[^a-zA-Z0-9_-]/, "-")
+                        .gsub(/-+/, "-")
+                        .gsub(/^-|-$/, "")
+
+        # Ensure we have a valid name
+        sanitized.empty? ? "project" : sanitized
+      end
+
+      def detect_root_default_branch(path)
+        fallback_branch = @config_manager.default_branch
+
+        return fallback_branch unless File.directory?(File.join(path, ".git"))
+
+        Dir.chdir(path) do
+          # Try to get the default branch from remote
+          result = `git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null`.strip
+          return result.split("/").last if $CHILD_STATUS.success? && !result.empty?
+
+          # Fall back to current branch
+          result = `git branch --show-current 2>/dev/null`.strip
+          return result unless result.empty?
+
+          # Final fallback to configured default
+          fallback_branch
+        end
+      rescue StandardError
+        fallback_branch
       end
 
       def auto_detect_projects

@@ -66,6 +66,11 @@ module Sxn
         File.dirname(@config_path)
       end
 
+      def default_branch
+        config = load_config_file
+        config.dig("settings", "default_branch") || "master"
+      end
+
       def add_project(name, path, type: nil, default_branch: nil)
         config = load_config_file
         config["projects"] ||= {}
@@ -290,7 +295,8 @@ module Sxn
           "settings" => {
             "auto_cleanup" => true,
             "max_sessions" => 10,
-            "worktree_cleanup_days" => 30
+            "worktree_cleanup_days" => 30,
+            "default_branch" => "master"
           }
         }
 

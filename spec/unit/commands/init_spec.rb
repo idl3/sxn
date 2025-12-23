@@ -190,6 +190,10 @@ RSpec.describe Sxn::Commands::Init do
         allow(config_manager).to receive(:initialized?).and_return(false)
         allow(config_manager).to receive(:initialize_project).and_return("test-project-sessions")
         allow(config_manager).to receive(:detect_projects).and_return([])
+        # For root project registration
+        allow(config_manager).to receive(:get_project).and_return(nil)
+        allow(config_manager).to receive(:add_project)
+        allow(config_manager).to receive(:default_branch).and_return("master")
 
         # Set the quiet option
         options_hash = Thor::CoreExt::HashWithIndifferentAccess.new
@@ -716,7 +720,191 @@ RSpec.describe Sxn::Commands::Init do
     end
   end
 
+  describe "root project registration" do
+    context "when initializing a new project" do
+      before do
+        allow_any_instance_of(Sxn::UI::Output).to receive(:section)
+        allow_any_instance_of(Sxn::UI::Output).to receive(:progress_start)
+        allow_any_instance_of(Sxn::UI::Output).to receive(:progress_done)
+        allow_any_instance_of(Sxn::UI::Output).to receive(:success)
+        allow_any_instance_of(Sxn::UI::Output).to receive(:subsection)
+        allow_any_instance_of(Sxn::UI::Output).to receive(:command_example)
+        allow_any_instance_of(Sxn::UI::Output).to receive(:info)
+        allow_any_instance_of(Sxn::UI::Output).to receive(:recovery_suggestion)
+        allow_any_instance_of(Sxn::UI::Output).to receive(:newline)
+        allow_any_instance_of(Sxn::UI::Output).to receive(:warning)
+        allow_any_instance_of(Sxn::Core::ConfigManager).to receive(:detect_projects).and_return([])
+      end
+
+      it "automatically registers the root project" do
+        # Create a Gemfile to make it a Ruby project
+        File.write(File.join(temp_dir, "Gemfile"), "source 'https://rubygems.org'\n")
+
+        expect { command.init("test-sessions") }.not_to raise_error
+
+        config_path = File.join(temp_dir, ".sxn", "config.yml")
+        config = YAML.load_file(config_path)
+
+        # The root project should be registered with the directory name
+        dir_name = File.basename(temp_dir)
+        expect(config["projects"]).to be_a(Hash)
+        expect(config["projects"].keys).to include(dir_name)
+        expect(config["projects"][dir_name]["path"]).to eq(".")
+      end
+
+      it "detects the project type for root project" do
+        # Create a Rails-like project structure
+        FileUtils.mkdir_p(File.join(temp_dir, "config"))
+        File.write(File.join(temp_dir, "Gemfile"), "gem 'rails'\n")
+        File.write(File.join(temp_dir, "config", "application.rb"), "# Rails app\n")
+
+        expect { command.init("test-sessions") }.not_to raise_error
+
+        config_path = File.join(temp_dir, ".sxn", "config.yml")
+        config = YAML.load_file(config_path)
+
+        dir_name = File.basename(temp_dir)
+        expect(config["projects"][dir_name]["type"]).to eq("rails")
+      end
+
+      it "sanitizes project names with invalid characters" do
+        # Create a directory with spaces and special chars in name
+        special_dir = Dir.mktmpdir("test project (v1.0)")
+        allow(Dir).to receive(:pwd).and_return(special_dir)
+
+        # Need to create the config manager with the new path
+        config_manager = Sxn::Core::ConfigManager.new(special_dir)
+        allow(Sxn::Core::ConfigManager).to receive(:new).and_return(config_manager)
+        allow(config_manager).to receive(:detect_projects).and_return([])
+
+        expect { command.init("test-sessions") }.not_to raise_error
+
+        config_path = File.join(special_dir, ".sxn", "config.yml")
+        config = YAML.load_file(config_path)
+
+        # Name should be sanitized (spaces and special chars replaced)
+        expect(config["projects"].keys.first).to match(/^[a-zA-Z0-9_-]+$/)
+
+        FileUtils.rm_rf(special_dir)
+      end
+
+      it "handles root project registration failure gracefully" do
+        # Force ProjectDetector to raise an error
+        allow(Sxn::Rules::ProjectDetector).to receive(:new).and_raise(StandardError.new("Detection failed"))
+
+        expect_any_instance_of(Sxn::UI::Output).to receive(:warning)
+          .with(/Could not register root project/)
+
+        expect { command.init("test-sessions") }.not_to raise_error
+      end
+    end
+
+    context "when reinitializing with --force" do
+      before do
+        allow_any_instance_of(Sxn::UI::Output).to receive(:section)
+        allow_any_instance_of(Sxn::UI::Output).to receive(:progress_start)
+        allow_any_instance_of(Sxn::UI::Output).to receive(:progress_done)
+        allow_any_instance_of(Sxn::UI::Output).to receive(:success)
+        allow_any_instance_of(Sxn::UI::Output).to receive(:subsection)
+        allow_any_instance_of(Sxn::UI::Output).to receive(:command_example)
+        allow_any_instance_of(Sxn::UI::Output).to receive(:info)
+        allow_any_instance_of(Sxn::UI::Output).to receive(:recovery_suggestion)
+        allow_any_instance_of(Sxn::UI::Output).to receive(:newline)
+        allow_any_instance_of(Sxn::Core::ConfigManager).to receive(:detect_projects).and_return([])
+      end
+
+      it "does not duplicate the root project if it already exists" do
+        # First initialization
+        command.init("test-sessions")
+
+        # Get the project name
+        dir_name = File.basename(temp_dir)
+
+        # Verify first init created the project
+        config_path = File.join(temp_dir, ".sxn", "config.yml")
+        config = YAML.load_file(config_path)
+        expect(config["projects"][dir_name]).not_to be_nil
+
+        # Second initialization with force
+        options_hash = Thor::CoreExt::HashWithIndifferentAccess.new
+        options_hash["force"] = true
+        command.instance_variable_set(:@options, options_hash)
+
+        # Should show info message about already registered
+        expect_any_instance_of(Sxn::UI::Output).to receive(:info)
+          .with("Root project '#{dir_name}' already registered")
+
+        expect { command.init("test-sessions") }.not_to raise_error
+
+        # Verify we still have exactly one project
+        config = YAML.load_file(config_path)
+        expect(config["projects"].keys.count { |k| k == dir_name }).to eq(1)
+      end
+    end
+  end
+
   describe "private methods" do
+    describe "#sanitize_project_name" do
+      it "replaces spaces with hyphens" do
+        result = command.send(:sanitize_project_name, "my project")
+        expect(result).to eq("my-project")
+      end
+
+      it "replaces special characters with hyphens" do
+        result = command.send(:sanitize_project_name, "my@project#1")
+        expect(result).to eq("my-project-1")
+      end
+
+      it "collapses multiple hyphens" do
+        result = command.send(:sanitize_project_name, "my---project")
+        expect(result).to eq("my-project")
+      end
+
+      it "strips leading and trailing hyphens" do
+        result = command.send(:sanitize_project_name, "-my-project-")
+        expect(result).to eq("my-project")
+      end
+
+      it "preserves underscores" do
+        result = command.send(:sanitize_project_name, "my_project")
+        expect(result).to eq("my_project")
+      end
+
+      it "returns 'project' for empty result" do
+        result = command.send(:sanitize_project_name, "@#$%")
+        expect(result).to eq("project")
+      end
+    end
+
+    describe "#detect_root_default_branch" do
+      before do
+        allow_any_instance_of(Sxn::Core::ConfigManager).to receive(:default_branch).and_return("master")
+      end
+
+      it "returns configured default for non-git directories" do
+        result = command.send(:detect_root_default_branch, temp_dir)
+        expect(result).to eq("master")
+      end
+
+      it "uses configured default_branch setting" do
+        allow_any_instance_of(Sxn::Core::ConfigManager).to receive(:default_branch).and_return("main")
+        result = command.send(:detect_root_default_branch, temp_dir)
+        expect(result).to eq("main")
+      end
+
+      it "detects branch for git repositories" do
+        # Initialize a git repo in temp_dir
+        Dir.chdir(temp_dir) do
+          `git init 2>/dev/null`
+          `git checkout -b main 2>/dev/null`
+        end
+
+        result = command.send(:detect_root_default_branch, temp_dir)
+        # Should return "main" or "master" depending on git config
+        expect(%w[main master]).to include(result)
+      end
+    end
+
     describe "#shell_rc_file" do
       it "returns nil for unsupported shell type" do
         # Test line 129 [else] - when shell_type doesn't match "zsh" or "bash"

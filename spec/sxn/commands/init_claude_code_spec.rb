@@ -496,6 +496,10 @@ RSpec.describe Sxn::Commands::Init, "Claude Code Integration" do
       allow(config_manager).to receive(:initialized?).and_return(false)
       allow(config_manager).to receive(:initialize_project).and_return(sessions_folder)
       allow(config_manager).to receive(:detect_projects).and_return([])
+      # For root project registration
+      allow(config_manager).to receive(:get_project).and_return(nil)
+      allow(config_manager).to receive(:add_project)
+      allow(config_manager).to receive(:default_branch).and_return("master")
 
       # Stub UI methods
       allow(ui_output).to receive(:section)
