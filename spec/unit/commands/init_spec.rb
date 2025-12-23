@@ -193,6 +193,7 @@ RSpec.describe Sxn::Commands::Init do
         # For root project registration
         allow(config_manager).to receive(:get_project).and_return(nil)
         allow(config_manager).to receive(:add_project)
+        allow(config_manager).to receive(:default_branch).and_return("master")
 
         # Set the quiet option
         options_hash = Thor::CoreExt::HashWithIndifferentAccess.new
@@ -876,9 +877,19 @@ RSpec.describe Sxn::Commands::Init do
     end
 
     describe "#detect_root_default_branch" do
-      it "returns master for non-git directories" do
+      before do
+        allow_any_instance_of(Sxn::Core::ConfigManager).to receive(:default_branch).and_return("master")
+      end
+
+      it "returns configured default for non-git directories" do
         result = command.send(:detect_root_default_branch, temp_dir)
         expect(result).to eq("master")
+      end
+
+      it "uses configured default_branch setting" do
+        allow_any_instance_of(Sxn::Core::ConfigManager).to receive(:default_branch).and_return("main")
+        result = command.send(:detect_root_default_branch, temp_dir)
+        expect(result).to eq("main")
       end
 
       it "detects branch for git repositories" do

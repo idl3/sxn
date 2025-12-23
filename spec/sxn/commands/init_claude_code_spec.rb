@@ -499,6 +499,7 @@ RSpec.describe Sxn::Commands::Init, "Claude Code Integration" do
       # For root project registration
       allow(config_manager).to receive(:get_project).and_return(nil)
       allow(config_manager).to receive(:add_project)
+      allow(config_manager).to receive(:default_branch).and_return("master")
 
       # Stub UI methods
       allow(ui_output).to receive(:section)

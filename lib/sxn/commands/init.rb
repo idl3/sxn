@@ -284,7 +284,9 @@ module Sxn
       end
 
       def detect_root_default_branch(path)
-        return "master" unless File.directory?(File.join(path, ".git"))
+        fallback_branch = @config_manager.default_branch
+
+        return fallback_branch unless File.directory?(File.join(path, ".git"))
 
         Dir.chdir(path) do
           # Try to get the default branch from remote
@@ -295,11 +297,11 @@ module Sxn
           result = `git branch --show-current 2>/dev/null`.strip
           return result unless result.empty?
 
-          # Final fallback
-          "master"
+          # Final fallback to configured default
+          fallback_branch
         end
       rescue StandardError
-        "master"
+        fallback_branch
       end
 
       def auto_detect_projects
